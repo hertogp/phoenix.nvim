@@ -14,29 +14,46 @@ vim.api.nvim_set_hl(0, "ColorColumn", { ctermbg = "DarkGrey", ctermfg = "white" 
 
 return {
 
-  {  -- https://github.com/NAlexPear/Spacegray.nvim
-    "NAlexPear/Spacegray.nvim",
-    lazy = false,    -- load this during startup
+  { -- https://github.com/rebelot/kanagawa.nvim
+    --  If you enabled compile in the config, then after each config change:
+    --  1. modify your config
+    --  2. restart nvim
+    --  3. :KanagawaCompile
+
+    "rebelot/kanagawa.nvim",
+
+    lazy = false, -- load this color scheme during startup
     priority = 1000, -- load before all other plugins
+
     config = function()
-      -- runs when plugin is loaded (don't use opts = {..})
-      vim.cmd([[colorscheme spacegray]])
+      -- runs when plugin is loaded (don't use opts = {..} in this spec, that'll be ignored)
+      local opts = { colors = { theme = { all = { ui = { bg_gutter = "none" } } } } }
+      require("kanagawa").setup(opts)
+      vim.cmd [[colorscheme kanagawa]]
     end,
+  },
+
+  { -- https://github.com/NAlexPear/Spacegray.nvim
+    "NAlexPear/Spacegray.nvim",
+    -- lazy = false, -- load this during startup
+    -- priority = 1000, -- load before all other plugins
+    -- config = function()
+    --   -- runs when plugin is loaded (don't use opts = {..})
+    --   vim.cmd [[colorscheme spacegray]]
+    -- end,
   },
 
   { -- https://github.com/Mofiqul/dracula.nvim
 
     "Mofiqul/dracula.nvim",
 
-    -- used in require "dracula".setup(opts)
     opts = {
 
-      italic_comment = true,
       show_end_of_buffer = true, -- '~' characters after the end of buffers
       transparent_bg = true,
       lualine_bg_color = "#44475a",
       italic_comment = true,
-      overrides = {},     -- override default highlights, see `:h synIDattr`
+      overrides = {}, -- override default highlights, see `:h synIDattr`
 
       colors = {
         bg = "#191A21",
@@ -64,5 +81,4 @@ return {
       },
     },
   },
-
 }

@@ -22,23 +22,31 @@
 -- }
 --
 -- highlight colors:
---
--- MiniStatuslineModeNormal xxx links to Cursor
--- MiniStatuslineModeInsert xxx links to DiffChange <--
--- MiniStatuslineModeVisual xxx links to DiffAdd    <-- DiffText
+-- hi! link <ministatus> <other group>
+-- MiniStatuslineModeNormal xxx links to Cursor      <-- DiffText
+-- MiniStatuslineModeInsert xxx links to DiffChange  <-- CurSearch
+-- MiniStatuslineModeVisual xxx links to DiffAdd     <-- DiffText
 -- MiniStatuslineModeReplace xxx links to DiffDelete <-- DiffText
--- MiniStatuslineModeCommand xxx links to DiffText  <-- ok
--- MiniStatuslineModeOther xxx links to IncSearch
--- MiniStatuslineDevinfo xxx links to StatusLine
--- MiniStatuslineFilename xxx links to StatusLineNC
--- MiniStatuslineFileinfo xxx links to StatusLine
--- MiniStatuslineInactive xxx links to StatusLineNC
+-- MiniStatuslineModeCommand xxx links to DiffText   <-- DiffText
+-- MiniStatuslineModeOther xxx links to IncSearch    <-- IncSearch
+-- MiniStatuslineDevinfo xxx links to StatusLine     <-- IncSearch
+-- MiniStatuslineFilename xxx links to StatusLineNC  <-- ok
+-- MiniStatuslineFileinfo xxx links to StatusLine    <-- IncSearch
+-- MiniStatuslineInactive xxx links to StatusLineNC  <-- ok
 
+-- where:
+--   IncSearch      xxx guifg=#2c2f33 guibg=#c5735e
+--   CurSearch      xxx ctermfg=0 ctermbg=11 guifg=NvimDarkGrey1 guibg=NvimLightYellow
+--   DiffText       xxx ctermfg=0 ctermbg=14 guifg=NvimLightGrey1 guibg=NvimDarkCyan
 return {
 
   "echasnovski/mini.statusline",
 
   version = false,
+
+  dependencies = {
+    { "echasnovski/mini-git", version = false, main = "mini.git", opts = {} },
+  },
 
   opts = {},
 }
