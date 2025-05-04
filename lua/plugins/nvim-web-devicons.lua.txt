@@ -1,0 +1,15 @@
+-- https://github.com/nvim-tree/nvim-web-devicons
+
+--[[ NOTES
+
+- :NvimWebDeviconsHiTest, to see all icons in action
+- :digraphs to see all digraphs
+- <c-k>{char1}{char2} when in insert mode
+
+]]
+
+return {
+  "kyazdani42/nvim-web-devicons",
+  enabled = false,
+  opts = {},
+}

@@ -1,0 +1,22 @@
+# .gitignore for nvim home dir
+# - temporary dir's
+scr/
+tmp/
+.cache/
+.git/
+repos/
+repos.old/
+
+# - transient files
+
+.netrwhist
+cache_nvim
+state_nvim.vim
+
+
+# - misc excludes
+*.org
+
+# byte compiled
+
+__pycache__/
