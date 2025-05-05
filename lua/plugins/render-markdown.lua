@@ -2,6 +2,7 @@
 
 --[[
 - use character map from menu>accessories, select ubuntu mono nerd font & script=common -> pick an icon
+- use :digraphs, select a character­℗  🯄and pick a character.
 ]]
 return {
 
@@ -33,8 +34,8 @@ return {
         scope_highlight = nil,
       },
       custom = {
-        todo = {
-          raw = "[-]",
+        ongoing = {
+          raw = "[o]",
           rendered = "󰥔 ",
           highlight = "RenderMarkdownTodo",
           scope_highlight = nil,
@@ -42,10 +43,11 @@ return {
         cancel = {
           raw = "[c]",
           rendered = "🜔 ",
-          highlight = "RenderMarkdownTodo",
+          highlight = "DiffDelete", -- "RenderMarkdownTodo",
           scope_highlight = "@markup.strikethrough",
         },
         important = { raw = "[!]", rendered = "󰓎 ", highlight = "DiagnosticWarn" },
+        maybe = { raw = "[?]", rendered = "🯄 ", highlight = "RenderMarkdownTodo" },
       },
       -- cancel icons: ✝ ♰ ♽ ⨷ ⮾ 𝛩 𝛳 𝜃 🄯 🄫 🅒 🜔 ⛔ 🚫 ⚠️ ♻️ 📛
     },

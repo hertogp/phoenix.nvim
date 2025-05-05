@@ -16,6 +16,8 @@ local api = vim.api
 
 --[[ GLOBAL ]]
 
+-- TODO: add T to dump a lua table, to be used as
+-- :Show lua =T(table), e.g. like :Show lua =T(vim.b)
 P = function(value)
   -- inspect a value and return it.
   print(vim.inspect(value))

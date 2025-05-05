@@ -110,12 +110,12 @@ api.nvim_create_autocmd("BufWritePost", {
 })
 
 --[[ auLua ]]
-local auLua = api.nvim_create_augroup("auLua", { clear = true })
-api.nvim_create_autocmd("BufWritePre", {
-  group = auLua,
-  pattern = { "*.lua" },
-  callback = function()
-    -- you need a stylua.toml somewhere
-    require("stylua").format()
-  end,
-})
+-- local auLua = api.nvim_create_augroup("auLua", { clear = true })
+-- api.nvim_create_autocmd("BufWritePre", {
+--   group = auLua,
+--   pattern = { "*.lua" },
+--   callback = function()
+--     -- you need a stylua.toml somewhere
+--     require("stylua").format()
+--   end,
+-- })

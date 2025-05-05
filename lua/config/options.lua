@@ -3,7 +3,8 @@
 local o = vim.o -- namespace for buffer/window options
 
 -- haven't used this in a while, might need to check the order of the dirs listed
-o.path = o.path .. "/snap/bin,./include,/usr/include/linux,/usr/include/x86_64-linux-gnu,/usr/local/include"
+o.path = o.path
+  .. "/snap/bin,./include,/usr/include/linux,/usr/include/x86_64-linux-gnu,/usr/local/include"
 
 o.autowrite = true -- save before commands like :next and :make
 o.backspace = "indent,eol,start"
@@ -41,6 +42,9 @@ o.whichwrap = "b,s,<,>,[,]"
 o.wildmenu = true
 o.wildmode = "longest,list:longest,full"
 o.wrap = false
+
+-- winborder
+o.winborder = "rounded"
 
 -- indent & tabs
 vim.opt.autoindent = true -- keep indentation same as line above

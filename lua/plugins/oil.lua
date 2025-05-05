@@ -23,6 +23,6 @@ return {
   -- Lazy loading is not recommended because it is very tricky to make it work correctly in all situations.
   lazy = false,
   keys = {
-    { "-", "<cmd>Oil --float<cr>", mode = "n", desc = "Open Oil in floating window" },
+    { "<space>-", "<cmd>Oil --float<cr>", mode = "n", desc = "Open Oil in floating window" },
   },
 }

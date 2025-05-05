@@ -17,8 +17,8 @@ date: today
 - [ ] clean up old plugins (incl docs)
 - [!] fix it so we can push repo again (git remote set-url origin git@github.com:hertogp/nvim.git)
 - [!] important
-- [-] install neovim from source
-- [-] install neovim from source
+- [c] install neovim from source
+- [c] install neovim from source
 - [c] cancelled, strikethrough
 - [c] use packer plugin manager
 - [x] automatic formatting lua - do not have one-line funcs perse.
@@ -37,8 +37,12 @@ date: today
 - [x] understand tree-sitter better
 - [x] use language servers for lua, elixir
 - [x] use lazy.nvim package manager
+- [ ] remove all packer related stuff
+- [?] checkout laydev.nvim
 - [x] use stylua to format lua code, not luarock's lua-format (does weird things with tables)
-- [x] use telescope
+- [c] use telescope
+- [x] use fzf-lua
+
 
 ## Different types of tables
 abc def
@@ -57,9 +61,10 @@ abc def
 
 - [ ] todo
 - [!] important
-- [-] ongoing
+- [o] ongoing
 - [c] cancelled
 - [x] done
+- [?] maybe
 
 
 this is a subsection
