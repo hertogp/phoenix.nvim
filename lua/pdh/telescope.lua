@@ -161,6 +161,7 @@ local outline_previewer = function(src_bufnr)
     end,
     get_buffer_by_name = function(self, _)
       -- TODO: check caching works, do not grok the docs :he telescope, :3377
+      -- NOTE: this is different!
       -- especially the mention of entry.your_unique_id ...
       return tostring(self) -- "table 0x..."
     end,
@@ -178,7 +179,7 @@ local outline_previewer = function(src_bufnr)
       local toplinenr = vim.fn.line("w0", self.state.winid)
       local direction = tgtlinenr - toplinenr - math.floor(winheight / 2)
       vim.api.nvim_buf_clear_namespace(self.state.bufnr, -1, 0, -1)
-      -- NOTE: nvim_buf_add_highlight uses a zero-baed index for line nrs.
+      -- NOTE: nvim_buf_add_highlight uses a zero-based index for line nrs.
       pcall(vim.api.nvim_buf_add_highlight, self.state.bufnr, -1, "Visual", tgtlinenr, 0, -1)
       self.scroll_fn(self, direction)
     end,

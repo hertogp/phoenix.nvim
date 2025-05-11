@@ -5,7 +5,7 @@
 --[[ LOCAL ]]
 
 local fs = vim.fs
-local uv = require "luv"
+local uv = require 'luv'
 local g = vim.g -- namespace for global variables
 local go = vim.go -- namespace for global options
 local api = vim.api
@@ -26,7 +26,7 @@ end
 
 RELOAD = function(...)
   -- ?? what does this do?
-  return require("plenary.reload").reload_module(...)
+  return require('plenary.reload').reload_module(...)
 end
 
 R = function(name)
@@ -42,20 +42,20 @@ function Project_root(bufnr)
   bufnr = bufnr or 0
   -- scratch buffers -> fallback to cwd
   local bufpath = vim.fs.dirname(api.nvim_buf_get_name(bufnr))
-  if #bufpath < 1 or bufpath == "." then
+  if #bufpath < 1 or bufpath == '.' then
     bufpath = uv.cwd()
   end
   bufpath = fs.normalize(bufpath)
   local sentinels = {
-    ".git",
-    ".gitignore",
-    ".mise.toml",
-    "stylua.toml",
-    ".codespellrc",
-    "Makefile",
-    ".svn",
-    ".bzr",
-    ".hg",
+    '.git',
+    '.gitignore',
+    '.mise.toml',
+    'stylua.toml',
+    '.codespellrc',
+    'Makefile',
+    '.svn',
+    '.bzr',
+    '.hg',
   }
   local repo_dir = fs.find(sentinels, { path = bufpath, upward = true })[1]
   if repo_dir then
@@ -87,14 +87,14 @@ end
 
 --[[ global variables ]]
 g.have_nerd_font = true
-g.netrw_browsex_viewer = "xdg-open"
+g.netrw_browsex_viewer = 'xdg-open'
 g.neomake_open_list = 2
 g.neomake_list_height = 20
-g.neomake_javascript_enabled_makers = { "eslint" }
-g.neomake_scss_enabeld_makers = { "stylelint" }
-g.neomake_python_pylint_exe = "pylint3"
-g.neomake_python_enabled_makers = { "pylint", "flake8" }
-g.neomake_elixir_enabled_makers = { "credo" }
+g.neomake_javascript_enabled_makers = { 'eslint' }
+g.neomake_scss_enabeld_makers = { 'stylelint' }
+g.neomake_python_pylint_exe = 'pylint3'
+g.neomake_python_enabled_makers = { 'pylint', 'flake8' }
+g.neomake_elixir_enabled_makers = { 'credo' }
 
 g.jsx_ext_required = 0
 g.jsx_ext_required = 1
@@ -106,9 +106,9 @@ g.vim_json_syntax_conceal = 0
 g.gruvbox_transp_bg = 1
 
 -- for pw <file>
-g.tgpgOptions = "-q --batch --force-mdc --no-secmem-warning"
+g.tgpgOptions = '-q --batch --force-mdc --no-secmem-warning'
 
-g.neoterm_default_mod = "vert"
+g.neoterm_default_mod = 'vert'
 -- automatically start a REPL works via the TREPLxx-commands
 -- or use Topen iex -S mix
 g.neoterm_auto_repl_cmd = 0
@@ -118,11 +118,9 @@ g.neoterm_autoscroll = 1
 --[[ global options ]]
 
 go.startofline = false
--- are these in vim.go namespace of vim.o namespace?
--- TODO: packpath defaults to runtimepath, so is this necessary?
---del go.packpath = go.runtimepath
 
 --[[ global user commands ]]
+--
 
 -- Show
 --------
@@ -132,6 +130,12 @@ go.startofline = false
 --   Show let w:      -- show all window variables in a new tab
 --   Show lua =vim    -- show the lua vim table
 --   Show map         -- show all mappings
+--   Show echo &runtimepath (or &rtp) and do s/,/\r/g
+--   Show read ! echo $PATH
+--   Show lua =vim.opt.runtimepath
+--   Show lua =vim.opt.packpath
+--   Show echo nvim_get_runtime_file("lua/", v:true)
+--   Show set! or Show set! all (show (all) options that differ from default)
 local function show_in_tab(t)
   -- x = vim.api.nvim_exec(t.args, x)
   local ok, x = pcall(function()
@@ -140,36 +144,36 @@ local function show_in_tab(t)
     -- return lines table, no newlines allowed by nvim_buf_set_lines()
     local lines = {}
     -- return vim.split(lines, "\r?\n", {trimempty = true}
-    for line in output:gmatch "[^\r\n]+" do
+    for line in output:gmatch '[^\r\n]+' do
       table.insert(lines, line)
     end
     return lines
   end)
 
   -- open a new tab
-  api.nvim_command "tabnew"
+  api.nvim_command 'tabnew'
   -- api.nvim_buf_set_option(0, 'filetype', 'nofile')
   -- api.nvim_buf_set_option(0, 'buftype', 'nofile')
-  api.nvim_buf_set_option(0, "bufhidden", "wipe")
-  api.nvim_buf_set_option(0, "swapfile", false)
-  api.nvim_buf_set_option(0, "buflisted", false)
-  api.nvim_buf_set_lines(0, 0, 0, false, { "Show " .. t.args, "-----" })
+  api.nvim_buf_set_option(0, 'bufhidden', 'wipe')
+  api.nvim_buf_set_option(0, 'swapfile', false)
+  api.nvim_buf_set_option(0, 'buflisted', false)
+  api.nvim_buf_set_lines(0, 0, 0, false, { 'Show ' .. t.args, '-----' })
 
   -- insert results (good or bad) in the buffer
   if ok then
     api.nvim_buf_set_lines(0, -1, -1, false, x)
   else
-    api.nvim_buf_set_lines(0, -1, -1, false, { "error", vim.inspect(x) })
+    api.nvim_buf_set_lines(0, -1, -1, false, { 'error', vim.inspect(x) })
   end
 
-  api.nvim_buf_set_option(0, "modified", false)
-  api.nvim_buf_set_keymap(0, "n", "q", "<cmd>close<cr>", { noremap = true, silent = true })
+  api.nvim_buf_set_option(0, 'modified', false)
+  api.nvim_buf_set_keymap(0, 'n', 'q', '<cmd>close<cr>', { noremap = true, silent = true })
 end
 
 api.nvim_create_user_command(
-  "Show",
+  'Show',
   show_in_tab,
-  { complete = "shellcmd", nargs = "+", desc = "Show cmd output in a new tab" }
+  { complete = 'shellcmd', nargs = '+', desc = 'Show cmd output in a new tab' }
 )
 
 local function save_keep_pos()
@@ -196,4 +200,4 @@ local function save_keep_pos()
   end
 end
 
-api.nvim_create_user_command("SaveKeepPos", save_keep_pos, {})
+api.nvim_create_user_command('SaveKeepPos', save_keep_pos, {})

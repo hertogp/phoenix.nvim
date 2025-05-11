@@ -82,7 +82,7 @@ return {
       local lspconfig = require "lspconfig"
       local capabilities = require("cmp_nvim_lsp").default_capabilities()
       lspconfig.elixirls.setup {
-        -- you need to specify the executable command manualy for elixir-ls
+        -- you need to specify the executable command manually for elixir-ls
         -- see: mise bin-paths and/or mise ls
         cmd = { "/home/pdh/.local/share/mise/installs/elixir-ls/latest/language_server.sh" },
         capabilities = capabilities,

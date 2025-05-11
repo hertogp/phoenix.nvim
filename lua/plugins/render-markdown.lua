@@ -6,54 +6,44 @@
 ]]
 return {
 
-  "MeanderingProgrammer/render-markdown.nvim",
+  'MeanderingProgrammer/render-markdown.nvim',
 
   enabled = true,
 
   dependencies = {
-    "nvim-treesitter/nvim-treesitter",
-    "echasnovski/mini.icons",
-    -- "nvim-tree/nvim-web-devicons",
+    'nvim-treesitter/nvim-treesitter',
+    'echasnovski/mini.icons',
   },
   ---@module 'render-markdown'
   ---@type render.md.UserConfig
   opts = {
-    render_modes = { "n", "c", "t" },
+    render_modes = { 'n', 'c', 't' },
     checkbox = {
       enabled = true,
-      render_modes = { "n", "c", "t" },
+      render_modes = { 'n', 'c', 't' },
       right_pad = 1,
-      unchecked = {
-        icon = "󰄱 ",
-        highlight = "RenderMarkdownUnchecked",
-        scope_highlight = nil,
-      },
-      checked = {
-        icon = "󰱒 ",
-        highlight = "RenderMarkdownChecked",
-        scope_highlight = nil,
-      },
+      unchecked = { icon = '󰄱 ', highlight = 'RenderMarkdownUnchecked', scope_highlight = nil },
+      checked = { icon = '󰱒 ', highlight = 'RenderMarkdownChecked', scope_highlight = nil },
       custom = {
         ongoing = {
-          raw = "[o]",
-          rendered = "󰥔 ",
-          highlight = "RenderMarkdownTodo",
-          scope_highlight = nil,
+          raw = '[o]',
+          rendered = '󰥔 ',
+          highlight = 'RenderMarkdownTodo',
+          scope_highlight = '@markup.italic',
         },
-        cancel = {
-          raw = "[c]",
-          rendered = "🜔 ",
-          highlight = "DiffDelete", -- "RenderMarkdownTodo",
-          scope_highlight = "@markup.strikethrough",
-        },
-        important = { raw = "[!]", rendered = "󰓎 ", highlight = "DiagnosticWarn" },
-        maybe = { raw = "[?]", rendered = "🯄 ", highlight = "RenderMarkdownTodo" },
+        cancel = { raw = '[c]', rendered = '⮾  ', highlight = 'ErrorMsg', scope_highlight = '@markup.strikethrough' },
+        -- override existing custom 'todo' (already defined by render-markdown)
+        todo = { raw = '[-]', rendered = '⮾  ', highlight = 'ErrorMsg', scope_highlight = '@markup.strikethrough' },
+        important = { raw = '[!]', rendered = '󰓎 ', highlight = 'DiagnosticWarn' },
+        maybe = { raw = '[?]', rendered = '�  ', highlight = 'RenderMarkdownTodo' },
       },
-      -- cancel icons: ✝ ♰ ♽ ⨷ ⮾ 𝛩 𝛳 𝜃 🄯 🄫 🅒 🜔 ⛔ 🚫 ⚠️ ♻️ 📛
+      -- % charmap -> choose Nerd Font Mono -> copy/paste characters
+      -- cancel icons: ✝ ♰ ♽ ⨷ ⮾ 𝛩 𝛳 𝜃 🄯 🄫 🅒 🜔 ⛔ 🚫 ⚠️ ♻️ 📛 ⏲a  🕓
+      -- 🯄, �  ⍰
     },
   },
 
   keys = {
-    { "<leader>r", "<cmd>RenderMarkdown toggle<cr>", mode = "n", desc = "Toggle RenderMarkdown" },
+    { '<leader>r', '<cmd>RenderMarkdown toggle<cr>', mode = 'n', desc = 'Toggle RenderMarkdown' },
   },
 }

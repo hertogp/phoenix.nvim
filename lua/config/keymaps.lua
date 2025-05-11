@@ -5,12 +5,12 @@
 
 --[[ HELPERS ]]
 local nmap = function(keys, cmd, description)
-	d = "USR: " .. (description or "?")
-	vim.keymap.set("n", keys, cmd, { noremap = true, silent = true, desc = d })
+  d = "USR: " .. (description or "?")
+  vim.keymap.set("n", keys, cmd, { noremap = true, silent = true, desc = d })
 end
 local imap = function(keys, cmd, description)
-	d = "USR: " .. (description or "?")
-	vim.keymap.set("i", keys, cmd, { noremap = true, silent = true, desc = d })
+  d = "USR: " .. (description or "?")
+  vim.keymap.set("i", keys, cmd, { noremap = true, silent = true, desc = d })
 end
 
 --[[ EDITING ]]
@@ -34,10 +34,6 @@ nmap("<c-s>", "<cmd>SaveKeepPos<cr>", "save file, keep position")
 nmap("<f5>", ":redraw!", "redraw screen")
 
 --[[ CODING ]]
---nmap("<f2>", "<cmd>NeomakeClean<cr>", "")
---nmap("<space><f2>", "<cmd>NeomakeClean<cr>", "")
---nmap("<f3>", "<cmd>Neomake! makeprg<cr>", "")
---nmap("<space><f3>", "<cmd>NeomakeClean!<cr>", "")
 
 --[[ NAVIGATE ]]
 nmap("<c-n>", "<cmd>nohl<cr>", "clear search highlights")
@@ -73,7 +69,11 @@ nmap("<leader><leader>X", "<cmd>write|source %<cr>", "save & source buffer")
 
 --[[ DEBUGGING ]]
 nmap("<F8>", "<cmd>lua require'dap'.toggle_breakpoint()<CR>", "toggle breakpoint")
-nmap("<S-F8>", "<Cmd>lua require'dap'.set_breakpoint(vim.fn.input('Breakpoint condition: '))<CR>", "set breakpoint")
+nmap(
+  "<S-F8>",
+  "<Cmd>lua require'dap'.set_breakpoint(vim.fn.input('Breakpoint condition: '))<CR>",
+  "set breakpoint"
+)
 nmap("<F9>", "<cmd>lua require'dap'.continue()<CR>", "debug, continue")
 nmap("<F10>", "<cmd>lua require'dap'.step_over()<CR>", "debug, step over")
 nmap("<S-F10>", "<cmd>lua require'dap'.step_into()<CR>", "debug, step into")
@@ -82,9 +82,9 @@ nmap("<S-F10>", "<cmd>lua require'dap'.step_into()<CR>", "debug, step into")
 nmap("<S-F11>", "<cmd>lua require'dap'.step_out()<CR>", "debug, step out")
 nmap("<S-F12>", "<cmd>lua require'dap.ui.widgets'.hover()<cr>", "debug, hover")
 nmap(
-	"<Leader>lp",
-	"<Cmd>lua require'dap'.set_breakpoint(nil, nil, vim.fn.input('Log point message: '))<CR>",
-	"debug, set breakpoint"
+  "<Leader>lp",
+  "<Cmd>lua require'dap'.set_breakpoint(nil, nil, vim.fn.input('Log point message: '))<CR>",
+  "debug, set breakpoint"
 )
 nmap("<Leader>dr", "<Cmd>lua require'dap'.repl.open()<CR>", "debug, open repl")
 nmap("<Leader>dl", "<Cmd>lua require'dap'.run_last()<CR>", "debug, run last")
