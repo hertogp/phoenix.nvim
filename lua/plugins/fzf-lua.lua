@@ -48,12 +48,12 @@ return {
     { '<space>w', ':FzfLua loclist<cr>', desc = '[w]indow location list' },
     -- keep typing to narrow down
     {
-      '<leader>t',
+      '<space>t',
       ":lua require 'fzf-lua'.grep_curbuf({no_esc=true, search='TODO: | XXX: | FIXME: | REVIEW: | NOTES?: | BUG: '})<cr>",
       desc = "[t]odo's and friends in buffer",
     },
     {
-      '<leader>T',
+      '<space>T',
       ":lua require 'fzf-lua'.live_grep({no_esc=true, hidden=true, cwd=Project_root(), search='TODO: | XXX: | FIXME: | REVIEW: | NOTES?: | BUG: '})<cr>",
       desc = "[t]odo's and friends in project",
     },

@@ -63,4 +63,6 @@ end
 -- Example usage:
 -- Create a floating window with default dimensions
 vim.api.nvim_create_user_command('Floaterminal', toggle_terminal, {})
-vim.keymap.set({ 'n', 't' }, '<space>t', toggle_terminal)
+-- TODO: maybe move this to ,t instead?  Typing in terminal uses space often
+--       maybe disable all <space> commands while in terminal mode?
+vim.keymap.set({ 'n', 't' }, '<leader>t', toggle_terminal)
