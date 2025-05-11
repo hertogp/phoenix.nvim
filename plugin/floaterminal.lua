@@ -2,6 +2,7 @@
 -- https://raw.githubusercontent.com/tjdevries/advent-of-nvim/refs/heads/master/nvim/plugin/floaterminal.lua
 -- https://www.youtube.com/watch?v=5PIiKDES_wc
 
+-- in terminal press esc twice to go to normal mode
 vim.keymap.set('t', '<esc><esc>', '<c-\\><c-n>')
 
 local state = {
@@ -52,6 +53,7 @@ local toggle_terminal = function()
     state.floating = create_floating_window { buf = state.floating.buf }
     if vim.bo[state.floating.buf].buftype ~= 'terminal' then
       vim.cmd.terminal()
+      vim.cmd.startinsert()
     end
   else
     vim.api.nvim_win_hide(state.floating.win)
@@ -61,3 +63,4 @@ end
 -- Example usage:
 -- Create a floating window with default dimensions
 vim.api.nvim_create_user_command('Floaterminal', toggle_terminal, {})
+vim.keymap.set({ 'n', 't' }, '<space>t', toggle_terminal)

@@ -88,7 +88,6 @@ Capture headings like this:
 ((setext_heading (paragraph) @ext) *)
 ```
 
-
 Another section diff style
 --------------------------
 

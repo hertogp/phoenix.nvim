@@ -48,12 +48,12 @@ return {
     { '<space>w', ':FzfLua loclist<cr>', desc = '[w]indow location list' },
     -- keep typing to narrow down
     {
-      '<space>t',
+      '<leader>t',
       ":lua require 'fzf-lua'.grep_curbuf({no_esc=true, search='TODO: | XXX: | FIXME: | REVIEW: | NOTES?: | BUG: '})<cr>",
       desc = "[t]odo's and friends in buffer",
     },
     {
-      '<space>T',
+      '<leader>T',
       ":lua require 'fzf-lua'.live_grep({no_esc=true, hidden=true, cwd=Project_root(), search='TODO: | XXX: | FIXME: | REVIEW: | NOTES?: | BUG: '})<cr>",
       desc = "[t]odo's and friends in project",
     },
@@ -62,7 +62,16 @@ return {
     -- FIXME: delmevim.treesitter.language.inspectce.
     -- NOTE: delme
     -- TODO: when selecting help, make it appear in its own tab using its full height and width
-    { '<space>h', ":lua require 'fzf-lua'.helptags()<cr>", desc = 'find neovm [h]elp' },
+    {
+      '<space>h',
+      ":lua require 'fzf-lua'.helptags({query = vim.fn.expand('<cword>')})<cr>",
+      desc = 'find neovim [h]elp for cword',
+    },
+    {
+      '<space>H',
+      ":lua require 'fzf-lua'.helptags()<cr>",
+      desc = 'find neovm [h]elp via helptags',
+    },
     { '<space>B', ":lua require 'fzf-lua'.builtin()<cr>", desc = 'find fzf [b]uiltin commands' },
     { '<space>k', ":lua require 'fzf-lua'.keymaps()<cr>", desc = 'find [k]ey mappings' },
     { '<space>M', ":lua require 'fzf-lua'.man_pages()<cr>", desc = 'find [M]an pages' },

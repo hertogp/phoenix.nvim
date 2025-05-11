@@ -136,6 +136,8 @@ go.startofline = false
 --   Show lua =vim.opt.packpath
 --   Show echo nvim_get_runtime_file("lua/", v:true)
 --   Show set! or Show set! all (show (all) options that differ from default)
+--   Show lua =print(vim.inspect( vim.fn.api_info() ))
+--   Show echo api_info().functions->map("v:val.name")->filter("v:val=~'^nvim_buf'")
 local function show_in_tab(t)
   -- x = vim.api.nvim_exec(t.args, x)
   local ok, x = pcall(function()
