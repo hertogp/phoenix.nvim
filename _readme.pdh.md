@@ -92,7 +92,9 @@ Capture headings like this:
 Another section diff style
 --------------------------
 
-## Treesitter Query editor
+## Treesitter Query
+
+-- https://neovim.io/doc/user/treesitter.html#_treesitter-queries
 
 - R: Refreshes the playground view when focused or reloads the query when the query editor is focused.
 - o: Toggles the query editor when the playground is focused.
@@ -109,7 +111,6 @@ Another section diff style
 - <space>i to inspect construct under cursor
 - <space>I to open the syntax tree
 - 'o' to open query editor
-
 
 From: [queries](from: https://tree-sitter.github.io/tree-sitter/using-parsers/queries/index.html)
 
@@ -172,7 +173,7 @@ From: [queries](from: https://tree-sitter.github.io/tree-sitter/using-parsers/qu
 #### Wildcards
 
 - *(_)* is a wildcard matching any named node
-- *_* is a wildcard matching any anonymous node
+-  *_* is a wildcard matching any anonymous node
 
   ```
   (call (_) @call.inner)

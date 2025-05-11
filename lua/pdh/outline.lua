@@ -84,13 +84,13 @@ local function win_centerline(win, linenr)
   if vim.api.nvim_win_is_valid(win) then
     pcall(vim.api.nvim_win_set_cursor, win, { linenr, 0 })
     vim.api.nvim_win_call(win, function()
-      vim.cmd "normal! zz"
+      vim.cmd 'normal! zz'
     end)
   end
 end
 
 local function win_isvalid(winid)
-  if type(winid) == "number" then
+  if type(winid) == 'number' then
     return vim.api.nvim_win_is_valid(winid)
   else
     return false
@@ -143,7 +143,7 @@ local function joincaptures(match, _, bufnr, predicate, meta)
     -- {"join!", name, "char"}
     for _, node in ipairs(match) do
       local text = vim.treesitter.get_node_text(node, bufnr)
-      val = string.gsub(text, "[\n\r].*", "", 1)
+      val = string.gsub(text, '[\n\r].*', '', 1)
     end
   else
     -- ("join!", name, char, id1, id2, ..}
@@ -151,17 +151,17 @@ local function joincaptures(match, _, bufnr, predicate, meta)
     local char = predicate[3] -- used to join text from match[id<x>]
     for i = 4, #predicate do
       local key = predicate[i]
-      local text = ""
+      local text = ''
       -- if key is a number -> get node by number from match
       -- if key is string -> add to value as-is
-      if type(key) == "string" then
+      if type(key) == 'string' then
         text = key
       else
         local node = match[key]
         text = vim.treesitter.get_node_text(node, bufnr)
         -- P { "key", key, "char", char, "text", text }
       end
-      text = string.gsub(text, "[\n\r].*", "", 1)
+      text = string.gsub(text, '[\n\r].*', '', 1)
       val = val and (val .. char .. text) or text
     end
   end
@@ -175,7 +175,7 @@ end
 -- name:string - name of the directive without the leading #
 -- handler:function - fun(match, pattern, source, predicate, metadata)
 -- opts:table - force:boolean, all:boolean
-vim.treesitter.query.add_directive("join!", joincaptures, { force = true })
+vim.treesitter.query.add_directive('join!', joincaptures, { force = true })
 
 local function ts_outline(bufnr)
   -- return two lists: {linenrs}, {lines} based on a filetype specific TS query
@@ -183,7 +183,7 @@ local function ts_outline(bufnr)
   local max_depth = M.depth[ft] or 0
   local qry = M.queries[ft]
   if qry == nil then
-    vim.notify("[WARN] unsupported filetype: " .. ft, vim.log.levels.WARN)
+    vim.notify('[WARN] unsupported filetype: ' .. ft, vim.log.levels.WARN)
     return {}, {}
   end
 
@@ -202,7 +202,7 @@ local function ts_outline(bufnr)
     linenr = linenr + 1
     local prev_line = idx[#idx] or -1
     if depth <= max_depth and linenr ~= prev_line and meta.head then
-      blines[#blines + 1] = " " .. meta.head
+      blines[#blines + 1] = ' ' .. meta.head
       idx[#idx + 1] = linenr
     end
   end
@@ -221,13 +221,13 @@ local function otl_outline(otl)
   otl.idx = idx
   otl.tick = vim.b[otl.sbuf].changedtick
   if otl.owin == nil then
-    vim.api.nvim_command "noautocmd topleft 40vnew"
+    vim.api.nvim_command 'noautocmd topleft 40vnew'
     otl.obuf = vim.api.nvim_get_current_buf()
     otl.owin = vim.api.nvim_get_current_win()
   end
-  vim.api.nvim_buf_set_option(otl.obuf, "modifiable", true)
+  vim.api.nvim_buf_set_option(otl.obuf, 'modifiable', true)
   vim.api.nvim_buf_set_lines(otl.obuf, 0, -1, false, lines)
-  vim.api.nvim_buf_set_option(otl.obuf, "modifiable", false)
+  vim.api.nvim_buf_set_option(otl.obuf, 'modifiable', false)
   return otl
 end
 
@@ -236,55 +236,55 @@ end
 local function otl_sync(otl)
   -- store otl as src/dst buffer variable, assumes a valid otl
   -- alt: vim.b[otl.obuf].otl = otl
-  vim.api.nvim_buf_set_var(otl.obuf, "otl", otl)
-  vim.api.nvim_buf_set_var(otl.sbuf, "otl", otl)
+  vim.api.nvim_buf_set_var(otl.obuf, 'otl', otl)
+  vim.api.nvim_buf_set_var(otl.sbuf, 'otl', otl)
   return otl
 end
 
 local function otl_settings(otl)
   -- otl window options
-  vim.api.nvim_win_set_option(otl.owin, "list", false)
-  vim.api.nvim_win_set_option(otl.owin, "winfixwidth", true)
-  vim.api.nvim_win_set_option(otl.owin, "number", false)
-  vim.api.nvim_win_set_option(otl.owin, "signcolumn", "no")
-  vim.api.nvim_win_set_option(otl.owin, "foldcolumn", "0")
-  vim.api.nvim_win_set_option(otl.owin, "relativenumber", false)
-  vim.api.nvim_win_set_option(otl.owin, "wrap", false)
-  vim.api.nvim_win_set_option(otl.owin, "spell", false)
-  vim.api.nvim_win_set_option(otl.owin, "cursorline", true)
-  vim.api.nvim_win_set_option(otl.owin, "winhighlight", "CursorLine:Visual")
+  vim.api.nvim_win_set_option(otl.owin, 'list', false)
+  vim.api.nvim_win_set_option(otl.owin, 'winfixwidth', true)
+  vim.api.nvim_win_set_option(otl.owin, 'number', false)
+  vim.api.nvim_win_set_option(otl.owin, 'signcolumn', 'no')
+  vim.api.nvim_win_set_option(otl.owin, 'foldcolumn', '0')
+  vim.api.nvim_win_set_option(otl.owin, 'relativenumber', false)
+  vim.api.nvim_win_set_option(otl.owin, 'wrap', false)
+  vim.api.nvim_win_set_option(otl.owin, 'spell', false)
+  vim.api.nvim_win_set_option(otl.owin, 'cursorline', true)
+  vim.api.nvim_win_set_option(otl.owin, 'winhighlight', 'CursorLine:Visual')
 
   -- otl buffer
-  vim.api.nvim_buf_set_name(otl.obuf, "Otl #" .. otl.obuf)
-  vim.api.nvim_buf_set_option(otl.obuf, "buftype", "nofile")
-  vim.api.nvim_buf_set_option(otl.obuf, "bufhidden", "wipe")
-  vim.api.nvim_buf_set_option(otl.obuf, "buflisted", false)
-  vim.api.nvim_buf_set_option(otl.obuf, "swapfile", false)
-  vim.api.nvim_buf_set_option(otl.obuf, "modifiable", false)
-  vim.api.nvim_buf_set_option(otl.obuf, "filetype", "otl-outline")
+  vim.api.nvim_buf_set_name(otl.obuf, 'Otl #' .. otl.obuf)
+  vim.api.nvim_buf_set_option(otl.obuf, 'buftype', 'nofile')
+  vim.api.nvim_buf_set_option(otl.obuf, 'bufhidden', 'wipe')
+  vim.api.nvim_buf_set_option(otl.obuf, 'buflisted', false)
+  vim.api.nvim_buf_set_option(otl.obuf, 'swapfile', false)
+  vim.api.nvim_buf_set_option(otl.obuf, 'modifiable', false)
+  vim.api.nvim_buf_set_option(otl.obuf, 'filetype', 'otl-outline')
 
   -- otl keymaps
   local opts = { noremap = true, silent = true }
-  vim.api.nvim_buf_set_keymap(otl.obuf, "n", "q", "<cmd>lua require'pdh.outline'.close()<cr>", opts)
+  vim.api.nvim_buf_set_keymap(otl.obuf, 'n', 'q', "<cmd>lua require'pdh.outline'.close()<cr>", opts)
 
   local up = "<cmd>lua require'pdh.outline'.up()<cr>"
   local down = "<cmd>lua require'pdh.outline'.down()<cr>"
-  vim.api.nvim_buf_set_keymap(otl.obuf, "n", "<Up>", up, opts)
-  vim.api.nvim_buf_set_keymap(otl.obuf, "n", "K", up, opts)
-  vim.api.nvim_buf_set_keymap(otl.obuf, "n", "<Down>", down, opts)
-  vim.api.nvim_buf_set_keymap(otl.obuf, "n", "J", down, opts)
+  vim.api.nvim_buf_set_keymap(otl.obuf, 'n', '<Up>', up, opts)
+  vim.api.nvim_buf_set_keymap(otl.obuf, 'n', 'K', up, opts)
+  vim.api.nvim_buf_set_keymap(otl.obuf, 'n', '<Down>', down, opts)
+  vim.api.nvim_buf_set_keymap(otl.obuf, 'n', 'J', down, opts)
 
   local shuttle = "<cmd>lua require'pdh.outline'.shuttle()<cr>"
-  vim.api.nvim_buf_set_keymap(otl.obuf, "n", "<cr>", shuttle, opts)
-  vim.api.nvim_buf_set_keymap(otl.sbuf, "n", "<cr>", shuttle, opts)
+  vim.api.nvim_buf_set_keymap(otl.obuf, 'n', '<cr>', shuttle, opts)
+  vim.api.nvim_buf_set_keymap(otl.sbuf, 'n', '<cr>', shuttle, opts)
 
   -- otl autocmds
-  vim.api.nvim_create_augroup("OtlAuGrp", { clear = true })
-  vim.api.nvim_create_autocmd("BufWinLeave", {
+  vim.api.nvim_create_augroup('OtlAuGrp', { clear = true })
+  vim.api.nvim_create_autocmd('BufWinLeave', {
     -- last window showing sbuf closed -> close otl.
     buffer = otl.sbuf,
-    group = "OtlAuGrp",
-    desc = "OTL wipe otl window and vars",
+    group = 'OtlAuGrp',
+    desc = 'OTL wipe otl window and vars',
     callback = function()
       if vim.b[otl.sbuf].otl then
         -- triggered by something else than M.toggle
@@ -292,11 +292,11 @@ local function otl_settings(otl)
       end
     end,
   })
-  vim.api.nvim_create_autocmd("BufWinLeave", {
+  vim.api.nvim_create_autocmd('BufWinLeave', {
     -- the otl buffer is going away (switch buf or close window)
     buffer = otl.obuf,
-    group = "OtlAuGrp",
-    desc = "OTL wipe otl window and vars",
+    group = 'OtlAuGrp',
+    desc = 'OTL wipe otl window and vars',
     callback = function()
       if vim.b[otl.obuf].otl then
         -- triggered by something else than M.toggle
@@ -304,11 +304,11 @@ local function otl_settings(otl)
       end
     end,
   })
-  vim.api.nvim_create_autocmd("WinEnter", {
+  vim.api.nvim_create_autocmd('WinEnter', {
     -- Upon entering the otl window -> check changedtick & update if necessary
     buffer = otl.obuf,
-    group = "OtlAuGrp",
-    desc = "OTL maybe update outline",
+    group = 'OtlAuGrp',
+    desc = 'OTL maybe update outline',
     callback = function()
       if vim.b[otl.obuf].otl then
         local otick = otl.tick
@@ -323,10 +323,10 @@ end
 
 local function otl_nosettings(otl)
   -- remove otl keymaps in sbuf
-  pcall(vim.api.nvim_buf_del_keymap, otl.sbuf, "n", "<cr>")
+  pcall(vim.api.nvim_buf_del_keymap, otl.sbuf, 'n', '<cr>')
 
   -- remove otl autogrp
-  pcall(vim.api.nvim_del_augroup_by_name, "OtlAuGrp")
+  pcall(vim.api.nvim_del_augroup_by_name, 'OtlAuGrp')
 end
 
 local function otl_select(sline)
@@ -351,7 +351,7 @@ M.open = function(buf)
   buf = buf_sanitize(buf)
 
   if vim.b[buf].otl then
-    vim.notify("[error](open) otl already exists?", vim.log.levels.ERROR)
+    vim.notify('[error](open) otl already exists?', vim.log.levels.ERROR)
     return
   end
 
@@ -371,7 +371,7 @@ M.close = function(buf)
   -- close otl window, move to swin
   buf = buf_sanitize(buf)
   if buf == nil then
-    vim.notify("[error](close) invalid buffer number", vim.log.levels.ERROR)
+    vim.notify('[error](close) invalid buffer number', vim.log.levels.ERROR)
     return
   end
 
@@ -491,14 +491,7 @@ M.down = function()
   win_centerline(otl.swin, line)
 end
 
--- XXX: may be not do not spel it like that
--- FIXME: del this line
--- TODO: not sure if this is the right way
--- ERROR: oops
--- REVIEW: when you feel like it
--- NOTES: plural
--- NOTE: singular
--- but with this: luafile % (or \\x) will reload the module
-require("plenary.reload").reload_module "pdh.outline"
+-- : luafile % (or \\x) -> will reload the module
+require('plenary.reload').reload_module 'pdh.outline'
 
 return M
