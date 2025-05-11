@@ -32,7 +32,7 @@ return {
           scope_highlight = '@markup.italic',
         },
         cancel = { raw = '[c]', rendered = '⮾  ', highlight = 'ErrorMsg', scope_highlight = '@markup.strikethrough' },
-        -- override existing custom 'todo' (already defined by render-markdown)
+        -- override render-markdown's existing custom 'todo'
         todo = { raw = '[-]', rendered = '⮾  ', highlight = 'ErrorMsg', scope_highlight = '@markup.strikethrough' },
         important = { raw = '[!]', rendered = '󰓎 ', highlight = 'DiagnosticWarn' },
         maybe = { raw = '[?]', rendered = '�  ', highlight = 'RenderMarkdownTodo' },
