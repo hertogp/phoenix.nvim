@@ -26,6 +26,11 @@ return {
       desc = '[F]iles in/below bufdir',
     },
     {
+      '<space>p',
+      ":lua require 'fzf-lua'.files({hidden=true, cwd='~/.local/share/nvim'})<cr>",
+      desc = 'find [f]iles in project',
+    },
+    {
       '<space>g',
       ":lua require 'fzf-lua'.live_grep({hidden=true, cwd=Project_root()})<cr>",
       desc = '[g]rep project directory',
