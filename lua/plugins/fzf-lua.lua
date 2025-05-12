@@ -28,7 +28,7 @@ return {
     {
       '<space>p',
       ":lua require 'fzf-lua'.files({hidden=true, cwd='~/.local/share/nvim'})<cr>",
-      desc = 'find [f]iles in project',
+      desc = 'find [p]lugin files',
     },
     {
       '<space>g',
