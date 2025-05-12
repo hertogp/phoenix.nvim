@@ -105,11 +105,11 @@ Another section diff style
 - F: Unfocuses the currently focused language.
 - `<cr>: Go to current node in code buffer
 
-## Treesitter queries
-
 - <space>i to inspect construct under cursor
 - <space>I to open the syntax tree
 - 'o' to open query editor
+
+## Treesitter queries
 
 From: [queries](from: https://tree-sitter.github.io/tree-sitter/using-parsers/queries/index.html)
 
