@@ -40,12 +40,17 @@
 --   DiffText       xxx ctermfg=0 ctermbg=14 guifg=NvimLightGrey1 guibg=NvimDarkCyan
 return {
 
-  "echasnovski/mini.statusline",
+  'echasnovski/mini.statusline',
 
   version = false,
 
   dependencies = {
-    { "echasnovski/mini-git", version = false, main = "mini.git", opts = {} },
+    { -- https://github.com/echasnovski/mini-git
+      'echasnovski/mini-git',
+      version = false,
+      main = 'mini.git',
+      opts = {},
+    },
   },
 
   opts = {},
