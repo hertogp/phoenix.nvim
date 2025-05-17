@@ -79,27 +79,6 @@ return {
             node_decremental = '<Backspace>',
           },
         },
-
-        -- https://github.com/nvim-treesitter/playground
-        -- deprecated since it's included in Neovim 0.10+
-        --  playground = {
-        --    enable = true,
-        --    disable = {},
-        --    updatetime = 25, -- Debounced time for highlighting nodes in the playground from source code
-        --    persist_queries = false, -- don't persist a query across vim sessions
-        --    keybindings = {
-        --      toggle_query_editor = 'o',
-        --      toggle_hl_groups = 'i',
-        --      toggle_injected_languages = 't',
-        --      toggle_anonymous_nodes = 'a',
-        --      toggle_language_display = 'I',
-        --      focus_language = 'f',
-        --      unfocus_language = 'F',
-        --      update = 'R',
-        --      goto_node = '<cr>',
-        --      show_help = '?',
-        --    },
-        -- },
       }
     end,
   },

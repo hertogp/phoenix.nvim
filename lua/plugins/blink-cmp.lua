@@ -3,15 +3,15 @@
 -- https://github.com/moyiz/blink-emoji.nvim
 
 return {
-  "saghen/blink.cmp",
+  'saghen/blink.cmp',
   -- optional: provides snippets for the snippet source
   dependencies = {
-    "rafamadriz/friendly-snippets",
-    "moyiz/blink-emoji.nvim",
+    'rafamadriz/friendly-snippets',
+    'moyiz/blink-emoji.nvim',
   },
 
   -- use a release tag to download pre-built binaries
-  version = "1.*",
+  version = '1.*',
   -- AND/OR build from source, requires nightly: https://rust-lang.github.io/rustup/concepts/channels.html#working-with-nightly-rust
   -- build = 'cargo build --release',
   -- If you use nix, you can build from source using latest nightly rust with:
@@ -33,16 +33,16 @@ return {
     --
     -- See :h blink-cmp-config-keymap for defining your own keymap
     keymap = {
-      preset = "default",
-      ["<C-j>"] = { "select_next", "fallback" },
-      ["<C-k>"] = { "select_prev", "fallback" },
-      ["<Tab>"] = { "accept", "fallback" },
+      preset = 'default',
+      ['<C-j>'] = { 'select_next', 'fallback' },
+      ['<C-k>'] = { 'select_prev', 'fallback' },
+      ['<Tab>'] = { 'accept', 'fallback' },
     },
 
     appearance = {
       -- 'mono' (default) for 'Nerd Font Mono' or 'normal' for 'Nerd Font'
       -- Adjusts spacing to ensure icons are aligned
-      nerd_font_variant = "mono",
+      nerd_font_variant = 'mono',
     },
 
     -- (Default) Only show the documentation popup when manually triggered
@@ -56,19 +56,25 @@ return {
     -- Default list of enabled providers defined so that you can extend it
     -- elsewhere in your config, without redefining it, due to `opts_extend`
     sources = {
-      default = { "lsp", "path", "snippets", "buffer", "emoji" },
+      default = { 'lazydev', 'lsp', 'path', 'snippets', 'buffer', 'emoji' },
 
       providers = {
+        lazydev = {
+          name = 'LazyDev',
+          module = 'lazydev.integrations.blink',
+          -- make lazydev completions top priority (see `:h blink.cmp`)
+          score_offset = 100,
+        },
         emoji = {
-          module = "blink-emoji",
-          name = "Emoji",
+          module = 'blink-emoji',
+          name = 'Emoji',
           score_offset = 15, -- Tune by preference
           opts = { insert = true }, -- Insert emoji (default) or complete its name
           should_show_items = function()
             return vim.tbl_contains(
               -- Enable emoji completion only for git commits and markdown.
               -- By default, enabled for all file-types.
-              { "gitcommit", "markdown" },
+              { 'gitcommit', 'markdown' },
               vim.o.filetype
             )
           end,
@@ -81,7 +87,7 @@ return {
     -- when the Rust fuzzy matcher is not available, by using `implementation = "prefer_rust"`
     --
     -- See the fuzzy documentation for more information
-    fuzzy = { implementation = "prefer_rust_with_warning" },
+    fuzzy = { implementation = 'prefer_rust_with_warning' },
   },
-  opts_extend = { "sources.default" },
+  opts_extend = { 'sources.default' },
 }

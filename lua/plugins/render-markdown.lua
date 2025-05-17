@@ -38,7 +38,15 @@ return {
         maybe = { raw = '[?]', rendered = '�  ', highlight = 'RenderMarkdownTodo' },
       },
       -- % charmap -> choose Nerd Font Mono -> copy/paste characters
-      -- cancel icons: ✝ ♰ ♽ ⨷ ⮾ 𝛩 𝛳 𝜃 🄯 🄫 🅒 🜔 ⛔ 🚫 ⚠️ ♻️ 📛 ⏲a  🕓
+      -- icons: ✝ ♰ ♽ ⨷ ⮾ 𝛩 𝛳 𝜃 🄯 🄫 🅒 🜔 ⛔ 🚫 ⚠️ ♻️ 📛 ⏲a  🕓
+      -- digraphs:
+      -- ▶  ongoing,
+      -- ◁  waiting/pending ,
+      -- ○  open ,
+      -- ★  important
+      -- ✓  closed,
+      -- ✗  cancelled,
+      -- 〜 maybe
       -- 🯄, �  ⍰
     },
   },

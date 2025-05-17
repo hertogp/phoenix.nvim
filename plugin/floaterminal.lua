@@ -17,11 +17,11 @@ local function create_floating_window(opts)
   local width = opts.width or math.floor(vim.o.columns * 0.8)
   local height = opts.height or math.floor(vim.o.lines * 0.8)
 
-  -- Calculate the position to center the window
+  -- calculate the position to center the window
   local col = math.floor((vim.o.columns - width) / 2)
   local row = math.floor((vim.o.lines - height) / 2)
 
-  -- Create a buffer
+  -- create a buffer
   local buf = nil
   if vim.api.nvim_buf_is_valid(opts.buf) then
     buf = opts.buf
@@ -29,7 +29,7 @@ local function create_floating_window(opts)
     buf = vim.api.nvim_create_buf(false, true) -- No file, scratch buffer
   end
 
-  -- Define window configuration
+  -- define window configuration
   local win_config = {
     relative = 'editor',
     width = width,
@@ -42,7 +42,7 @@ local function create_floating_window(opts)
     title_pos = 'center',
   }
 
-  -- Create the floating window
+  -- create floating window
   local win = vim.api.nvim_open_win(buf, true, win_config)
 
   return { buf = buf, win = win }
@@ -50,19 +50,22 @@ end
 
 local toggle_terminal = function()
   if not vim.api.nvim_win_is_valid(state.floating.win) then
+    -- expand bufdir *before* create_floating_window
+    local chdir = 'cd ' .. vim.fn.expand('%:p:h') .. '\n'
     state.floating = create_floating_window { buf = state.floating.buf }
-    if vim.bo[state.floating.buf].buftype ~= 'terminal' then
+    -- must be after `create_floating_window`, which sets state.floating.buf
+    local bufnr = state.floating.buf
+    if vim.bo[bufnr].buftype ~= 'terminal' then
       vim.cmd.terminal()
       vim.cmd.startinsert()
+      -- change working directory to buf dir
+      vim.fn.chansend(vim.b[bufnr].terminal_job_id, chdir)
     end
   else
     vim.api.nvim_win_hide(state.floating.win)
   end
 end
 
--- Example usage:
 -- Create a floating window with default dimensions
 vim.api.nvim_create_user_command('Floaterminal', toggle_terminal, {})
--- TODO: maybe move this to ,t instead?  Typing in terminal uses space often
---       maybe disable all <space> commands while in terminal mode?
 vim.keymap.set({ 'n', 't' }, '<leader>t', toggle_terminal)

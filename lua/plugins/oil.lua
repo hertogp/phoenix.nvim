@@ -23,5 +23,6 @@ return {
   lazy = false,
   keys = {
     { '<space>-', '<cmd>Oil --float<cr>', mode = 'n', desc = 'Open Oil in floating window' },
+    { 'q', '<cmd>q<cr>', mode = 'n', desc = 'Quit Oil in floating window' },
   },
 }

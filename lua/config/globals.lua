@@ -50,6 +50,7 @@ function Project_root(bufnr)
     '.git',
     '.gitignore',
     '.mise.toml',
+    '.notes',
     'stylua.toml',
     '.codespellrc',
     'Makefile',
@@ -154,12 +155,12 @@ local function show_in_tab(t)
 
   -- open a new tab
   api.nvim_command 'tabnew'
-  -- api.nvim_buf_set_option(0, 'filetype', 'nofile')
-  -- api.nvim_buf_set_option(0, 'buftype', 'nofile')
-  api.nvim_buf_set_option(0, 'bufhidden', 'wipe')
-  api.nvim_buf_set_option(0, 'swapfile', false)
-  api.nvim_buf_set_option(0, 'buflisted', false)
-  api.nvim_buf_set_lines(0, 0, 0, false, { 'Show ' .. t.args, '-----' })
+  vim.api.nvim_set_option_value('filetype', 'nofile', { buf = 0 })
+  vim.api.nvim_set_option_value('buftype', 'nofile', { buf = 0 })
+  vim.api.nvim_set_option_value('bufhidden', 'wipe', { buf = 0 })
+  vim.api.nvim_set_option_value('buflisted', false, { buf = 0 })
+  vim.api.nvim_set_option_value('swapfile', false, { buf = 0 })
+  vim.api.nvim_buf_set_lines(0, 0, 0, false, { 'Show ' .. t.args, '-----' })
 
   -- insert results (good or bad) in the buffer
   if ok then
@@ -168,7 +169,8 @@ local function show_in_tab(t)
     api.nvim_buf_set_lines(0, -1, -1, false, { 'error', vim.inspect(x) })
   end
 
-  api.nvim_buf_set_option(0, 'modified', false)
+  -- api.nvim_buf_set_option(0, 'modified', false)
+  vim.api.nvim_set_option_value('modified', false, { buf = 0 })
   api.nvim_buf_set_keymap(0, 'n', 'q', '<cmd>close<cr>', { noremap = true, silent = true })
 end
 
