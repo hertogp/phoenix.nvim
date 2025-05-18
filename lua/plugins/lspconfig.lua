@@ -6,48 +6,15 @@
   * for some reason the symlinks in /snap/bin don't seem to work
   * used for sudo snap install node -> used by Mason when installing e.g. bashls
 
+- prerequisites:
+  -  mise install elixir-ls
+  -  mise use -g elixir-ls (sets bin path)
+  - nb: parts taken from kickstart.nvim
+
 ]]
 
 return {
 
-  --[[ Completion ]]
-  -- new https://github.com/folke/lazydev.nvim
-  -- was https://github.com/folke/neodev.nvim (is EOL)
-  -- must be setup BEFORE lspconfig
-  -- {..}
-
-  --[[ old
-  {
-    "hrsh7th/nvim-cmp",
-    -- load cmp on InsertEnter
-    event = "InsertEnter",
-    -- these dependencies will only be loaded when cmp loads
-    -- dependencies are always lazy-loaded unless specified otherwise
-    dependencies = {
-      "hrsh7th/cmp-nvim-lsp",
-      "hrsh7th/cmp-buffer",
-      "hrsh7th/cmp-calc",
-      "hrsh7th/cmp-emoji",
-      "hrsh7th/cmp-nvim-lua",
-      "hrsh7th/cmp-path",
-      "f3fora/cmp-spell",
-      "octaltree/cmp-look",
---      "L3MON4D3/LuaSnip",
---      "saadparwaiz1/cmp_luasnip",
-    },
-    config = function()
-      -- ...
-    end,
-  },
-
-]]
-
-  --[[ LSPCONFIG ]]
-
-  -- prerequisites:
-  --  mise install elixir-ls
-  --  mise use -g elixir-ls (sets bin path)
-  -- nb: parts taken from kickstart.nvim
   {
     'neovim/nvim-lspconfig',
 
@@ -325,6 +292,7 @@ return {
       require('mason-lspconfig').setup {
         ensure_installed = {}, -- explicitly set to an empty table, we install via mason-tool-installer!
         automatic_installation = false,
+        automatic_enable = true,
         handlers = {
           function(server_name)
             local server = servers[server_name] or {}

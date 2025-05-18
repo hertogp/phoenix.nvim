@@ -16,7 +16,8 @@ end
 --[[ EDITING ]]
 
 nmap('Q', 'gq}', 'format paragraph')
-nmap('q', '<Nop>', 'set to noop')
+-- do not set to noop, since Oil needs to set it to :q<cr>
+-- nmap('q', '<Nop>', 'set to noop')
 nmap('Y', 'y$', '[Y] till end of line') -- yank till eol, like D deletes till eol
 nmap('<c-left>', ':vertical resize +2<cr>')
 nmap('<c-right>', ':vertical resize -2<cr>')
