@@ -54,7 +54,7 @@ function H.to_index(topic, lines)
   local fmt = function(head, candidate)
     local nr, rest = string.match(candidate, '^(%d+)%s+(.*)')
     if nr ~= nil then
-      return string.format('%3s|%05d| %s', head, tonumber(nr), rest)
+      return string.format('%3s│%05d│ %s', head, tonumber(nr), rest)
     end
     return nil -- this will cause candidate deletion
   end
@@ -176,6 +176,7 @@ function H.load_index(topic)
 end
 
 function H.save(topic, id, lines)
+  -- save to disk, creating directory as needed
   local fname = H.to_fname(topic, id)
 
   if fname == nil then
@@ -192,13 +193,28 @@ function H.save(topic, id, lines)
 end
 
 --[[ Module ]]
+--TODO:
+-- [ ] H.grep -> grep through doc's in data dir
+
+M.config = {
+  cache = vim.fn.stdpath('cache'), -- store indices only once
+  data = vim.fn.stdpath('data'), -- path or markers
+  -- data = { '.git', '.gitignore' },
+  top = 'ietf.org',
+  ttl = 24 * 3600, -- time-to-live in seconds, before refreshing
+}
 
 function M.reload()
+  -- for developing
   return require('plenary.reload').reload_module('pdh.rfc')
 end
 
 function M.search(stream)
-  -- search indices and download selection from ietf
+  -- search the index for `stream`
+  -- TODO:
+  -- [ ] arg maybe streams, e.g. {'rfc', 'bcp', 'std'} and concat the index lists of named topics
+  -- [ ] use H.sep instead of magical '|' char
+  -- [ ] entry_format(topic, id, text)  & entry_parse(entry) -> topic, id
   stream = stream or 'rfc'
   local index = H.load_index(stream)
 
@@ -217,7 +233,7 @@ function M.search(stream)
     actions = {
       default = function(selected)
         -- this is actually ["ctrl-m"]
-        local topic, id = unpack(vim.split(selected[1], '|'))
+        local topic, id = unpack(vim.split(selected[1], '│'))
         vim.notify('url ' .. H.to_url(topic, id) .. ' -> ' .. H.to_fname(topic, id))
         local rv = H.fetch(topic, id)
         local fname = H.save(topic, id, rv)
@@ -245,7 +261,7 @@ function M.test(topic, id)
   local fmt = function(head, line)
     local nr, rest = string.match(line, '^(%d+)%s+(.*)')
     if nr ~= nil then
-      return string.format('%3s|%05d| %s', head, nr, rest)
+      return string.format('%3s│%05d│ %s', head, nr, rest)
     end
     return nil
   end
@@ -263,14 +279,6 @@ function M.test(topic, id)
   idx[#idx] = fmt(topic, idx[#idx])
   P(idx)
 end
-
-M.config = {
-  cache = vim.fn.stdpath('cache'), -- store indices only once
-  data = vim.fn.stdpath('data'), -- path or markers
-  -- data = { '.git', '.gitignore' },
-  top = 'ietf.org',
-  ttl = 24 * 3600, -- time-to-live in seconds, before refreshing
-}
 
 function M.setup(opts)
   M.config = vim.tbl_extend('force', M.config, opts)
