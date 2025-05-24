@@ -2,6 +2,14 @@
 
 Easily search, download and read ietf rfc's.
 
+fuzzy> 'bgp !info 'path | 'select
+- 'str match exact occurrences
+- !str exclude exact occurrences
+- ^str match exact occurrences at start of the string
+- str$ match exact occurrences at end of the string
+- | acts as OR operator: ^core go$ | rb$ | py$ <- match entries that start with core and end with either go, rb or py
+- fzf -e or --exact uses exact matching; '-prefix unquotes the term
+
 --]]
 
 --[[ dependency check ]]
@@ -9,11 +17,12 @@ Easily search, download and read ietf rfc's.
 -- :lua =R('pdh.rfc') to reload package after modifications were made
 
 local M = {} -- module to be returned
-local H = {} -- local helpers
+local H = {} -- private helpers
 
 --[[ locals ]]
 
 local ok, plenary, fzf_lua
+
 ok, plenary = pcall(require, 'plenary')
 if not ok then
   error('plenary, a dependency, is missing')
@@ -40,30 +49,32 @@ function H.to_index(topic, lines)
   -- 1. a line that starts with a number, starts a candidate entry
   -- 2. a line that does not start with a number is added to the current candidate
   -- 3. candidates that do not start with a number are eliminated
+  -- ien index: nrs donot start at first column ... so this will fail
   local idx = { '' }
   local fmt = function(head, candidate)
     local nr, rest = string.match(candidate, '^(%d+)%s+(.*)')
     if nr ~= nil then
       return string.format('%3s|%05d| %s', head, tonumber(nr), rest)
     end
-    return nil
+    return nil -- this will cause candidate deletion
   end
 
   -- traverse only once
   for _, line in ipairs(lines) do
     if string.match(line, '^%d') then
-      -- before starting a new index entry, prep the current one
+      -- format current entry, then start new entry
       idx[#idx] = fmt(topic, idx[#idx])
       idx[#idx + 1] = line
     elseif string.match(line, '^%s+') then
-      -- add line to current candidate
+      -- accumulate in new candidate
+      -- TODO: do we actually need to check for starting whitespace?
       idx[#idx] = idx[#idx] .. ' ' .. vim.trim(line)
     end
   end
 
-  -- don't forget the last one
+  -- also format last accumulated candidate (possibly deleting it)
   idx[#idx] = fmt(topic, idx[#idx])
-  vim.notify('found ' .. #idx .. ' entries')
+  vim.notify('index ' .. topic .. ' has ' .. #idx .. ' entries', vim.log.levels.WARN)
   return idx
 end
 
@@ -71,35 +82,28 @@ function H.to_fname(topic, id)
   -- return full file path for (topic, id) or nil
   local fdir, fname
   local cfg = M.config
+  local top = M.config.top or 'ietf.org'
 
   if not H.valid[topic] then
-    vim.notify('topic %s is not supported', topic)
     return nil
   end
 
   if id == 'index' then
     -- it's an document index
     fdir = cfg.cache
-    fname = vim.fs.joinpath(fdir, cfg.top, string.format('%s-index.txt', topic))
+    fname = vim.fs.joinpath(fdir, top, string.format('%s-index.txt', topic))
     return vim.fs.normalize(fname)
   end
 
   -- it's an ietf document
-
   if type(cfg.data) == 'table' then
-    -- find topdir based on markers in cfg.data
+    -- find root dir based on markers in cfg.data
     fdir = vim.fs.root(0, cfg.data)
-  else
-    fdir = cfg.data
   end
 
-  if fdir == nil then
-    -- fallback to standard data dir
-    fdir = vim.fn.stdpath('data')
-  end
-
+  fdir = fdir or cfg.data or vim.fn.stdpath('data')
   id = tonumber(id)
-  fname = vim.fs.joinpath(fdir, cfg.top, topic, string.format('%s%d.txt', topic, id))
+  fname = vim.fs.joinpath(fdir, top, topic, string.format('%s%d.txt', topic, id))
 
   return vim.fs.normalize(fname)
 end
@@ -119,7 +123,7 @@ function H.to_url(topic, id)
 
   id = tonumber(id)
   if id ~= nil then
-    -- avoid leading zero's, so 0009 -> 9
+    -- removes leading zero's, so 0009 -> 9
     return string.format('%s/%s/%s%d.txt', base, topic, topic, id)
   end
 
@@ -132,7 +136,6 @@ function H.fetch(topic, id)
 
   if rv and rv.status == 200 then
     local lines = vim.split(rv.body, '[\r\n]')
-    vim.notify(topic .. ':' .. id .. ': ' .. #lines .. ' lines')
     return lines
   else
     vim.notify('failed to download ' .. topic .. ' id ' .. id, vim.log.levels.WARN)
@@ -143,39 +146,32 @@ end
 function H.load_index(topic)
   -- loads index for topic, downloading it if needed
   -- fname can be too old, be missing, have 0 bytes ...
-  local fname = H.to_fname(topic, 'index')
   local idx = {} -- empty means failure
+  local fname = H.to_fname(topic, 'index')
 
-  if fname == nil then
-    vim.notify('no index for unknown topic: ' .. topic, vim.log.levels.WARN)
+  if not H.valid[topic] or fname == nil then
     return idx
   end
 
   if H.ttl(fname) < 0 then
     vim.notify('downloading index for ' .. topic, vim.log.levels.WARN)
     local lines = H.fetch(topic, 'index')
-    if #lines > 0 then
-      idx = H.to_index(topic, lines)
-      vim.notify('index has ' .. #idx .. ' entries')
-      H.save(topic, 'index', idx)
-      return idx
-    else
-      vim.notify('could not download index ' .. topic)
+
+    if #lines == 0 then
+      vim.notify('index download failed for ' .. topic, vim.log.levels.ERROR)
       return idx
     end
+
+    idx = H.to_index(topic, lines)
+    vim.notify('index has ' .. #idx .. ' entries')
+    H.save(topic, 'index', idx)
+    return idx
   else
-    vim.notify('reading ' .. fname, vim.log.levels.WARN)
-    local fh = io.open(fname, 'r')
-    if fh ~= nil then
-      for line in fh:lines('*l') do
-        table.insert(idx, line)
-      end
-      fh:close()
-      return idx
-    else
+    idx = vim.fn.readfile(fname) -- failure to read returns empty list
+    if #idx == 0 then
       vim.notify('could not read ' .. fname, vim.log.levels.WARN)
-      return {}
     end
+    return idx
   end
 end
 
@@ -188,15 +184,10 @@ function H.save(topic, id, lines)
 
   local dir = vim.fs.dirname(fname)
   vim.fn.mkdir(dir, 'p')
-  local fh = io.open(fname, 'w')
-  if fh ~= nil then
-    for _, line in ipairs(lines) do
-      fh:write(line, '\n')
-    end
-    fh:close()
-  else
-    vim.notify('could not write to ' .. fname, vim.log.levels.WARN)
+  if vim.fn.writefile(lines, fname) < 0 then
+    vim.notify('could not write index ' .. topic .. ' to ' .. fname, vim.log.levels.ERROR)
   end
+
   return fname
 end
 
@@ -211,12 +202,17 @@ function M.search(stream)
   stream = stream or 'rfc'
   local index = H.load_index(stream)
 
+  if #index == 0 then
+    vim.notify('no index available for ' .. stream, vim.log.levels.ERROR)
+    return
+  end
+
   fzf_lua.fzf_exec(index, {
     prompt = 'search> ',
     winopts = {
+      wrap = true,
       title = '| ietf |',
       border = 'rounded',
-      preview = { wrap = true },
     },
     actions = {
       default = function(selected)
