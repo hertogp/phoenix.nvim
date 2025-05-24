@@ -25,7 +25,7 @@ P = function(value)
 end
 
 RELOAD = function(...)
-  -- ?? what does this do?
+  -- reload a plugin/package
   return require('plenary.reload').reload_module(...)
 end
 

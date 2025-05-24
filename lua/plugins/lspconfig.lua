@@ -1,5 +1,4 @@
 -- https://github.com/neovim/nvim-lspconfig
--- https://github.com/hrsh7th/nvim-cmp
 
 --[[ NOTES:
 - when using snap to install tools being used, add /snap/node/current/bin to $PATH
@@ -169,7 +168,7 @@ return {
             [vim.diagnostic.severity.HINT] = '󰌶 ',
           },
         } or {},
-        virtual_lines = true,
+        virtual_lines = false,
         virtual_text = {
           -- TODO: prefer virtual lines over virtual text which goes off screen
           -- for longer lines of code (annoying)

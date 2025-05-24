@@ -16,13 +16,15 @@ end
 --[[ EDITING ]]
 
 nmap('Q', 'gq}', 'format paragraph')
--- do not set to noop, since Oil needs to set it to :q<cr>
--- nmap('q', '<Nop>', 'set to noop')
+nmap('q', '<Nop>', 'set to noop')
 nmap('Y', 'y$', '[Y] till end of line') -- yank till eol, like D deletes till eol
 nmap('<c-left>', ':vertical resize +2<cr>')
 nmap('<c-right>', ':vertical resize -2<cr>')
 nmap('<c-up>', ':resize +2<cr>')
 nmap('<c-down>', ':resize -2<cr>')
+nmap('<space>D', function()
+  vim.diagnostic.enable(not vim.diagnostic.is_enabled())
+end, 'toggle Diasnostics')
 
 -- use <M-j> (alt-j) to split a line, like <S-j> (shift-j) combines lines
 nmap('<m-j>', 'i<cr><esc>', 'split line at cursor')
@@ -83,9 +85,13 @@ nmap('<S-F10>', "<cmd>lua require'dap'.step_into()<CR>", 'debug, step into')
 nmap('<S-F11>', "<cmd>lua require'dap'.step_out()<CR>", 'debug, step out')
 nmap('<S-F12>', "<cmd>lua require'dap.ui.widgets'.hover()<cr>", 'debug, hover')
 nmap(
-  '<Leader>lp',
-  "<Cmd>lua require'dap'.set_breakpoint(nil, nil, vim.fn.input('Log point message: '))<CR>",
+  '<leader>lp',
+  "<cmd>lua require'dap'.set_breakpoint(nil, nil, vim.fn.input('Log point message: '))<CR>",
   'debug, set breakpoint'
 )
-nmap('<Leader>dr', "<Cmd>lua require'dap'.repl.open()<CR>", 'debug, open repl')
-nmap('<Leader>dl', "<Cmd>lua require'dap'.run_last()<CR>", 'debug, run last')
+nmap('<leader>dr', "<Cmd>lua require'dap'.repl.open()<CR>", 'debug, open repl')
+nmap('<leader>dl', "<Cmd>lua require'dap'.run_last()<CR>", 'debug, run last')
+
+--[[ development ]]
+
+nmap('<leader>rfc', ":Show lua =require('pdh.rfc').get(1)<cr>")

@@ -38,8 +38,9 @@ M.queries = {
   -- (((unary_operator (call (identifier) @h)) @head) (#not-any-of? @h "spec" "doc" "moduledoc"))
 
   lua = [[
-    (((comment) @c (#lua-match? @c "^--%[%[[^\n]+%]%]$")) (#join! "head"  "" "[c] " @c))
+    (((comment) @c (#lua-match? @c "^--%[%[[^\n]+%]%]$")) (#join! "head"  "" "[-] " @c))
     ((function_declaration (identifier) @a (parameters) @b (#join! "head" "" "[f] " @a @b)))
+    ((function_declaration (dot_index_expression) @a (parameters) @b (#join! "head" "" "[f] " @a @b)))
     ((assignment_statement
       ((variable_list) @a) (("=") @b)
       (expression_list (function_definition (("function") @c) ((parameters)@d))))
