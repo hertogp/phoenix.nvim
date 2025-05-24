@@ -28,69 +28,84 @@ end
 
 --[[ Helpers ]]
 
-H.curl = plenary.curl
 H.valid = { rfc = true, bcp = true, std = true, fyi = true, ien = true }
 
-function H.expand(dir)
-  local path = dir
-
-  if type(dir) == 'table' then
-    -- try to find project directory based on markers
-    path = vim.fs.root(0, dir)
-  end
-
-  if path == nil then
-    -- if dir was nil or no project dir found, fallback to 'data' dir
-    path = vim.fn.stdpath('data')
-  end
-
-  return vim.fs.normalize(path)
+function H.ttl(fname)
+  -- remaining seconds to live
+  return M.config.ttl + vim.fn.getftime(fname) - vim.fn.localtime()
 end
 
-function H.file_age(path)
-  local age = vim.fn.localtime() - vim.fn.getftime(H.expand(path))
-  print(string.format('age: %d [s] aka %d [hrs]', age, age / 3600))
+function H.to_index(topic, lines)
+  -- collect eligible lines and format as entries
+  -- 1. a line that starts with a number, starts a candidate entry
+  -- 2. a line that does not start with a number is added to the current candidate
+  -- 3. candidates that do not start with a number are eliminated
+  local idx = { '' }
+  local fmt = function(head, candidate)
+    local nr, rest = string.match(candidate, '^(%d+)%s+(.*)')
+    if nr ~= nil then
+      return string.format('%3s|%05d| %s', head, tonumber(nr), rest)
+    end
+    return nil
+  end
+
+  -- traverse only once
+  for _, line in ipairs(lines) do
+    if string.match(line, '^%d') then
+      -- before starting a new index entry, prep the current one
+      idx[#idx] = fmt(topic, idx[#idx])
+      idx[#idx + 1] = line
+    elseif string.match(line, '^%s+') then
+      -- add line to current candidate
+      idx[#idx] = idx[#idx] .. ' ' .. vim.trim(line)
+    end
+  end
+
+  -- don't forget the last one
+  idx[#idx] = fmt(topic, idx[#idx])
+  vim.notify('found ' .. #idx .. ' entries')
+  return idx
 end
 
-function H.file_name(topic, id)
-  local fname
+function H.to_fname(topic, id)
+  -- return full file path for (topic, id) or nil
+  local fdir, fname
   local cfg = M.config
 
   if not H.valid[topic] then
     vim.notify('topic %s is not supported', topic)
-    return ''
+    return nil
   end
 
   if id == 'index' then
-    fname = vim.fs.joinpath(cfg.cache, cfg.top, string.format('%s-index.txt', topic))
-  else
-    id = tonumber(id)
-    local dta = H.expand(cfg.data)
-    fname = vim.fs.joinpath(dta, cfg.top, topic, string.format('%s%d.txt', topic, id))
+    -- it's an document index
+    fdir = cfg.cache
+    fname = vim.fs.joinpath(fdir, cfg.top, string.format('%s-index.txt', topic))
+    return vim.fs.normalize(fname)
   end
 
-  return H.expand(fname)
-end
+  -- it's an ietf document
 
-function H.get(topic, id)
-  -- TODO: get(topic, id) or get(url)
-  local url = H.url(topic, id)
-
-  local rv = H.curl.get({ url = url, accept = 'plain/text' })
-  if rv and rv.status == 200 then
-    return rv
+  if type(cfg.data) == 'table' then
+    -- find topdir based on markers in cfg.data
+    fdir = vim.fs.root(0, cfg.data)
   else
-    vim.notify('failed to download ' .. url, vim.log.levels.WARN)
-    return { body = '', status = 504, exit = 1, headers = {} }
+    fdir = cfg.data
   end
+
+  if fdir == nil then
+    -- fallback to standard data dir
+    fdir = vim.fn.stdpath('data')
+  end
+
+  id = tonumber(id)
+  fname = vim.fs.joinpath(fdir, cfg.top, topic, string.format('%s%d.txt', topic, id))
+
+  return vim.fs.normalize(fname)
 end
 
-function H.url(topic, id)
+function H.to_url(topic, id)
   -- return url for an item or index, format is:
-  -- https://www.rfc-editor.org/<topic>/<topic>-index.txt
-  -- https://www.rfc-editor.org/<topic>/<topic><nr>.txt
-  -- https://www.rfc-editor.org/rfc/rfc<nr>.json
-
   local base = 'https://www.rfc-editor.org'
   topic = string.lower(topic)
 
@@ -111,13 +126,73 @@ function H.url(topic, id)
   error('id must be one of: "index" or a number')
 end
 
-function H.save(topic, id, rv)
-  local fname = H.file_name(topic, id)
+function H.fetch(topic, id)
+  -- return a, possibly empty, list of lines
+  local rv = plenary.curl.get({ url = H.to_url(topic, id), accept = 'plain/text' })
+
+  if rv and rv.status == 200 then
+    local lines = vim.split(rv.body, '[\r\n]')
+    vim.notify(topic .. ':' .. id .. ': ' .. #lines .. ' lines')
+    return lines
+  else
+    vim.notify('failed to download ' .. topic .. ' id ' .. id, vim.log.levels.WARN)
+    return {}
+  end
+end
+
+function H.load_index(topic)
+  -- loads index for topic, downloading it if needed
+  -- fname can be too old, be missing, have 0 bytes ...
+  local fname = H.to_fname(topic, 'index')
+  local idx = {} -- empty means failure
+
+  if fname == nil then
+    vim.notify('no index for unknown topic: ' .. topic, vim.log.levels.WARN)
+    return idx
+  end
+
+  if H.ttl(fname) < 0 then
+    vim.notify('downloading index for ' .. topic, vim.log.levels.WARN)
+    local lines = H.fetch(topic, 'index')
+    if #lines > 0 then
+      idx = H.to_index(topic, lines)
+      vim.notify('index has ' .. #idx .. ' entries')
+      H.save(topic, 'index', idx)
+      return idx
+    else
+      vim.notify('could not download index ' .. topic)
+      return idx
+    end
+  else
+    vim.notify('reading ' .. fname, vim.log.levels.WARN)
+    local fh = io.open(fname, 'r')
+    if fh ~= nil then
+      for line in fh:lines('*l') do
+        table.insert(idx, line)
+      end
+      fh:close()
+      return idx
+    else
+      vim.notify('could not read ' .. fname, vim.log.levels.WARN)
+      return {}
+    end
+  end
+end
+
+function H.save(topic, id, lines)
+  local fname = H.to_fname(topic, id)
+
+  if fname == nil then
+    return fname
+  end
+
   local dir = vim.fs.dirname(fname)
   vim.fn.mkdir(dir, 'p')
   local fh = io.open(fname, 'w')
   if fh ~= nil then
-    fh:write(rv.body)
+    for _, line in ipairs(lines) do
+      fh:write(line, '\n')
+    end
     fh:close()
   else
     vim.notify('could not write to ' .. fname, vim.log.levels.WARN)
@@ -131,39 +206,66 @@ function M.reload()
   return require('plenary.reload').reload_module('pdh.rfc')
 end
 
-function M.search()
+function M.search(stream)
   -- search indices and download selection from ietf
-  local index = {
-    'rfc|0001| abc ,sf asf asAddddddddddddddd ddddddddddddddddddd dddddddddddddddddddddddd dddddddddddddddddddddd dddddddddddddddddddddd ddddddddddddddddddfd; jsfl jsfd;lk jasdf;l jasd;lf jasd;lf jas',
-    'rfc|0002| asdfasdf ;sdk fwriu w jkshnv ;qwh r[qwiohfsda;kjc qwr hwe',
-    'rfc|0099| 0002 xyz',
-    'rfc|0999| 0999 rfc999',
-    'std|0019| standards track',
-    'fyi|0001| a simple fyi',
-    'rfc|index| the rfc index',
-  }
+  stream = stream or 'rfc'
+  local index = H.load_index(stream)
+
   fzf_lua.fzf_exec(index, {
     prompt = 'search> ',
     winopts = {
       title = '| ietf |',
       border = 'rounded',
+      preview = { wrap = true },
     },
     actions = {
       default = function(selected)
-        -- this is acutally ["ctrl-m"]
-        -- vim.notify('selected: ' .. vim.inspect(selected))
+        -- this is actually ["ctrl-m"]
         local topic, id = unpack(vim.split(selected[1], '|'))
-        -- vim.notify('topic ' .. topic .. ', id ' .. tonumber(id))
-        vim.notify('url ' .. H.url(topic, id) .. ' -> ' .. H.file_name(topic, id))
-        local rv = H.get(topic, id)
+        vim.notify('url ' .. H.to_url(topic, id) .. ' -> ' .. H.to_fname(topic, id))
+        local rv = H.fetch(topic, id)
         local fname = H.save(topic, id, rv)
         vim.cmd('e ' .. fname)
       end,
     },
   })
 end
+
 function M.test(topic, id)
-  return H.get(topic, id)
+  vim.notify('test ' .. topic .. ' ' .. id)
+  local lines = {
+    '   1 this should be skipped',
+    '   this one as well',
+    '',
+    '01 line 1',
+    '     line 1.1',
+    '     line 1.2',
+    '',
+    '02 line 2',
+    '     line 2.1',
+  }
+  -- join subsequent lines until line starts with a number
+  local idx = { '' } -- start with empty first line
+  local fmt = function(head, line)
+    local nr, rest = string.match(line, '^(%d+)%s+(.*)')
+    if nr ~= nil then
+      return string.format('%3s|%05d| %s', head, nr, rest)
+    end
+    return nil
+  end
+
+  for _, line in ipairs(lines) do
+    if string.match(line, '^%d') then
+      -- before starting a new index entry, prep the current one
+      idx[#idx] = fmt(topic, idx[#idx])
+      idx[#idx + 1] = line
+    elseif string.match(line, '^%s+') then
+      idx[#idx] = idx[#idx] .. ' ' .. vim.trim(line)
+    end
+  end
+  -- don't forget the last one
+  idx[#idx] = fmt(topic, idx[#idx])
+  P(idx)
 end
 
 M.config = {
