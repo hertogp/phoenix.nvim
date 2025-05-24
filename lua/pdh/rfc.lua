@@ -77,10 +77,10 @@ function H.get(topic, id)
   local url = H.url(topic, id)
 
   local rv = H.curl.get({ url = url, accept = 'plain/text' })
-  vim.notify('got ' .. vim.inspect(rv))
   if rv and rv.status == 200 then
     return rv
   else
+    vim.notify('failed to download ' .. url, vim.log.levels.WARN)
     return { body = '', status = 504, exit = 1, headers = {} }
   end
 end
@@ -132,13 +132,15 @@ function M.reload()
 end
 
 function M.search()
+  -- search indices and download selection from ietf
   local index = {
-    'rfc|0001| abc ,sf asf asfd; jsfl jsfd;lk jasdf;l jasd;lf jasd;lf jas',
+    'rfc|0001| abc ,sf asf asAddddddddddddddd ddddddddddddddddddd dddddddddddddddddddddddd dddddddddddddddddddddd dddddddddddddddddddddd ddddddddddddddddddfd; jsfl jsfd;lk jasdf;l jasd;lf jasd;lf jas',
     'rfc|0002| asdfasdf ;sdk fwriu w jkshnv ;qwh r[qwiohfsda;kjc qwr hwe',
     'rfc|0099| 0002 xyz',
     'rfc|0999| 0999 rfc999',
     'std|0019| standards track',
     'fyi|0001| a simple fyi',
+    'rfc|index| the rfc index',
   }
   fzf_lua.fzf_exec(index, {
     prompt = 'search> ',
