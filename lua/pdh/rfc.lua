@@ -46,11 +46,15 @@ function H.ttl(fname)
 end
 
 function H.modeline(spec)
+  -- returns modeline string if possible, nil otherwise
   if type(spec) == 'string' then
+    -- use verbatim
     return spec
   end
+
   if type(spec) == 'table' then
-    local opts = 'set'
+    -- build modeline, ignore unknown options
+    local opts = ''
     for k, v in pairs(spec) do
       if vim.fn.exists(string.format('&%s', k)) == 1 then
         opts = string.format('%s %s=%s', opts, k, v)
@@ -58,10 +62,12 @@ function H.modeline(spec)
         vim.notify('modeline: ignore unknown option ' .. vim.inspect(k), vim.log.levels.ERROR)
       end
     end
-    return string.format('/* vim: %s: */', opts)
+    if #opts > 0 then
+      return string.format('/* vim: set%s: */', opts)
+    end
   end
 
-  return nil
+  return nil -- do not add modeline
 end
 
 function H.to_index(topic, lines)
