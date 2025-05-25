@@ -18,7 +18,7 @@ Behaviour
 local M = {}
 
 M.queries = {
-  -- Treesitter queries that yield an outline for a given file type
+  -- Filetype specific tree-sitter queries that yield an outline
   -- see https://github.com/elixir-lang/tree-sitter-elixir/tree/main/queries
   elixir = [[
     (((comment) @c (#lua-match? @c "^[%s#]+%[%[[^\n]+%]%]")) (#join! "head" "" "[c] " @c))
@@ -56,6 +56,7 @@ M.queries = {
 }
 
 M.depth = {
+  -- max depth at which a tree-sitter query can generate a heading
   elixir = 5,
   lua = 1,
   markdown = 6,
@@ -85,7 +86,7 @@ local function win_centerline(win, linenr)
   if vim.api.nvim_win_is_valid(win) then
     pcall(vim.api.nvim_win_set_cursor, win, { linenr, 0 })
     vim.api.nvim_win_call(win, function()
-      vim.cmd 'normal! zz'
+      vim.cmd 'normal! zt'
     end)
   end
 end
@@ -184,14 +185,26 @@ local function ts_outline(bufnr)
   local max_depth = M.depth[ft] or 0
   local qry = M.queries[ft]
   if qry == nil then
-    vim.notify('[WARN] unsupported filetype: ' .. ft, vim.log.levels.WARN)
     return {}, {}
   end
 
   local query = vim.treesitter.query.parse(ft, qry)
+
   local parser = vim.treesitter.get_parser(bufnr, ft, {})
+  if parser == nil then
+    return {}, {}
+  end
+
   local tree = parser:parse()
+  if tree == nil then
+    return {}, {}
+  end
+
   local root = tree[1]:root()
+  if root == nil then
+    vim.notify('[ERROR] no AST root available: ' .. ft, vim.log.levels.ERROR)
+    return {}, {}
+  end
 
   local blines = {}
   local idx = {}
@@ -210,6 +223,44 @@ local function ts_outline(bufnr)
   return idx, blines
 end
 
+--[[ RGX funcs ]]
+local RGX = {
+  rfc = {
+    '^%d.*',
+    -- lua patterns have no alternation
+    -- do not use ^%u.* since that'll match page header/footer as well
+    '^Network.*',
+    '^Request.*',
+    '^Category.*',
+    '^Status.*',
+    '^Abstract.*',
+    '^Appendix.*',
+    '^Author.*',
+  },
+}
+local function rgx_outline(bufnr)
+  -- return two lists: {linenrs}, {lines} based on a filetype specific TS query
+  local idx, olines = {}, {}
+  local ft = vim.bo[bufnr].filetype
+  local rgxs = RGX[ft]
+
+  if rgxs == nil then
+    return idx, olines
+  end
+
+  local blines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  for n, line in ipairs(blines) do
+    for _, rgx in ipairs(rgxs) do
+      if string.match(line, rgx) then
+        idx[#idx + 1] = n
+        olines[#olines + 1] = line
+        break -- on first match
+      end
+    end
+  end
+  return idx, olines
+end
+
 --[[ OTL funcs ]]
 
 ---get outline, set otl.idx and fill otl.obuf with lines
@@ -218,7 +269,21 @@ local function otl_outline(otl)
   -- get the outline for otl.sbuf & create/fill owin/obuf if needed
   -- local lines = { " one", " ten", " twenty", " thirty", " sixty", " hundred" }
   -- otl.idx = { 1, 10, 20, 30, 60, 100 }
-  local idx, lines = ts_outline(otl.sbuf)
+
+  local ft = vim.bo[otl.sbuf].filetype
+
+  local idx, lines
+  if M.queries[ft] then
+    idx, lines = ts_outline(otl.sbuf)
+  else
+    idx, lines = rgx_outline(otl.sbuf)
+  end
+
+  if #idx == 0 or #lines == 0 then
+    vim.notify('No provider for filetype ' .. vim.inspect(ft), vim.log.levels.ERROR)
+    return
+  end
+
   otl.idx = idx
   otl.tick = vim.b[otl.sbuf].changedtick
   if otl.owin == nil then
@@ -226,9 +291,10 @@ local function otl_outline(otl)
     otl.obuf = vim.api.nvim_get_current_buf()
     otl.owin = vim.api.nvim_get_current_win()
   end
-  vim.api.nvim_buf_set_option(otl.obuf, 'modifiable', true)
+
+  vim.api.nvim_set_option_value('modifiable', true, { buf = otl.obuf })
   vim.api.nvim_buf_set_lines(otl.obuf, 0, -1, false, lines)
-  vim.api.nvim_buf_set_option(otl.obuf, 'modifiable', false)
+  vim.api.nvim_set_option_value('modifiable', false, { buf = otl.obuf })
   return otl
 end
 
@@ -244,25 +310,24 @@ end
 
 local function otl_settings(otl)
   -- otl window options
-  vim.api.nvim_win_set_option(otl.owin, 'list', false)
-  vim.api.nvim_win_set_option(otl.owin, 'winfixwidth', true)
-  vim.api.nvim_win_set_option(otl.owin, 'number', false)
-  vim.api.nvim_win_set_option(otl.owin, 'signcolumn', 'no')
-  vim.api.nvim_win_set_option(otl.owin, 'foldcolumn', '0')
-  vim.api.nvim_win_set_option(otl.owin, 'relativenumber', false)
-  vim.api.nvim_win_set_option(otl.owin, 'wrap', false)
-  vim.api.nvim_win_set_option(otl.owin, 'spell', false)
-  vim.api.nvim_win_set_option(otl.owin, 'cursorline', true)
-  vim.api.nvim_win_set_option(otl.owin, 'winhighlight', 'CursorLine:Visual')
+  vim.api.nvim_set_option_value('list', false, { win = otl.win })
+  vim.api.nvim_set_option_value('winfixwidth', true, { win = otl.win })
+  vim.api.nvim_set_option_value('number', false, { win = otl.win })
+  vim.api.nvim_set_option_value('signcolumn', 'no', { win = otl.win })
+  vim.api.nvim_set_option_value('foldcolumn', '0', { win = otl.win })
+  vim.api.nvim_set_option_value('relativenumber', false, { win = otl.win })
+  vim.api.nvim_set_option_value('wrap', false, { win = otl.win })
+  vim.api.nvim_set_option_value('spell', false, { win = otl.win })
+  vim.api.nvim_set_option_value('cursorline', true, { win = otl.win })
+  vim.api.nvim_set_option_value('winhighlight', 'CursorLine:Visual', { win = otl.win })
 
-  -- otl buffer
-  vim.api.nvim_buf_set_name(otl.obuf, 'Otl #' .. otl.obuf)
-  vim.api.nvim_buf_set_option(otl.obuf, 'buftype', 'nofile')
-  vim.api.nvim_buf_set_option(otl.obuf, 'bufhidden', 'wipe')
-  vim.api.nvim_buf_set_option(otl.obuf, 'buflisted', false)
-  vim.api.nvim_buf_set_option(otl.obuf, 'swapfile', false)
-  vim.api.nvim_buf_set_option(otl.obuf, 'modifiable', false)
-  vim.api.nvim_buf_set_option(otl.obuf, 'filetype', 'otl-outline')
+  -- otl buffer options
+  vim.api.nvim_set_option_value('buftype', 'nofile', { buf = otl.obuf })
+  vim.api.nvim_set_option_value('bufhidden', 'wipe', { buf = otl.obuf })
+  vim.api.nvim_set_option_value('buflisted', false, { buf = otl.obuf })
+  vim.api.nvim_set_option_value('swapfile', false, { buf = otl.obuf })
+  vim.api.nvim_set_option_value('modifiable', false, { buf = otl.obuf })
+  vim.api.nvim_set_option_value('filetype', 'otl-outline', { buf = otl.obuf })
 
   -- otl keymaps
   local opts = { noremap = true, silent = true }
@@ -361,11 +426,12 @@ M.open = function(buf)
   -- create new otl window with outline
   otl.sbuf = buf
   otl.swin = vim.api.nvim_get_current_win()
-  otl_outline(otl)
-  otl_settings(otl)
-  otl_sync(otl)
-  local line = vim.api.nvim_win_get_cursor(otl.swin)[1]
-  otl_select(line)
+  if otl_outline(otl) then
+    otl_settings(otl)
+    otl_sync(otl)
+    local line = vim.api.nvim_win_get_cursor(otl.swin)[1]
+    otl_select(line)
+  end
 end
 
 M.close = function(buf)

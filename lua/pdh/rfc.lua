@@ -39,6 +39,7 @@ end
 
 H.valid = { rfc = true, bcp = true, std = true, fyi = true, ien = true }
 H.top = 'ietf.org'
+H.sep = '│'
 
 function H.ttl(fname)
   -- remaining seconds to live
@@ -70,6 +71,19 @@ function H.modeline(spec)
   return nil -- do not add modeline
 end
 
+function H.entry_build(topic, line)
+  -- return string formatted like 'topic|nr|text' or nil
+  local nr, rest = string.match(line, '^(%d+)%s+(.*)')
+  if nr ~= nil then
+    return string.format('%3s%s%05d%s %s', topic, H.sep, tonumber(nr), H.sep, rest)
+  end
+  return nil -- this will cause candidate deletion
+end
+
+function H.entry_parse(line)
+  -- break a selected entry 'topic|nr|text' into its consituents
+  return unpack(vim.split(line, H.sep))
+end
 function H.to_index(topic, lines)
   -- collect eligible lines and format as entries
   -- 1. a line that starts with a number, starts a candidate entry
@@ -77,19 +91,12 @@ function H.to_index(topic, lines)
   -- 3. candidates that do not start with a number are eliminated
   -- ien index: nrs donot start at first column ... so this will fail
   local idx = { '' }
-  local fmt = function(head, candidate)
-    local nr, rest = string.match(candidate, '^(%d+)%s+(.*)')
-    if nr ~= nil then
-      return string.format('%3s│%05d│ %s', head, tonumber(nr), rest)
-    end
-    return nil -- this will cause candidate deletion
-  end
 
   -- traverse only once
   for _, line in ipairs(lines) do
     if string.match(line, '^%d') then
       -- format current entry, then start new entry
-      idx[#idx] = fmt(topic, idx[#idx])
+      idx[#idx] = H.entry_build(topic, idx[#idx])
       idx[#idx + 1] = line
     elseif string.match(line, '^%s+') then
       -- accumulate in new candidate
@@ -99,7 +106,7 @@ function H.to_index(topic, lines)
   end
 
   -- also format last accumulated candidate (possibly deleting it)
-  idx[#idx] = fmt(topic, idx[#idx])
+  idx[#idx] = H.entry_build(topic, idx[#idx])
   vim.notify('index ' .. topic .. ' has ' .. #idx .. ' entries', vim.log.levels.WARN)
   return idx
 end
@@ -155,7 +162,7 @@ function H.to_fname(topic, id)
 end
 
 function H.to_url(topic, id)
-  -- return url for an item or index, format is:
+  -- return url for an item or index
   local base = 'https://www.rfc-editor.org'
   topic = string.lower(topic)
 
@@ -256,8 +263,6 @@ M.config = {
   edit = 'tabedit ',
   modeline = {
     ft = 'rfc',
-    bt = 'nofile',
-    bull = 'shit',
   },
 }
 
@@ -270,8 +275,9 @@ function M.search(stream)
   -- search the index for `stream`
   -- TODO:
   -- [ ] arg maybe streams, e.g. {'rfc', 'bcp', 'std'} and concat the index lists of named topics
-  -- [ ] use H.sep instead of magical '|' char
-  -- [ ] entry_format(topic, id, text)  & entry_parse(entry) -> topic, id
+  -- [x] use H.sep instead of magical '|' char
+  -- [x] entry_format(topic, id, text)  & entry_parse(entry) -> topic, id
+
   stream = stream or 'rfc'
   local index = H.load_index(stream)
 
@@ -289,13 +295,22 @@ function M.search(stream)
     },
     actions = {
       default = function(selected)
-        -- this is actually ["ctrl-m"]
-        local topic, id = unpack(vim.split(selected[1], '│'))
+        -- this is actually ["ctrl-m"], selected is a list of 1 string
+        local topic, id, _ = H.entry_parse(selected[1])
         local edit = M.config.edit or 'e '
         vim.notify('url ' .. H.to_url(topic, id) .. ' -> ' .. H.to_fname(topic, id))
         local rv = H.fetch(topic, id)
         local fname = H.save(topic, id, rv)
         vim.cmd(edit .. fname)
+      end,
+      ['ctrl-x'] = function(selected)
+        local topic, id, _ = H.entry_parse(selected[1])
+        local url = H.to_url(topic, id)
+        if url ~= nil then
+          vim.ui.open(url)
+        else
+          vim.notify('cannot open ' .. vim.inspect({ topic, id, url }))
+        end
       end,
     },
   })
@@ -303,46 +318,16 @@ end
 
 function M.find()
   local topdir = H.to_dir(M.config.data)
-  vim.notify('find ietf docs in ' .. vim.inspect(topdir))
-
   fzf_lua.files({ hidden = true, cwd = topdir })
+end
+
+function M.grep()
+  local topdir = H.to_dir(M.config.data)
+  fzf_lua.live_grep({ hidden = true, cwd = topdir })
 end
 
 function M.test(topic, id)
   vim.notify('test ' .. topic .. ' ' .. id)
-  local lines = {
-    '   1 this should be skipped',
-    '   this one as well',
-    '',
-    '01 line 1',
-    '     line 1.1',
-    '     line 1.2',
-    '',
-    '02 line 2',
-    '     line 2.1',
-  }
-  -- join subsequent lines until line starts with a number
-  local idx = { '' } -- start with empty first line
-  local fmt = function(head, line)
-    local nr, rest = string.match(line, '^(%d+)%s+(.*)')
-    if nr ~= nil then
-      return string.format('%3s│%05d│ %s', head, nr, rest)
-    end
-    return nil
-  end
-
-  for _, line in ipairs(lines) do
-    if string.match(line, '^%d') then
-      -- before starting a new index entry, prep the current one
-      idx[#idx] = fmt(topic, idx[#idx])
-      idx[#idx + 1] = line
-    elseif string.match(line, '^%s+') then
-      idx[#idx] = idx[#idx] .. ' ' .. vim.trim(line)
-    end
-  end
-  -- don't forget the last one
-  idx[#idx] = fmt(topic, idx[#idx])
-  P(idx)
 end
 
 function M.setup(opts)
