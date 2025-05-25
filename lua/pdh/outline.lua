@@ -227,14 +227,17 @@ end
 local RGX = {
   rfc = {
     '^%d.*',
-    -- lua patterns have no alternation
     -- do not use ^%u.* since that'll match page header/footer as well
     '^Network.*',
     '^Request.*',
     '^Category.*',
+    '^Copyright.*',
     '^Status.*',
+    '^Table.*',
     '^Abstract.*',
     '^Appendix.*',
+    '^Acknowledgements.*',
+    '^Contributors.*',
     '^Author.*',
   },
 }
