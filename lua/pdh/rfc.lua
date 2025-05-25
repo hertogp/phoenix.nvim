@@ -38,10 +38,30 @@ end
 --[[ Helpers ]]
 
 H.valid = { rfc = true, bcp = true, std = true, fyi = true, ien = true }
+H.top = 'ietf.org'
 
 function H.ttl(fname)
   -- remaining seconds to live
   return M.config.ttl + vim.fn.getftime(fname) - vim.fn.localtime()
+end
+
+function H.modeline(spec)
+  if type(spec) == 'string' then
+    return spec
+  end
+  if type(spec) == 'table' then
+    local opts = 'set'
+    for k, v in pairs(spec) do
+      if vim.fn.exists(string.format('&%s', k)) == 1 then
+        opts = string.format('%s %s=%s', opts, k, v)
+      else
+        vim.notify('modeline: ignore unknown option ' .. vim.inspect(k), vim.log.levels.ERROR)
+      end
+    end
+    return string.format('/* vim: %s: */', opts)
+  end
+
+  return nil
 end
 
 function H.to_index(topic, lines)
@@ -78,11 +98,31 @@ function H.to_index(topic, lines)
   return idx
 end
 
+function H.to_dir(spec)
+  -- find root dir or use spec if valid, fallback is stdpath data dir
+  local path
+  local top = M.config.top or H.top
+
+  if type(spec) == 'table' then
+    -- find root dir based on markers in cfg.data
+    path = vim.fs.root(0, spec)
+  elseif type(spec) == 'string' then
+    path = vim.fs.normalize(spec)
+  end
+
+  if path == nil or vim.fn.filereadable(path) == 0 then
+    path = vim.fn.stdpath('data')
+  end
+
+  -- path = (path and vim.fn.filereadable(path)) or vim.fn.stdpath('data')
+  return vim.fs.joinpath(path, top)
+end
+
 function H.to_fname(topic, id)
   -- return full file path for (topic, id) or nil
   local fdir, fname
   local cfg = M.config
-  local top = M.config.top or 'ietf.org'
+  local top = M.config.top or H.top
 
   if not H.valid[topic] then
     return nil
@@ -183,6 +223,11 @@ function H.save(topic, id, lines)
     return fname
   end
 
+  local modeline = H.modeline(M.config.modeline)
+  if modeline then
+    lines[#lines + 1] = modeline
+  end
+
   local dir = vim.fs.dirname(fname)
   vim.fn.mkdir(dir, 'p')
   if vim.fn.writefile(lines, fname) < 0 then
@@ -201,7 +246,13 @@ M.config = {
   data = vim.fn.stdpath('data'), -- path or markers
   -- data = { '.git', '.gitignore' },
   top = 'ietf.org',
-  ttl = 24 * 3600, -- time-to-live in seconds, before refreshing
+  ttl = 7 * 24 * 3600, -- time-to-live [second], before downloading again
+  edit = 'tabedit ',
+  modeline = {
+    ft = 'rfc',
+    bt = 'nofile',
+    bull = 'shit',
+  },
 }
 
 function M.reload()
@@ -234,13 +285,21 @@ function M.search(stream)
       default = function(selected)
         -- this is actually ["ctrl-m"]
         local topic, id = unpack(vim.split(selected[1], '│'))
+        local edit = M.config.edit or 'e '
         vim.notify('url ' .. H.to_url(topic, id) .. ' -> ' .. H.to_fname(topic, id))
         local rv = H.fetch(topic, id)
         local fname = H.save(topic, id, rv)
-        vim.cmd('e ' .. fname)
+        vim.cmd(edit .. fname)
       end,
     },
   })
+end
+
+function M.find()
+  local topdir = H.to_dir(M.config.data)
+  vim.notify('find ietf docs in ' .. vim.inspect(topdir))
+
+  fzf_lua.files({ hidden = true, cwd = topdir })
 end
 
 function M.test(topic, id)
