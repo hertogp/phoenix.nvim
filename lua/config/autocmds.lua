@@ -26,37 +26,37 @@ end
 
 -- Remove all trailing whitespace on save
 -- from https://github.com/Allaman/nvim/blob/main/lua/autocmd.lua
-local TrimWhiteSpaceGrp = api.nvim_create_augroup("TrimWhiteSpaceGrp", { clear = true })
-api.nvim_create_autocmd("BufWritePre", { command = [[:%s/\s\+$//e]], group = TrimWhiteSpaceGrp })
+local TrimWhiteSpaceGrp = api.nvim_create_augroup('TrimWhiteSpaceGrp', { clear = true })
+api.nvim_create_autocmd('BufWritePre', { command = [[:%s/\s\+$//e]], group = TrimWhiteSpaceGrp })
 
 --[[ EasyQuit ]]
 --- use q to quit all sorts of nofile-like buffers
 local EasyQuitTable = {
-  ["help"] = true,
-  ["nofile"] = true,
-  ["nowrite"] = true,
-  ["quickfix"] = true,
-  ["loclist"] = true,
-  ["prompt"] = true,
-  [""] = false,
+  ['help'] = true,
+  ['nofile'] = true,
+  ['nowrite'] = true,
+  ['quickfix'] = true,
+  ['loclist'] = true,
+  ['prompt'] = true,
+  [''] = false,
 }
 
-local EasyQuit = api.nvim_create_augroup("EasyQuit", { clear = true })
-api.nvim_create_autocmd({ "FileType" }, {
+local EasyQuit = api.nvim_create_augroup('EasyQuit', { clear = true })
+api.nvim_create_autocmd({ 'FileType' }, {
   group = EasyQuit,
   callback = function()
     -- TODO: maybe switch to just check that buftype ~= "" ?
     -- since only `normal` buffers do not have a buftype
     if EasyQuitTable[vim.bo.buftype] then
       -- '!' forces the close command even if modified (e.g. a prompt buffer)
-      vim.api.nvim_buf_set_keymap(0, "n", "q", "<cmd>close!<cr>", { noremap = true, silent = true })
+      vim.api.nvim_buf_set_keymap(0, 'n', 'q', '<cmd>close!<cr>', { noremap = true, silent = true })
     end
   end,
 })
 
 --[[ RESUME editing ]]
 -- go to last loc when opening a buffer
-api.nvim_create_autocmd("BufReadPost", {
+api.nvim_create_autocmd('BufReadPost', {
   -- command = [[if line("'\"") > 1 && line("'\"") <= line("$") | execute "normal! g`\"" | endif]]
   callback = function()
     local mark = api.nvim_buf_get_mark(0, '"')
@@ -71,40 +71,35 @@ api.nvim_create_autocmd("BufReadPost", {
 })
 
 --[[ auPandoc ]]
-local auPandoc = api.nvim_create_augroup("auPandoc", { clear = true })
-api.nvim_create_autocmd("FileType", {
-  pattern = { "markdown", "pandoc" },
+local auPandoc = api.nvim_create_augroup('auPandoc', { clear = true })
+api.nvim_create_autocmd('FileType', {
+  pattern = { 'markdown', 'pandoc' },
   group = auPandoc,
   callback = function()
     local opts = { noremap = true, silent = true }
     -- <s-f4> actually comes out as <f16> ?
-    bufkey("n", "<F16>", "<cmd>silent make|redraw!|copen<cr>", opts)
-    bufkey(
-      "n",
-      "<F4>",
-      '<cmd>silent make|redraw!|call jobstart(["xdg-open", expand("%:r").".pdf"])<cr>',
-      opts
-    )
+    bufkey('n', '<F16>', '<cmd>silent make|redraw!|copen<cr>', opts)
+    bufkey('n', '<F4>', '<cmd>silent make|redraw!|call jobstart(["xdg-open", expand("%:r").".pdf"])<cr>', opts)
     vim.cmd [[compiler pandoc]]
   end,
 })
 
 --[[ auElixir ]]
-local auElixir = api.nvim_create_augroup("auElixir", { clear = true })
-api.nvim_create_autocmd("FileType", {
-  pattern = "elixir",
+local auElixir = api.nvim_create_augroup('auElixir', { clear = true })
+api.nvim_create_autocmd('FileType', {
+  pattern = 'elixir',
   group = auElixir,
   callback = function(event)
     -- overrides neoterm's check for config/config.exs which lib's don't have
-    if vim.fn.filereadable "mix.exs" then
+    if vim.fn.filereadable 'mix.exs' then
       vim.cmd [[call neoterm#repl#set('iex -S mix')]]
     else
       vim.cmd [[call neoterm#repl#set('iex')]]
     end
   end,
 })
-api.nvim_create_autocmd("BufWritePost", {
-  pattern = { "*.ex", "*.exs" },
+api.nvim_create_autocmd('BufWritePost', {
+  pattern = { '*.ex', '*.exs' },
   group = auElixir,
   command = [[silent :MixFormat]],
 })
