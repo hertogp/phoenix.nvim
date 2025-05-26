@@ -205,3 +205,26 @@ local function save_keep_pos()
 end
 
 api.nvim_create_user_command('SaveKeepPos', save_keep_pos, {})
+
+function Synstack()
+  -- return a list of syntax items under cursor
+  -- synstack works only for vim regex based syntax, not tree-sitter
+  -- local buf = vim.fn.bufname(0)
+  local row = vim.fn.line('.')
+  local col = vim.fn.col('.')
+  -- synIDattr(n, "name") -> yields the name
+  local stack = vim.fn.synstack(row, col)
+  if #stack > 0 then
+    for _, id in ipairs(stack) do
+      local id2 = vim.fn.synIDtrans(id)
+      local n1 = vim.fn.synIDattr(id, 'name')
+      local n2 = vim.fn.synIDattr(id2, 'name')
+      P({ id, n1, id2, n2 })
+    end
+  else
+    local captures = vim.treesitter.get_captures_at_cursor(0)
+    P({ 'ts captures', captures })
+    -- vim.tree-sitter.get_captures_at_pos(bufnr, vim.fn.line('.')-1, vim.fn.col('.')-1)
+    -- ts captures at
+  end
+end

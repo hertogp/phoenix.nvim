@@ -62,6 +62,14 @@ M.depth = {
   markdown = 6,
 }
 
+--[[ OUTLINERS ]]
+local O = {}
+
+O['lua'] = function(otl, spec)
+  -- returns idx, olines
+  P({ otl, spec })
+end
+
 --[[ BUFFER funcs ]]
 
 local function buf_sanitize(buf)
@@ -86,7 +94,7 @@ local function win_centerline(win, linenr)
   if vim.api.nvim_win_is_valid(win) then
     pcall(vim.api.nvim_win_set_cursor, win, { linenr, 0 })
     vim.api.nvim_win_call(win, function()
-      vim.cmd 'normal! zt'
+      vim.cmd 'normal! zz'
     end)
   end
 end
@@ -224,6 +232,7 @@ local function ts_outline(bufnr)
 end
 
 --[[ RGX funcs ]]
+
 local RGX = {
   rfc = {
     '^%d.*',
@@ -241,6 +250,7 @@ local RGX = {
     '^Author.*',
   },
 }
+
 local function rgx_outline(bufnr)
   -- return two lists: {linenrs}, {lines} based on a filetype specific TS query
   local idx, olines = {}, {}
@@ -275,6 +285,23 @@ local function otl_outline(otl)
 
   local ft = vim.bo[otl.sbuf].filetype
 
+  -- tmp
+  local spec = M.config.outline[ft]
+  if spec == nil then
+    vim.notify('filetype ' .. ft .. 'not supported')
+    return
+  end
+
+  local parser = O[spec.parser]
+  if parser == nil then
+    vim.notify('parser ' .. parser .. 'for filetype ' .. ft .. ' unknown', vim.log.levels.ERROR)
+    return
+  end
+
+  parser(otl, spec)
+
+  -- /tmp
+
   local idx, lines
   if M.queries[ft] then
     idx, lines = ts_outline(otl.sbuf)
@@ -283,7 +310,8 @@ local function otl_outline(otl)
   end
 
   if #idx == 0 or #lines == 0 then
-    vim.notify('No provider for filetype ' .. vim.inspect(ft), vim.log.levels.ERROR)
+    local msg = string.format('Parser %s failed for filetype %s', spec.parser, ft)
+    vim.notify(msg, vim.log.levels.ERROR)
     return
   end
 
@@ -413,8 +441,51 @@ local function otl_select(sline)
   end
 end
 
---[[ MODULE ]]
-
+--['[ MODULE ]]
+M.config = {
+  outline = {
+    rfc = {
+      parser = 'lua',
+      { '^RFC', skip = true }, -- skip page header
+      { '%[Page%s-%d-%]$', skip = true }, -- skip page footer
+      '^%u.*$',
+      '^%d.*$',
+      -- '(Network)%s+(%S+)'
+      -- { '^Network.*', 1},
+      -- { '^Request.*', 1},
+      -- { '^Category.*', 1},
+      -- { '^Copyright.*', 1},
+      -- { '^Status.*', 1},
+      -- { '^Table.*', 1},
+      -- { '^Abstract.*', 1},
+      -- { '^Appendix.*', 1},
+      -- { '^Acknowledgements.*', 1},
+      -- { '^Contributors.*', 1},
+      -- { '^Author.*', 1},
+    },
+    help = {
+      -- string.match('qwerty *asdt*', '^(.*)%*([^%*]-)%*$) -> qwerty
+      -- { string.match('qwerty *asdt*', '^(.*)%*([^%*]-)%*$) } -> { "qwerty", "asdf" }
+      -- include string.match inside a table constructor(!) to see captures
+      parser = 'lua',
+      { '%*[^*]%*$', symbol = '[f]' },
+    },
+    lua = {
+      parser = 'treesitter',
+      [[
+        (((comment) @c (#lua-match? @c "^--%[%[[^\n]+%]%]$")) (#join! "head"  "" "[-] " @c))
+        ((function_declaration (identifier) @a (parameters) @b (#join! "head" "" "[f] " @a @b)))
+        ((function_declaration (dot_index_expression) @a (parameters) @b (#join! "head" "" "[f] " @a @b)))
+        ((assignment_statement
+          ((variable_list) @a) (("=") @b)
+          (expression_list (function_definition (("function") @c) ((parameters)@d))))
+          (#join! "head" "" "[f] " @a " " @b " " @c @d))
+        (((assignment_statement) @head) (#join! "head" "" "[s] " @head))
+        (((variable_declaration) @head) (#join! "head" "" "[v] " @head))
+      ]],
+    },
+  },
+}
 M.open = function(buf)
   -- open otl window for given buf number
   buf = buf_sanitize(buf)
