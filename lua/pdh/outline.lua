@@ -1,5 +1,5 @@
 -- File: ~/.config/nvim/lua/pdh/outline.lua
--- [[ Find outline for various filetypes ]]
+--[[ Find outline for various filetypes ]]
 
 --[[
 Behaviour
@@ -81,14 +81,14 @@ O['lua'] = function(otl, specs)
       local match = { string.match(line, spec[1]) }
       if #match > 0 then
         if not spec.skip then
-          local entry = table.concat(match, ' ')
+          local entry = table.concat(match, ' ') -- combine the parts
+          entry = string.gsub(entry, '%s+$', '') -- remove trailing spaces
           local symbol = spec.symbol or ''
 
           idx[#idx + 1] = linenr
           olines[#olines + 1] = string.format('%s%s', symbol, entry)
-        else
-          break
         end
+        break
       end
     end
   end
@@ -302,8 +302,8 @@ end
 
 --[[ OTL funcs ]]
 
----get outline, set otl.idx and fill otl.obuf with lines
----@param otl table
+--- get outline, set otl.idx and fill otl.obuf with lines
+--- @param otl table
 local function otl_outline(otl)
   -- get the outline for otl.sbuf & create/fill owin/obuf if needed
   -- local lines = { " one", " ten", " twenty", " thirty", " sixty", " hundred" }
@@ -473,24 +473,11 @@ M.config = {
       { '%[Page%s-%d-%]$', skip = true }, -- skip page footer
       { '^%u.*$', symbol = ' ' }, -- line starts with Uppercase letter
       { '^%d.*$' }, -- line starts with a digit
-      -- {'(Network)%s+(%S+)'},
-      -- { '^Request.*'},
-      -- { '^Category.*'},
-      -- { '^Copyright.*'},
-      -- { '^Status.*'},
-      -- { '^Table.*'},
-      -- { '^Abstract.*'},
-      -- { '^Appendix.*'},
-      -- { '^Acknowledgements.*'},
-      -- { '^Contributors.*'},
-      -- { '^Author.*'},
     },
     help = {
-      -- string.match('qwerty *asdt*', '^(.*)%*([^%*]-)%*$) -> qwerty
-      -- { string.match('qwerty *asdt*', '^(.*)%*([^%*]-)%*$) } -> { "qwerty", "asdf" }
-      -- include string.match inside a table constructor(!) to see captures
       parser = 'lua',
-      { '%*[^*]%*$', symbol = '[f]' },
+      { '^(%u[%u%p%s]+)%s+', symbol = '' }, -- one or more UPPERCASE words
+      { '%*([^*]+)%*$', symbol = ' ' }, -- the (last) *..* tag at end of the line
     },
     lua = {
       parser = 'treesitter',
@@ -508,7 +495,8 @@ M.config = {
     },
   },
 }
-M.open = function(buf)
+
+function M.open(buf)
   -- open otl window for given buf number
   buf = buf_sanitize(buf)
 
@@ -654,7 +642,91 @@ M.down = function()
   win_centerline(otl.swin, line)
 end
 
--- : luafile % (or \\x) -> will reload the module
+local function get_fragments(node, fragments)
+  local frags = {}
+  for child, name in node:iter_children() do
+    for _, frag in ipairs(fragments) do
+      if frag == child:type() then
+        frags[#frags + 1] = vim.treesitter.get_node_text(child, 0)
+        break
+      end
+    end
+  end
+  return frags
+end
+
+local function print_tree(node, level)
+  if node:type() == 'block' then
+    return
+  end
+  level = level or 0
+  local pfx = string.rep(' ', level, '|')
+  for child, name in node:iter_children() do
+    local row, col, len = child:start()
+    if col == 0 and level == 0 then
+      vim.print(' ')
+      vim.print(vim.api.nvim_buf_get_lines(0, row, row + 1, false)[1])
+    end
+    name = name or 'n/a'
+    vim.print(string.format('%s- [%d](%d, %d, %dB) type(%s), name(%s)', pfx, level, row, col, len, child:type(), name))
+    print_tree(child, level + 1)
+  end
+end
+
+M.test = function()
+  -- temporarily for testing treesitter stuff
+  local blines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+  local parser = vim.treesitter.get_parser(0, 'lua', {})
+  local tree = parser:parse(true)
+  local root = tree[1]:root()
+
+  print_tree(root)
+
+  --[[
+  -- traverse toplevel nodes under root
+  for n = 1, root:child_count() - 1 do
+    local parent = root:child(n)
+    local row, col, _ = parent:start()
+    row, col = row + 1, col + 1
+    local bline = blines[row]
+    local ptype = parent:type()
+    P('----------------------------------------------------------------------------------')
+    P(string.format('[%03d] %s', row, bline))
+    P(string.format(' |= (%s)', ptype))
+
+    if ptype == 'function_declaration' then
+      local entry = table.concat(get_fragments(parent, { 'identifier', 'dot_index_expression', 'parameters' }), '')
+      for node, name in parent:iter_children() do
+        local ntype = node:type()
+        local txt = vim.treesitter.get_node_text(node, 0)
+        P(string.format('  |- (%s) | %s | "%s" | %s', ntype, name, txt, node:sexpr()))
+      end
+      P(string.format('  `--> %s', entry))
+    else
+      for node, name in parent:iter_children() do
+        local ntype = node:type()
+        local txt = vim.treesitter.get_node_text(node, 0)
+        P(string.format('  |- (%s) | %s | "%s" | %s', ntype, name, txt, node:sexpr()))
+      end
+    end
+  end
+
+  P(string.rep('~', 40))
+  print_tree(root)
+  return
+  -- skip
+  -- local qry = vim.treesitter.query.get('lua', 'code')
+  -- for id, node, meta, match, t in qry:iter_captures(root, 0) do
+  --   name = qry.captures[id]
+  --   local row1, col1, row2, col2 = node:range()
+  --   local text = vim.treesitter.get_node_text(node, 0)
+  --   if row1 == 443 then
+  --     P({ name, node:type(), 'range:', { node:range() }, 'info:', match:info(), text })
+  --   end
+  -- end
+]]
+end
+-- : luafile % -> will reload the module
 require('plenary.reload').reload_module 'pdh.outline'
 
 return M
