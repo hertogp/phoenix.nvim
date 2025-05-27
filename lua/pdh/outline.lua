@@ -63,11 +63,37 @@ M.depth = {
 }
 
 --[[ OUTLINERS ]]
+
 local O = {}
 
-O['lua'] = function(otl, spec)
+O['lua'] = function(otl, specs)
   -- returns idx, olines
-  P({ otl, spec })
+  local idx, olines = {}, {}
+
+  if specs == nil or #specs < 1 then
+    vim.notify('oops1', vim.log.levels.ERROR)
+    return idx, olines
+  end
+
+  local blines = vim.api.nvim_buf_get_lines(otl.sbuf, 0, -1, false)
+  for linenr, line in ipairs(blines) do
+    for _, spec in ipairs(specs) do
+      local match = { string.match(line, spec[1]) }
+      if #match > 0 then
+        if not spec.skip then
+          local entry = table.concat(match, ' ')
+          local symbol = spec.symbol or ''
+
+          idx[#idx + 1] = linenr
+          olines[#olines + 1] = string.format('%s%s', symbol, entry)
+        else
+          break
+        end
+      end
+    end
+  end
+
+  return idx, olines
 end
 
 --[[ BUFFER funcs ]]
@@ -284,9 +310,8 @@ local function otl_outline(otl)
   -- otl.idx = { 1, 10, 20, 30, 60, 100 }
 
   local ft = vim.bo[otl.sbuf].filetype
-
-  -- tmp
   local spec = M.config.outline[ft]
+
   if spec == nil then
     vim.notify('filetype ' .. ft .. 'not supported')
     return
@@ -294,22 +319,20 @@ local function otl_outline(otl)
 
   local parser = O[spec.parser]
   if parser == nil then
-    vim.notify('parser ' .. parser .. 'for filetype ' .. ft .. ' unknown', vim.log.levels.ERROR)
+    vim.notify('parser "' .. spec.parser .. '" for filetype ' .. ft .. ' unknown', vim.log.levels.ERROR)
     return
   end
 
-  parser(otl, spec)
+  local idx, olines = parser(otl, spec)
 
-  -- /tmp
+  -- local idx, olines
+  -- if M.queries[ft] then
+  --   idx, olines = ts_outline(otl.sbuf)
+  -- else
+  --   idx, olines = rgx_outline(otl.sbuf)
+  -- end
 
-  local idx, lines
-  if M.queries[ft] then
-    idx, lines = ts_outline(otl.sbuf)
-  else
-    idx, lines = rgx_outline(otl.sbuf)
-  end
-
-  if #idx == 0 or #lines == 0 then
+  if #idx == 0 or #olines == 0 then
     local msg = string.format('Parser %s failed for filetype %s', spec.parser, ft)
     vim.notify(msg, vim.log.levels.ERROR)
     return
@@ -324,7 +347,7 @@ local function otl_outline(otl)
   end
 
   vim.api.nvim_set_option_value('modifiable', true, { buf = otl.obuf })
-  vim.api.nvim_buf_set_lines(otl.obuf, 0, -1, false, lines)
+  vim.api.nvim_buf_set_lines(otl.obuf, 0, -1, false, olines)
   vim.api.nvim_set_option_value('modifiable', false, { buf = otl.obuf })
   return otl
 end
@@ -448,20 +471,19 @@ M.config = {
       parser = 'lua',
       { '^RFC', skip = true }, -- skip page header
       { '%[Page%s-%d-%]$', skip = true }, -- skip page footer
-      '^%u.*$',
-      '^%d.*$',
-      -- '(Network)%s+(%S+)'
-      -- { '^Network.*', 1},
-      -- { '^Request.*', 1},
-      -- { '^Category.*', 1},
-      -- { '^Copyright.*', 1},
-      -- { '^Status.*', 1},
-      -- { '^Table.*', 1},
-      -- { '^Abstract.*', 1},
-      -- { '^Appendix.*', 1},
-      -- { '^Acknowledgements.*', 1},
-      -- { '^Contributors.*', 1},
-      -- { '^Author.*', 1},
+      { '^%u.*$', symbol = ' ' }, -- line starts with Uppercase letter
+      { '^%d.*$' }, -- line starts with a digit
+      -- {'(Network)%s+(%S+)'},
+      -- { '^Request.*'},
+      -- { '^Category.*'},
+      -- { '^Copyright.*'},
+      -- { '^Status.*'},
+      -- { '^Table.*'},
+      -- { '^Abstract.*'},
+      -- { '^Appendix.*'},
+      -- { '^Acknowledgements.*'},
+      -- { '^Contributors.*'},
+      -- { '^Author.*'},
     },
     help = {
       -- string.match('qwerty *asdt*', '^(.*)%*([^%*]-)%*$) -> qwerty
