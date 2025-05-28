@@ -146,12 +146,12 @@ local function show_in_tab(t)
     local cmd = api.nvim_parse_cmd(t.args, {})
     local output = api.nvim_cmd(cmd, { output = true })
     -- return lines table, no newlines allowed by nvim_buf_set_lines()
-    local lines = {}
-    -- return vim.split(lines, "\r?\n", {trimempty = true}
-    for line in output:gmatch '[^\r\n]+' do
-      table.insert(lines, line)
-    end
-    return lines
+    -- local lines = {}
+    return vim.split(output, '\n', { 1 })
+    -- for line in output:gmatch '[^\r\n]+' do
+    --   table.insert(lines, line)
+    -- end
+    -- return lines
   end)
 
   -- open a new tab

@@ -668,6 +668,7 @@ local stop_recurse = {
   table_constructor = true,
 }
 local gettxt = {
+  function_declaration = false,
   identifier = true,
   parameters = true,
   dot_index_expression = true,
@@ -702,6 +703,22 @@ local function print_tree(node, level)
   end
 end
 
+local function walk(node, acc)
+  acc = acc or {}
+  if stop_recurse[node:type()] then
+    return acc
+  end
+  for child, name in node:iter_children() do
+    local ctype = child:type()
+    if gettxt[ctype] then
+      acc[#acc + 1] = { ctype, name, vim.treesitter.get_node_text(child, 0, {}) }
+    elseif gettxt[ctype] == false then
+      acc[#acc + 1] = { ctype, name, nil }
+    end
+    acc = walk(child, acc)
+  end
+  return acc
+end
 M.test = function()
   -- TODO: delete/comment out when done testing/developing
   -- :Show lua require'pdh.outline'.test() -> results in new Tab
@@ -710,6 +727,17 @@ M.test = function()
   local root = tree[1]:root()
 
   print_tree(root)
+  vim.print(string.rep('=', 30))
+
+  vim.print('walker')
+  for child, name in root:iter_children() do
+    local ctype = child:type()
+    name = name or 'unnamed'
+    vim.print(string.format('\ntype(%s), name(%s)', ctype, name))
+    for _, elem in ipairs(walk(child)) do
+      P(elem)
+    end
+  end
 end
 
 -- :luafile % -> will reload the module
