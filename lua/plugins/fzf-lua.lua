@@ -11,23 +11,25 @@ return {
     helptags = {
       actions = {
         ['enter'] = {
-          fn = function(selected, _)
+          fn = function(selected, opts)
             -- see the defaults.lua file i/t repo, search ctrl-t
-            -- read help in new tab, 'fzf-lua'.actions.file.tab_edit opens last
-            -- location instead of searching for selected help entry
-            -- selected is { "term <wspace filler> file.txt full-path" }
-            -- require 'fzf-lua'.actions.help_tab(selected, _opts)
-            local term = string.match(selected[1], '^%S+')
-            vim.cmd('tab help ' .. term)
+            -- local term = string.match(selected[1], '^%S+')
+            -- vim.cmd('tab help ' .. term)
+            require 'fzf-lua'.actions.help_tab(selected, opts)
+          end,
+        },
+      },
+    },
+    manpages = {
+      actions = {
+        ['enter'] = {
+          fn = function(selected, opts)
+            require 'fzf-lua'.actions.man_tab(selected, opts)
           end,
         },
       },
     },
   },
-  -- grep = {
-  --   rg_glob = true, -- search <term> -- *.md *.txt !spec
-  --   glob_flag = '--iglob'  -- use glob for case sensitive globbing
-  -- },
   keys = {
     -- buffers, files
     { '<space>b', ":lua require 'fzf-lua'.buffers()<cr>", desc = '[b]uffers' },
