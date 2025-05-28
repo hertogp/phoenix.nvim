@@ -22,9 +22,6 @@ nmap('<c-left>', ':vertical resize +2<cr>')
 nmap('<c-right>', ':vertical resize -2<cr>')
 nmap('<c-up>', ':resize +2<cr>')
 nmap('<c-down>', ':resize -2<cr>')
-nmap('<space>D', function()
-  vim.diagnostic.enable(not vim.diagnostic.is_enabled())
-end, 'toggle Diasnostics')
 
 -- use <M-j> (alt-j) to split a line, like <S-j> (shift-j) combines lines
 nmap('<m-j>', 'i<cr><esc>', 'split line at cursor')

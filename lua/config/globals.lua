@@ -131,6 +131,7 @@ go.startofline = false
 --   Show let w:      -- show all window variables in a new tab
 --   Show lua =vim    -- show the lua vim table
 --   Show map         -- show all mappings
+--   Show map <buffer> -- show buffer local keymap
 --   Show echo &runtimepath (or &rtp) and do s/,/\r/g
 --   Show read ! echo $PATH
 --   Show lua =vim.opt.runtimepath
@@ -210,6 +211,7 @@ function Synstack()
   -- return a list of syntax items under cursor
   -- synstack works only for vim regex based syntax, not tree-sitter
   -- local buf = vim.fn.bufname(0)
+  -- see: vim.inspect_pos() as well (!)
   local row = vim.fn.line('.')
   local col = vim.fn.col('.')
   -- synIDattr(n, "name") -> yields the name

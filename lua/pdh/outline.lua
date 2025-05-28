@@ -1,4 +1,17 @@
 -- File: ~/.config/nvim/lua/pdh/outline.lua
+
+function a(arg1, arg2)
+  -- empty func
+end
+function B(arg1, arg2)
+  -- empty
+end
+
+GVAR1 = false
+GVAR2 = 'string'
+GVAR3 = { 'table' }
+GVAR4 = function() end
+
 --[[ Find outline for various filetypes ]]
 
 --[[
@@ -11,6 +24,16 @@ Behaviour
 - swin becomes invisible -> otl is hidden as well
 - swin becomes visible   -> otl becomes visible again
 - otl becomes invisible  -> otl is destroyed and sbuf.otl is removed and swin is selected
+
+TODO's
+[ ] add treesitter scm handler -> ~/config/nvim/queries/<lang>/outline.scm
+[ ] add treesitter cst handler -> with config to extract (simply) from treesitter's concrete syntax tree
+[?] have only 1 otl window at all times (:topleft vnew | wincmd H | wincmd =)
+    - configurable, left or right, always has entire heigt of window
+    - multiple windows can have otl active
+    - active window is displayed in otl window (shuttle works)
+      * when moving to another window that has no otl -> otl stays the same
+      * when moving to another windown that has otl -> otl switches association with that window/buffer
 --]]
 
 --[[ GLOBALS ]]
@@ -655,20 +678,37 @@ local function get_fragments(node, fragments)
   return frags
 end
 
+local stop_recurse = {
+  block = true,
+  table_constructor = true,
+}
+local gettxt = {
+  identifier = true,
+  parameters = true,
+  dot_index_expression = true,
+  bracket_index_expression = true,
+}
+
 local function print_tree(node, level)
-  if node:type() == 'block' then
+  if stop_recurse[node:type()] then
     return
   end
   level = level or 0
   local pfx = string.rep(' ', level, '|')
   for child, name in node:iter_children() do
     local row, col, len = child:start()
+    local ctype = child:type()
+    local ctext = ''
     if col == 0 and level == 0 then
       vim.print(' ')
       vim.print(vim.api.nvim_buf_get_lines(0, row, row + 1, false)[1])
     end
     name = name or 'n/a'
-    vim.print(string.format('%s- [%d](%d, %d, %dB) type(%s), name(%s)', pfx, level, row, col, len, child:type(), name))
+    if gettxt[ctype] then
+      ctext = ' ---> txt(' .. vim.treesitter.get_node_text(child, 0, {}) .. ')'
+    end
+
+    vim.print(string.format('%s- [%d](%4d, %4d) type(%s), name(%s)%s', pfx, level, row, col, child:type(), name, ctext))
     print_tree(child, level + 1)
   end
 end

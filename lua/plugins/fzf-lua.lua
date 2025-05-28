@@ -14,6 +14,7 @@ return {
           fn = function(selected, ctx)
             -- edit help in new tab
             -- setup q since augroup EasyQuit doesn't work here?
+            P(selected)
             require 'fzf-lua'.actions.file_tabedit(selected, ctx)
             vim.api.nvim_buf_set_keymap(0, 'n', 'q', ':close!<cr>', {})
           end,
