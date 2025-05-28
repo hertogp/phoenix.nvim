@@ -8,13 +8,11 @@ return {
   -- optional for icon support
   dependencies = { 'echasnovski/mini.icons' },
   opts = {
+    -- see 'defaults.lua' for available (default) actions
     helptags = {
       actions = {
         ['enter'] = {
           fn = function(selected, opts)
-            -- see the defaults.lua file i/t repo, search ctrl-t
-            -- local term = string.match(selected[1], '^%S+')
-            -- vim.cmd('tab help ' .. term)
             require 'fzf-lua'.actions.help_tab(selected, opts)
           end,
         },
@@ -45,7 +43,12 @@ return {
     },
     {
       '<space>p',
-      ":lua require 'fzf-lua'.files({hidden=true, cwd='~/.local/share/nvim'})<cr>",
+      ":lua require 'fzf-lua'.files({hidden=true, cwd=vim.fn.stdpath('config')})<cr>",
+      desc = 'find [p]lugin files',
+    },
+    {
+      '<space>P',
+      ":lua require 'fzf-lua'.files({hidden=true, cwd=vim.fn.stdpath('data')})<cr>",
       desc = 'find [p]lugin files',
     },
     {

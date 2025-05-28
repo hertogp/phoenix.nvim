@@ -502,6 +502,13 @@ M.config = {
       { '^(%u[%u%p%s]+)%s+', symbol = '' }, -- one or more UPPERCASE words
       { '%*([^*]+)%*$', symbol = ' ' }, -- the (last) *..* tag at end of the line
     },
+    markdown = {
+      parser = 'lua',
+      { '^#%s(.*)$', symbol = '' },
+      { '^##%s(.*)$', symbol = ' ' },
+      { '^###%s(.*)$', symbol = '  ' },
+      { '^###+%s+(.*)$', symbol = '   ' },
+    },
     lua = {
       parser = 'treesitter',
       [[
