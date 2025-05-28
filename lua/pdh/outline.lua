@@ -1,16 +1,19 @@
 -- File: ~/.config/nvim/lua/pdh/outline.lua
 
-function a(arg1, arg2)
-  -- empty func
-end
-function B(arg1, arg2)
-  -- empty
-end
+--[[ funcs]]
+
+function A(args) end
+B = function(args) end
+local C = function(args) end
+D = {}
+function D.one(arg) end
+D['two'] = function(args) end
+
+--[[ vars ]]
 
 GVAR1 = false
 GVAR2 = 'string'
 GVAR3 = { 'table' }
-GVAR4 = function() end
 
 --[[ Find outline for various filetypes ]]
 
@@ -89,8 +92,8 @@ M.depth = {
 
 local O = {}
 
-O['lua'] = function(otl, specs)
-  -- returns idx, olines
+function O.lua(otl, specs)
+  -- outliner using lua spec patterns: returns idx, olines
   local idx, olines = {}, {}
 
   if specs == nil or #specs < 1 then
@@ -130,11 +133,6 @@ local function buf_sanitize(buf)
   end
   return nil
 end
-
---[[ delme
-
-
---]]
 
 --[[ WINDOW funcs ]]
 
@@ -280,49 +278,6 @@ local function ts_outline(bufnr)
   return idx, blines
 end
 
---[[ RGX funcs ]]
-
-local RGX = {
-  rfc = {
-    '^%d.*',
-    -- do not use ^%u.* since that'll match page header/footer as well
-    '^Network.*',
-    '^Request.*',
-    '^Category.*',
-    '^Copyright.*',
-    '^Status.*',
-    '^Table.*',
-    '^Abstract.*',
-    '^Appendix.*',
-    '^Acknowledgements.*',
-    '^Contributors.*',
-    '^Author.*',
-  },
-}
-
-local function rgx_outline(bufnr)
-  -- return two lists: {linenrs}, {lines} based on a filetype specific TS query
-  local idx, olines = {}, {}
-  local ft = vim.bo[bufnr].filetype
-  local rgxs = RGX[ft]
-
-  if rgxs == nil then
-    return idx, olines
-  end
-
-  local blines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-  for n, line in ipairs(blines) do
-    for _, rgx in ipairs(rgxs) do
-      if string.match(line, rgx) then
-        idx[#idx + 1] = n
-        olines[#olines + 1] = line
-        break -- on first match
-      end
-    end
-  end
-  return idx, olines
-end
-
 --[[ OTL funcs ]]
 
 --- get outline, set otl.idx and fill otl.obuf with lines
@@ -336,7 +291,7 @@ local function otl_outline(otl)
   local spec = M.config.outline[ft]
 
   if spec == nil then
-    vim.notify('filetype ' .. ft .. 'not supported')
+    vim.notify('filetype "' .. ft .. '" not supported')
     return
   end
 
@@ -347,13 +302,6 @@ local function otl_outline(otl)
   end
 
   local idx, olines = parser(otl, spec)
-
-  -- local idx, olines
-  -- if M.queries[ft] then
-  --   idx, olines = ts_outline(otl.sbuf)
-  -- else
-  --   idx, olines = rgx_outline(otl.sbuf)
-  -- end
 
   if #idx == 0 or #olines == 0 then
     local msg = string.format('Parser %s failed for filetype %s', spec.parser, ft)
@@ -672,6 +620,36 @@ M.down = function()
   win_centerline(otl.swin, line)
 end
 
+--[[ Layout
+
+  Root
+  |- A
+  |  |- A1
+  |  |  |- x
+  |  |  |- y
+  |  |- A2
+  |  |  |- y
+  |  |- A3
+  |  |  |- y
+  |  |  |- z
+  |- B
+     |- A1
+     |  |- z
+     |- A3
+        |- y
+        |- x
+
+  cap = { A = {
+               A1 = { x },
+               A3 = { y, z }
+          },
+          B = {
+                A3 = { x }
+          }
+        }
+
+
+--]]
 local function get_fragments(node, fragments)
   local frags = {}
   for child, name in node:iter_children() do
@@ -700,80 +678,41 @@ local function print_tree(node, level)
   if stop_recurse[node:type()] then
     return
   end
+
   level = level or 0
   local pfx = string.rep(' ', level, '|')
+
   for child, name in node:iter_children() do
     local row, col, len = child:start()
     local ctype = child:type()
     local ctext = ''
+
     if col == 0 and level == 0 then
       vim.print(' ')
-      vim.print(vim.api.nvim_buf_get_lines(0, row, row + 1, false)[1])
+      vim.print(string.format('[%03d] %s', row + 1, vim.api.nvim_buf_get_lines(0, row, row + 1, false)[1]))
     end
-    name = name or 'n/a'
+
     if gettxt[ctype] then
       ctext = ' ---> txt(' .. vim.treesitter.get_node_text(child, 0, {}) .. ')'
     end
 
+    name = name or 'n/a'
     vim.print(string.format('%s- [%d](%4d, %4d) type(%s), name(%s)%s', pfx, level, row, col, child:type(), name, ctext))
     print_tree(child, level + 1)
   end
 end
 
 M.test = function()
-  -- temporarily for testing treesitter stuff
-  local blines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+  -- TODO: delete/comment out when done testing/developing
+  -- :Show lua require'pdh.outline'.test() -> results in new Tab
   local parser = vim.treesitter.get_parser(0, 'lua', {})
   local tree = parser:parse(true)
   local root = tree[1]:root()
 
   print_tree(root)
-
-  --[[
-  -- traverse toplevel nodes under root
-  for n = 1, root:child_count() - 1 do
-    local parent = root:child(n)
-    local row, col, _ = parent:start()
-    row, col = row + 1, col + 1
-    local bline = blines[row]
-    local ptype = parent:type()
-    P('----------------------------------------------------------------------------------')
-    P(string.format('[%03d] %s', row, bline))
-    P(string.format(' |= (%s)', ptype))
-
-    if ptype == 'function_declaration' then
-      local entry = table.concat(get_fragments(parent, { 'identifier', 'dot_index_expression', 'parameters' }), '')
-      for node, name in parent:iter_children() do
-        local ntype = node:type()
-        local txt = vim.treesitter.get_node_text(node, 0)
-        P(string.format('  |- (%s) | %s | "%s" | %s', ntype, name, txt, node:sexpr()))
-      end
-      P(string.format('  `--> %s', entry))
-    else
-      for node, name in parent:iter_children() do
-        local ntype = node:type()
-        local txt = vim.treesitter.get_node_text(node, 0)
-        P(string.format('  |- (%s) | %s | "%s" | %s', ntype, name, txt, node:sexpr()))
-      end
-    end
-  end
-
-  P(string.rep('~', 40))
-  print_tree(root)
-  return
-  -- skip
-  -- local qry = vim.treesitter.query.get('lua', 'code')
-  -- for id, node, meta, match, t in qry:iter_captures(root, 0) do
-  --   name = qry.captures[id]
-  --   local row1, col1, row2, col2 = node:range()
-  --   local text = vim.treesitter.get_node_text(node, 0)
-  --   if row1 == 443 then
-  --     P({ name, node:type(), 'range:', { node:range() }, 'info:', match:info(), text })
-  --   end
-  -- end
-]]
 end
--- : luafile % -> will reload the module
+
+-- :luafile % -> will reload the module
 require('plenary.reload').reload_module 'pdh.outline'
 
 return M
