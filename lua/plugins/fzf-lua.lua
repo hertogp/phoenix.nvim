@@ -7,7 +7,20 @@ return {
   'ibhagwan/fzf-lua',
   -- optional for icon support
   dependencies = { 'echasnovski/mini.icons' },
-  opts = {},
+  opts = {
+    helptags = {
+      actions = {
+        ['default'] = {
+          fn = function(selected, ctx)
+            -- edit help in new tab
+            -- setup q since augroup EasyQuit doesn't work here?
+            require 'fzf-lua'.actions.file_tabedit(selected, ctx)
+            vim.api.nvim_buf_set_keymap(0, 'n', 'q', ':close!<cr>', {})
+          end,
+        },
+      },
+    },
+  },
   -- grep = {
   --   rg_glob = true, -- search <term> -- *.md *.txt !spec
   --   glob_flag = '--iglob'  -- use glob for case sensitive globbing
@@ -64,16 +77,14 @@ return {
     },
 
     -- help
-    -- FIXME: delmevim.treesitter.language.inspectce.
-    -- NOTE: delme
     -- TODO: when selecting help, make it appear in its own tab using its full height and width
     {
-      '<space>h',
+      '<space>H',
       ":lua require 'fzf-lua'.helptags({query = vim.fn.expand('<cword>')})<cr>",
       desc = 'find neovim [h]elp for cword',
     },
     {
-      '<space>H',
+      '<space>h',
       ":lua require 'fzf-lua'.helptags()<cr>",
       desc = 'find neovm [h]elp via helptags',
     },
@@ -81,10 +92,17 @@ return {
     { '<space>k', ":lua require 'fzf-lua'.keymaps()<cr>", desc = 'find [k]ey mappings' },
     { '<space>M', ":lua require 'fzf-lua'.man_pages()<cr>", desc = 'find [M]an pages' },
     {
-      '<space>d',
+      '<space>D',
       ":lua require 'fzf-lua'.diagnostics_document()<cr>",
       desc = 'find diagnostics of document',
     },
+    {
+      '<space>d',
+      ':lua vim.diagnostic.open_float()<cr>',
+      -- vim.diagnostic.enable(not vim.diagnostic.is_enabled())
+      desc = 'toggle Diasnostics',
+    },
+    { '<leader>D', ':lua vim.diagnostic.enable(not vim.diagnostic.is_enabled())<cr>', desc = 'toggle diagnostics' },
 
     -- grep
     { '<leader>w', ":lua require 'fzf-lua'.grep_cword()<cr>", desc = 'find current word' },
