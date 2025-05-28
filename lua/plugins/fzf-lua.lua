@@ -10,13 +10,15 @@ return {
   opts = {
     helptags = {
       actions = {
-        ['default'] = {
-          fn = function(selected, ctx)
-            -- edit help in new tab
-            -- setup q since augroup EasyQuit doesn't work here?
-            P(selected)
-            require 'fzf-lua'.actions.file_tabedit(selected, ctx)
-            vim.api.nvim_buf_set_keymap(0, 'n', 'q', ':close!<cr>', {})
+        ['enter'] = {
+          fn = function(selected, _)
+            -- see the defaults.lua file i/t repo, search ctrl-t
+            -- read help in new tab, 'fzf-lua'.actions.file.tab_edit opens last
+            -- location instead of searching for selected help entry
+            -- selected is { "term <wspace filler> file.txt full-path" }
+            -- require 'fzf-lua'.actions.help_tab(selected, _opts)
+            local term = string.match(selected[1], '^%S+')
+            vim.cmd('tab help ' .. term)
           end,
         },
       },
