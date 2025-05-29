@@ -48,7 +48,8 @@ local function create_floating_window(opts)
   return { buf = buf, win = win }
 end
 
-local toggle_terminal = function()
+local toggle_terminal = function(cd)
+  P(cd)
   if not vim.api.nvim_win_is_valid(state.floating.win) then
     -- expand bufdir *before* create_floating_window
     local chdir = 'cd ' .. vim.fn.expand('%:p:h') .. '\n'
@@ -67,5 +68,6 @@ local toggle_terminal = function()
 end
 
 -- Create a floating window with default dimensions
-vim.api.nvim_create_user_command('Floaterminal', toggle_terminal, {})
+vim.api.nvim_create_user_command('Floaterminal', toggle_terminal, { nargs = '*' })
 vim.keymap.set({ 'n', 't' }, '<leader>t', toggle_terminal)
+vim.keymap.set({ 'n', 't' }, '<leader>T', ':Floaterminal expand(getcwd())<cr>')
