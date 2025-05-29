@@ -27,6 +27,7 @@ TODO's
 
 local M = {}
 
+-- TODO: M.queries is obsolete
 M.queries = {
   -- Filetype specific tree-sitter queries that yield an outline
   -- see https://github.com/elixir-lang/tree-sitter-elixir/tree/main/queries
@@ -44,25 +45,6 @@ M.queries = {
     ((call target: (((identifier) ((arguments) @a)) @x)(#eq? @x "defstruct")) (#join! "head" "" "[S] " @a))
     ((call target: (((identifier) ((arguments) @a)) @x)(#eq? @x "use")) (#join! "head" "" "[U] " @a))
   ]],
-
-  -- (((unary_operator (call (identifier) @h)) @head) (#not-any-of? @h "spec" "doc" "moduledoc"))
-
-  lua = [[
-    (((comment) @c (#lua-match? @c "^--%[%[[^\n]+%]%]$")) (#join! "head"  "" "[-] " @c))
-    ((function_declaration (identifier) @a (parameters) @b (#join! "head" "" "[f] " @a @b)))
-    ((function_declaration (dot_index_expression) @a (parameters) @b (#join! "head" "" "[f] " @a @b)))
-    ((assignment_statement
-      ((variable_list) @a) (("=") @b)
-      (expression_list (function_definition (("function") @c) ((parameters)@d))))
-      (#join! "head" "" "[f] " @a " " @b " " @c @d))
-    (((assignment_statement) @head) (#join! "head" "" "[s] " @head))
-    (((variable_declaration) @head) (#join! "head" "" "[v] " @head))
-    ]],
-
-  markdown = [[
-    ((section (atx_heading) @head) (#join! "head" "" @head))
-    ((setext_heading (paragraph) @head) (#join! "head" "" @head))
-  ]],
 }
 
 M.depth = {
@@ -76,9 +58,25 @@ M.depth = {
 
 local O = {}
 
+--[[ O.lua ]]
+
 function O.lua(otl, specs)
-  -- outliner using lua spec patterns: returns idx, olines
+  -- returns idx, olines using lua spec patterns
+  -- lua specs = {
+  --   parser = 'lua',
+  --   { pattern, [skip=true], [symbol=' ']}, = capture pattern
+  --   ...
+  -- }
+  --
+  -- captures of a specification pattern are simply glued together
+
   local idx, olines = {}, {}
+  local ft = vim.bo[otl.sbuf].filetype
+  local specs = M.config.outline[ft]
+  if specs == nil then
+    vim.notify('filetype ' .. ft .. ' has no specs', vim.log.levels.ERROR)
+    return {}, {}
+  end
 
   if specs == nil or #specs < 1 then
     vim.notify('oops1', vim.log.levels.ERROR)
@@ -170,51 +168,57 @@ end
 -- opts:table - force:boolean, all:boolean
 vim.treesitter.query.add_directive('join!', joincaptures, { force = true })
 
-local function ts_outline(bufnr)
-  -- return two lists: {linenrs}, {lines} based on a filetype specific TS query
-  local ft = vim.bo[bufnr].filetype
-  local max_depth = M.depth[ft] or 0
-  local qry = M.queries[ft]
-  if qry == nil then
+function O.scm(otl, specs)
+  -- returns idx, olines using a TS query
+  -- 'config.outline.<ftype>' = {
+  --   parser = 'scm',           -- these are the scm specs
+  --   language = '..'           -- language name for <ftype>, e.g. 'lua'
+  --   query = 'outline'         -- name of the outline scm query file to load
+  --   depth = 0 .. n            -- max_depth to traverse (default: 0)
+  -- }
+  --
+  local max_depth = specs.depth or 0
+  local language, query = specs.language, specs.query
+  local ts_query = vim.treesitter.query.get(language, query)
+  if ts_query == nil then
+    vim.notify(string.format('[error](%s) query %s not found or invalid', language, query), vim.log.levels.ERROR)
     return {}, {}
   end
 
-  local query = vim.treesitter.query.parse(ft, qry)
-
-  local parser = vim.treesitter.get_parser(bufnr, ft, {})
-  if parser == nil then
+  local parser, err = vim.treesitter.get_parser(otl.sbuf, language, {})
+  if err ~= nil or parser == nil then
+    vim.notify(vim.inspect(err), vim.log.levels.ERROR)
     return {}, {}
   end
 
   local tree = parser:parse()
   if tree == nil then
+    vim.notify('[error] no tree returned by query parser', vim.log.levels.ERROR)
     return {}, {}
   end
 
   local root = tree[1]:root()
   if root == nil then
-    vim.notify('[ERROR] no AST root available: ' .. ft, vim.log.levels.ERROR)
+    vim.notify('[error] no CST root available: ' .. language, vim.log.levels.ERROR)
     return {}, {}
   end
 
-  local blines = {}
+  local olines = {}
   local idx = {}
-  -- local lines
+  -- or query:iter_matches ?
   -- for _, node, meta in query:iter_captures(root, 0, 0, -1) do
-  for _, node, meta in query:iter_captures(root, bufnr) do
+  for _, node, meta in ts_query:iter_captures(root, otl.sbuf) do
     local depth = ts_depth(node, root)
     local linenr = node:range()
     linenr = linenr + 1
     local prev_line = idx[#idx] or -1
     if depth <= max_depth and linenr ~= prev_line and meta.head then
-      blines[#blines + 1] = ' ' .. meta.head
+      olines[#olines + 1] = ' ' .. meta.head
       idx[#idx + 1] = linenr
     end
   end
-  return idx, blines
+  return idx, olines
 end
-
-function O.scm(otl, specs) end
 
 --[[ BUFFER funcs ]]
 
@@ -274,23 +278,23 @@ local function otl_outline(otl)
   -- otl.idx = { 1, 10, 20, 30, 60, 100 }
 
   local ft = vim.bo[otl.sbuf].filetype
-  local spec = M.config.outline[ft]
+  local specs = M.config.outline[ft]
 
-  if spec == nil then
+  if specs == nil then
     vim.notify('filetype "' .. ft .. '" not supported')
     return
   end
 
-  local parser = O[spec.parser]
+  local parser = O[specs.parser]
   if parser == nil then
-    vim.notify('parser "' .. spec.parser .. '" for filetype ' .. ft .. ' unknown', vim.log.levels.ERROR)
+    vim.notify('parser "' .. specs.parser .. '" for filetype ' .. ft .. ' unknown', vim.log.levels.ERROR)
     return
   end
 
-  local idx, olines = parser(otl, spec)
+  local idx, olines = parser(otl, specs)
 
   if #idx == 0 or #olines == 0 then
-    local msg = string.format('Parser %s failed for filetype %s', spec.parser, ft)
+    local msg = string.format('Parser %s failed for filetype %s', specs.parser, ft)
     vim.notify(msg, vim.log.levels.ERROR)
     return
   end
@@ -444,18 +448,10 @@ M.config = {
       { '^###+%s+(.*)$', symbol = '   ' },
     },
     lua = {
-      parser = 'treesitter',
-      [[
-        (((comment) @c (#lua-match? @c "^--%[%[[^\n]+%]%]$")) (#join! "head"  "" "[-] " @c))
-        ((function_declaration (identifier) @a (parameters) @b (#join! "head" "" "[f] " @a @b)))
-        ((function_declaration (dot_index_expression) @a (parameters) @b (#join! "head" "" "[f] " @a @b)))
-        ((assignment_statement
-          ((variable_list) @a) (("=") @b)
-          (expression_list (function_definition (("function") @c) ((parameters)@d))))
-          (#join! "head" "" "[f] " @a " " @b " " @c @d))
-        (((assignment_statement) @head) (#join! "head" "" "[s] " @head))
-        (((variable_declaration) @head) (#join! "head" "" "[v] " @head))
-      ]],
+      parser = 'scm',
+      language = 'lua',
+      query = 'outline',
+      depth = 1,
     },
   },
 }

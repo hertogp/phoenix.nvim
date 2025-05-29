@@ -125,6 +125,11 @@ go.startofline = false
 
 -- Show
 --------
+--- vim.{b, t, w, g} buffer, tab, window, global variables
+--- vim.{b,t,w}[id].name specific buffer, window or tab variables
+--- vim.{bo, to, wo, o} (current) buffer, tab, window or global options
+--- vim.{opt, opt_local} global/local (buffer/tab/window) options
+---
 -- run a vim command and show it's output, e.g.
 --   Show map         -- show all mappings
 --   Show map <buffer> -- show buffer local keymap
