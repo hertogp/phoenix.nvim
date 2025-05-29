@@ -55,57 +55,7 @@ M.depth = {
   markdown = 6,
 }
 
---[[ OUTLINERS ]]
-
-local O = {}
-
---[[ O.lua ]]
-
-function O.lua(otl, specs)
-  -- returns idx, olines using lua spec patterns
-  -- lua specs = {
-  --   parser = 'lua',
-  --   { pattern, [skip=true], [symbol=' ']}, = capture pattern
-  --   ...
-  -- }
-  --
-  -- captures of a specification pattern are simply glued together
-
-  local idx, olines = {}, {}
-  local ft = vim.bo[otl.sbuf].filetype
-  local specs = M.config.outline[ft]
-  if specs == nil then
-    vim.notify('filetype ' .. ft .. ' has no specs', vim.log.levels.ERROR)
-    return {}, {}
-  end
-
-  if specs == nil or #specs < 1 then
-    vim.notify('oops1', vim.log.levels.ERROR)
-    return idx, olines
-  end
-
-  local blines = vim.api.nvim_buf_get_lines(otl.sbuf, 0, -1, false)
-  for linenr, line in ipairs(blines) do
-    for _, spec in ipairs(specs) do
-      local match = { string.match(line, spec[1]) }
-      if #match > 0 then
-        if not spec.skip then
-          local entry = table.concat(match, ' ') -- combine the parts
-          entry = string.gsub(entry, '%s+$', '') -- remove trailing spaces
-          local symbol = spec.symbol or ''
-
-          idx[#idx + 1] = linenr
-          olines[#olines + 1] = string.format('%s%s', symbol, entry)
-        end
-        break
-      end
-    end
-  end
-
-  return idx, olines
-end
-
---[[ O.scm -- TS funcs ]]
+--[[ HELPERS ]]
 
 local function ts_depth(node, root)
   -- how deep is node relative to root?
@@ -169,6 +119,100 @@ end
 -- opts:table - force:boolean, all:boolean
 vim.treesitter.query.add_directive('join!', joincaptures, { force = true })
 
+local function buf_sanitize(buf)
+  -- return a real, valid buffer number or nil
+  if buf == nil or buf == 0 then
+    return vim.api.nvim_get_current_buf()
+  elseif vim.api.nvim_buf_is_valid(buf) then
+    return buf
+  end
+  return nil
+end
+
+--[[ WINDOW funcs ]]
+
+local function win_centerline(win, linenr)
+  -- try to center linenr in window win
+  if vim.api.nvim_win_is_valid(win) then
+    pcall(vim.api.nvim_win_set_cursor, win, { linenr, 0 })
+    vim.api.nvim_win_call(win, function()
+      vim.cmd 'normal! zz'
+    end)
+  end
+end
+
+local function win_isvalid(winid)
+  if type(winid) == 'number' then
+    return vim.api.nvim_win_is_valid(winid)
+  else
+    return false
+  end
+end
+
+local function win_close(winid)
+  -- safely close a window by its id.
+  if win_isvalid(winid) then
+    vim.api.nvim_win_close(winid, true)
+  end
+end
+
+local function win_goto(winid)
+  if winid == 0 or winid == vim.api.nvim_get_current_win() then
+    return
+  end
+  if vim.api.nvim_win_is_valid(winid) then
+    vim.api.nvim_set_current_win(winid)
+  end
+end
+
+--[[ OUTLINERS ]]
+
+local O = {}
+
+function O.lua(otl, specs)
+  -- returns idx, olines using lua spec patterns
+  -- lua specs = {
+  --   parser = 'lua',
+  --   { pattern, [skip=true], [symbol=' ']}, = capture pattern
+  --   ...
+  -- }
+  --
+  -- captures of a specification pattern are simply glued together
+
+  local idx, olines = {}, {}
+  local ft = vim.bo[otl.sbuf].filetype
+  local specs = M.config.outline[ft]
+  if specs == nil then
+    vim.notify('filetype ' .. ft .. ' has no specs', vim.log.levels.ERROR)
+    return {}, {}
+  end
+
+  if specs == nil or #specs < 1 then
+    vim.notify('oops1', vim.log.levels.ERROR)
+    return idx, olines
+  end
+
+  local blines = vim.api.nvim_buf_get_lines(otl.sbuf, 0, -1, false)
+  for linenr, line in ipairs(blines) do
+    for _, spec in ipairs(specs) do
+      local match = { string.match(line, spec[1]) }
+      if #match > 0 then
+        if not spec.skip then
+          local entry = table.concat(match, ' ') -- combine the parts
+          entry = string.gsub(entry, '%s+$', '') -- remove trailing spaces
+          local symbol = spec.symbol or ''
+
+          idx[#idx + 1] = linenr
+          olines[#olines + 1] = string.format('%s%s', symbol, entry)
+        end
+        break
+      end
+    end
+  end
+
+  return idx, olines
+end
+
 function O.scm(otl, specs)
   -- returns idx, olines using a TS query
   -- 'config.outline.<ftype>' = {
@@ -219,54 +263,6 @@ function O.scm(otl, specs)
     end
   end
   return idx, olines
-end
-
---[[ BUFFER funcs ]]
-
-local function buf_sanitize(buf)
-  -- return a real, valid buffer number or nil
-  if buf == nil or buf == 0 then
-    return vim.api.nvim_get_current_buf()
-  elseif vim.api.nvim_buf_is_valid(buf) then
-    return buf
-  end
-  return nil
-end
-
---[[ WINDOW funcs ]]
-
-local function win_centerline(win, linenr)
-  -- try to center linenr in window win
-  if vim.api.nvim_win_is_valid(win) then
-    pcall(vim.api.nvim_win_set_cursor, win, { linenr, 0 })
-    vim.api.nvim_win_call(win, function()
-      vim.cmd 'normal! zz'
-    end)
-  end
-end
-
-local function win_isvalid(winid)
-  if type(winid) == 'number' then
-    return vim.api.nvim_win_is_valid(winid)
-  else
-    return false
-  end
-end
-
-local function win_close(winid)
-  -- safely close a window by its id.
-  if win_isvalid(winid) then
-    vim.api.nvim_win_close(winid, true)
-  end
-end
-
-local function win_goto(winid)
-  if winid == 0 or winid == vim.api.nvim_get_current_win() then
-    return
-  end
-  if vim.api.nvim_win_is_valid(winid) then
-    vim.api.nvim_set_current_win(winid)
-  end
 end
 
 --[[ OTL funcs ]]
@@ -426,7 +422,8 @@ local function otl_select(sline)
   end
 end
 
---['[ MODULE ]]
+--[[ MODULE ]]
+
 M.config = {
   outline = {
     -- outliner specs by filetype -> spec (these are parser specific)
@@ -611,6 +608,8 @@ M.down = function()
   line = otl.idx[line]
   win_centerline(otl.swin, line)
 end
+
+--[[ EXPERIMENT outliner CST ]]
 
 local function get_fragments(node, fragments)
   local frags = {}
