@@ -48,18 +48,27 @@ local function create_floating_window(opts)
   return { buf = buf, win = win }
 end
 
-local toggle_terminal = function(cd)
-  P(cd)
+local toggle_terminal = function(args)
+  local chdir -- expand before creating floating window(!)
+  if args.args == '@prj' then
+    -- change working directory to working directory
+    chdir = 'cd ' .. Project_root(0) .. '\n'
+  elseif args.args == '@buf' then
+    -- change working directory to buf dir
+    chdir = 'cd ' .. vim.fn.expand('%:p:h') .. '\n'
+  else
+    chdir = 'cd ' .. vim.fn.expand(args.args) .. '\n'
+  end
+
   if not vim.api.nvim_win_is_valid(state.floating.win) then
     -- expand bufdir *before* create_floating_window
-    local chdir = 'cd ' .. vim.fn.expand('%:p:h') .. '\n'
     state.floating = create_floating_window { buf = state.floating.buf }
     -- must be after `create_floating_window`, which sets state.floating.buf
     local bufnr = state.floating.buf
+
     if vim.bo[bufnr].buftype ~= 'terminal' then
       vim.cmd.terminal()
       vim.cmd.startinsert()
-      -- change working directory to buf dir
       vim.fn.chansend(vim.b[bufnr].terminal_job_id, chdir)
     end
   else
@@ -69,5 +78,5 @@ end
 
 -- Create a floating window with default dimensions
 vim.api.nvim_create_user_command('Floaterminal', toggle_terminal, { nargs = '*' })
-vim.keymap.set({ 'n', 't' }, '<leader>t', toggle_terminal)
-vim.keymap.set({ 'n', 't' }, '<leader>T', ':Floaterminal expand(getcwd())<cr>')
+vim.keymap.set({ 'n', 't' }, '<leader>T', ':Floaterminal @buf<cr>')
+vim.keymap.set({ 'n', 't' }, '<leader>t', ':Floaterminal @prj<cr>')
