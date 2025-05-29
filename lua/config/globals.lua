@@ -177,19 +177,25 @@ api.nvim_create_user_command(
 api.nvim_create_user_command('ShowVarsGlobal', 'Show let g:', { desc = 'Show global vars' })
 api.nvim_create_user_command('ShowVarsBuffer', 'Show let b:', { desc = 'Show buffer vars' })
 api.nvim_create_user_command('ShowVarsWindow', 'Show let w:', { desc = 'Show window vars' })
+api.nvim_create_user_command('ShowVarsVim', 'Show let v:', { desc = 'Show Vim (predefined) vars' })
 api.nvim_create_user_command('ShowOptionsAll', 'Show set all', { desc = 'Show all options' })
+api.nvim_create_user_command('ShowOptionsLocal', 'Show setlocal all', { desc = 'Show buf/win local options' })
+api.nvim_create_user_command('ShowOptionsGlobal', 'Show setglobal all', { desc = 'Show buf/win global options' })
 api.nvim_create_user_command(
   'ShowOptionsInfo',
   'Show lua =vim.api.nvim_get_all_options_info()',
   { desc = 'Show opt.info' }
 )
-api.nvim_create_user_command('ShowOptionsLocal', 'Show setlocal all', { desc = 'Show all local buf/win options' })
 api.nvim_create_user_command('ShowKeys', 'Show map', { desc = 'Show buffer local keys' })
 api.nvim_create_user_command('ShowBufferKeys', 'Show map <buffer>', { desc = 'Show buffer local keys' })
 api.nvim_create_user_command('ShowVimTable', 'Show lua =vim', { desc = 'Show Lua vim table' })
 api.nvim_create_user_command('ShowVimApi', 'Show lua =vim.api', { desc = 'Show Lua vim.api table' })
 api.nvim_create_user_command('ShowVimApiInfo', 'Show lua =vim.print(vim.fn.api_info())', { desc = 'Show vim.api info' })
 api.nvim_create_user_command('ShowVimFn', 'Show lua =vim.api', { desc = 'Show Lua vim.fn table' })
+api.nvim_create_user_command('ShowSysEnv', 'Show lua =vim.fn.environ()', { desc = 'Show shell env' })
+api.nvim_create_user_command('ShowHighlights', 'Show hi', { desc = 'Show highlights (without highlighting)' })
+-- vim.spairs is (key) sorted pairs, see below for nice table func additions
+-- https://github.com/premake/premake-core/blob/master/src/base/table.lua
 
 local function save_keep_pos()
   -- update a buffer (i.e. write if modified) without changing its split views
