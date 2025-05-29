@@ -126,10 +126,6 @@ go.startofline = false
 -- Show
 --------
 -- run a vim command and show it's output, e.g.
---   Show let g:      -- show all global variables in a new tab
---   Show let b:      -- show all buffer variables in a new tab
---   Show let w:      -- show all window variables in a new tab
---   Show lua =vim    -- show the lua vim table
 --   Show map         -- show all mappings
 --   Show map <buffer> -- show buffer local keymap
 --   Show echo &runtimepath (or &rtp) and do s/,/\r/g
@@ -137,8 +133,6 @@ go.startofline = false
 --   Show lua =vim.opt.runtimepath
 --   Show lua =vim.opt.packpath
 --   Show echo nvim_get_runtime_file("lua/", v:true)
---   Show set! or Show set! all (show (all) options that differ from default)
---   Show lua =print(vim.inspect( vim.fn.api_info() ))
 --   Show echo api_info().functions->map("v:val.name")->filter("v:val=~'^nvim_buf'")
 local function show_in_tab(t)
   -- x = vim.api.nvim_exec(t.args, x)
@@ -180,6 +174,22 @@ api.nvim_create_user_command(
   show_in_tab,
   { complete = 'shellcmd', nargs = '+', desc = 'Show cmd output in a new tab' }
 )
+api.nvim_create_user_command('ShowVarsGlobal', 'Show let g:', { desc = 'Show global vars' })
+api.nvim_create_user_command('ShowVarsBuffer', 'Show let b:', { desc = 'Show buffer vars' })
+api.nvim_create_user_command('ShowVarsWindow', 'Show let w:', { desc = 'Show window vars' })
+api.nvim_create_user_command('ShowOptionsAll', 'Show set all', { desc = 'Show all options' })
+api.nvim_create_user_command(
+  'ShowOptionsInfo',
+  'Show lua =vim.api.nvim_get_all_options_info()',
+  { desc = 'Show opt.info' }
+)
+api.nvim_create_user_command('ShowOptionsLocal', 'Show setlocal all', { desc = 'Show all local buf/win options' })
+api.nvim_create_user_command('ShowKeys', 'Show map', { desc = 'Show buffer local keys' })
+api.nvim_create_user_command('ShowBufferKeys', 'Show map <buffer>', { desc = 'Show buffer local keys' })
+api.nvim_create_user_command('ShowVimTable', 'Show lua =vim', { desc = 'Show Lua vim table' })
+api.nvim_create_user_command('ShowVimApi', 'Show lua =vim.api', { desc = 'Show Lua vim.api table' })
+api.nvim_create_user_command('ShowVimApiInfo', 'Show lua =vim.print(vim.fn.api_info())', { desc = 'Show vim.api info' })
+api.nvim_create_user_command('ShowVimFn', 'Show lua =vim.api', { desc = 'Show Lua vim.fn table' })
 
 local function save_keep_pos()
   -- update a buffer (i.e. write if modified) without changing its split views

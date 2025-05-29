@@ -1,21 +1,5 @@
 -- File: ~/.config/nvim/lua/pdh/outline.lua
-
---[[ funcs]]
-
-function A(args) end
-B = function(args) end
-local C = function(args) end
-D = {}
-function D.one(arg) end
-D['two'] = function(args) end
-
---[[ vars ]]
-
-GVAR1 = false
-GVAR2 = 'string'
-GVAR3 = { 'table' }
-
---[[ Find outline for various filetypes ]]
+-- Find outline for various filetypes
 
 --[[
 Behaviour
@@ -122,55 +106,7 @@ function O.lua(otl, specs)
   return idx, olines
 end
 
---[[ BUFFER funcs ]]
-
-local function buf_sanitize(buf)
-  -- return a real, valid buffer number or nil
-  if buf == nil or buf == 0 then
-    return vim.api.nvim_get_current_buf()
-  elseif vim.api.nvim_buf_is_valid(buf) then
-    return buf
-  end
-  return nil
-end
-
---[[ WINDOW funcs ]]
-
-local function win_centerline(win, linenr)
-  -- try to center linenr in window win
-  if vim.api.nvim_win_is_valid(win) then
-    pcall(vim.api.nvim_win_set_cursor, win, { linenr, 0 })
-    vim.api.nvim_win_call(win, function()
-      vim.cmd 'normal! zz'
-    end)
-  end
-end
-
-local function win_isvalid(winid)
-  if type(winid) == 'number' then
-    return vim.api.nvim_win_is_valid(winid)
-  else
-    return false
-  end
-end
-
-local function win_close(winid)
-  -- safely close a window by its id.
-  if win_isvalid(winid) then
-    vim.api.nvim_win_close(winid, true)
-  end
-end
-
-local function win_goto(winid)
-  if winid == 0 or winid == vim.api.nvim_get_current_win() then
-    return
-  end
-  if vim.api.nvim_win_is_valid(winid) then
-    vim.api.nvim_set_current_win(winid)
-  end
-end
-
---[[ TS funcs ]]
+--[[ O.scm -- TS funcs ]]
 
 local function ts_depth(node, root)
   -- how deep is node relative to root?
@@ -276,6 +212,56 @@ local function ts_outline(bufnr)
     end
   end
   return idx, blines
+end
+
+function O.scm(otl, specs) end
+
+--[[ BUFFER funcs ]]
+
+local function buf_sanitize(buf)
+  -- return a real, valid buffer number or nil
+  if buf == nil or buf == 0 then
+    return vim.api.nvim_get_current_buf()
+  elseif vim.api.nvim_buf_is_valid(buf) then
+    return buf
+  end
+  return nil
+end
+
+--[[ WINDOW funcs ]]
+
+local function win_centerline(win, linenr)
+  -- try to center linenr in window win
+  if vim.api.nvim_win_is_valid(win) then
+    pcall(vim.api.nvim_win_set_cursor, win, { linenr, 0 })
+    vim.api.nvim_win_call(win, function()
+      vim.cmd 'normal! zz'
+    end)
+  end
+end
+
+local function win_isvalid(winid)
+  if type(winid) == 'number' then
+    return vim.api.nvim_win_is_valid(winid)
+  else
+    return false
+  end
+end
+
+local function win_close(winid)
+  -- safely close a window by its id.
+  if win_isvalid(winid) then
+    vim.api.nvim_win_close(winid, true)
+  end
+end
+
+local function win_goto(winid)
+  if winid == 0 or winid == vim.api.nvim_get_current_win() then
+    return
+  end
+  if vim.api.nvim_win_is_valid(winid) then
+    vim.api.nvim_set_current_win(winid)
+  end
 end
 
 --[[ OTL funcs ]]
@@ -483,6 +469,14 @@ function M.open(buf)
     return
   end
 
+  -- otl = {
+  --   sbuf = source buffer number
+  --   swin = source window number
+  --   obuf = outline buffer number
+  --   owin = outline window number
+  --   tick = last changedtick number
+  --   idx = sbuf linenr pointed to by obuf linenr
+  -- }
   local otl = {}
 
   -- create new otl window with outline
@@ -620,36 +614,6 @@ M.down = function()
   win_centerline(otl.swin, line)
 end
 
---[[ Layout
-
-  Root
-  |- A
-  |  |- A1
-  |  |  |- x
-  |  |  |- y
-  |  |- A2
-  |  |  |- y
-  |  |- A3
-  |  |  |- y
-  |  |  |- z
-  |- B
-     |- A1
-     |  |- z
-     |- A3
-        |- y
-        |- x
-
-  cap = { A = {
-               A1 = { x },
-               A3 = { y, z }
-          },
-          B = {
-                A3 = { x }
-          }
-        }
-
-
---]]
 local function get_fragments(node, fragments)
   local frags = {}
   for child, name in node:iter_children() do
