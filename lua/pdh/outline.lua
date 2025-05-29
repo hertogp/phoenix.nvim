@@ -27,34 +27,6 @@ TODO's
 
 local M = {}
 
--- TODO: M.queries is obsolete
-M.queries = {
-  -- Filetype specific tree-sitter queries that yield an outline
-  -- see https://github.com/elixir-lang/tree-sitter-elixir/tree/main/queries
-  elixir = [[
-    (((comment) @c (#lua-match? @c "^[%s#]+%[%[[^\n]+%]%]")) (#join! "head" "" "[c] " @c))
-    ((call target: (((identifier) ((arguments) @a)) @x)(#eq? @x "def")) (#join! "head" "" "[f] " @a))
-    ((call target: (((identifier) ((arguments) @a)) @x)(#eq? @x "defp")) (#join! "head" "" "[p] " @a))
-    ((call target: (((identifier) ((arguments) @a)) @x)(#eq? @x "test")) (#join! "head" "" "[t] " @a))
-    ((call target: (((identifier) ((arguments) @a)) @x)(#eq? @x "describe")) (#join! "head" "" "[d] " @a))
-    ((call target: (((identifier) ((arguments) @a)) @x)(#any-of? @x "defguard" "defguardp")) (#join! "head" "" "[g] " @a))
-    ((call target: (((identifier) ((arguments) @a)) @x)(#any-of? @x "defmodule" "alias")) (#join! "head" "" "[M] " @x " " @a))
-    ((((unary_operator (call (((identifier) @i)(#not-any-of? @i "doc" "spec" "typedoc" "moduledoc")))) @m))(#join! "head" "" "[@] " @m))
-    ((call target: (((identifier) ((arguments) @a)) @x)(#eq? @x "defimpl")) (#join! "head" "" "[I] " @a))
-    ((call target: (((identifier) ((arguments) @a)) @x)(#eq? @x "defmacro")) (#join! "head" "" "[m] " @a))
-    ((call target: (((identifier) ((arguments) @a)) @x)(#eq? @x "defstruct")) (#join! "head" "" "[S] " @a))
-    ((call target: (((identifier) ((arguments) @a)) @x)(#eq? @x "use")) (#join! "head" "" "[U] " @a))
-  ]],
-}
-
--- TODO: obsolete once elixir has its own config.outline.elixer entry
-M.depth = {
-  -- max depth at which a tree-sitter query can generate a heading
-  elixir = 5,
-  lua = 1,
-  markdown = 6,
-}
-
 --[[ HELPERS ]]
 
 local function ts_depth(node, root)
@@ -451,6 +423,12 @@ M.config = {
       language = 'lua',
       query = 'outline',
       depth = 1,
+    },
+    elixir = {
+      parser = 'scm',
+      language = 'elixir',
+      query = 'outline',
+      depth = 5,
     },
   },
 }
