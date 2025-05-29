@@ -669,11 +669,29 @@ local stop_recurse = {
 }
 local gettxt = {
   function_declaration = false,
+  function_definition = false,
   identifier = true,
   parameters = true,
   dot_index_expression = true,
   bracket_index_expression = true,
 }
+
+local function walk(node, acc)
+  acc = acc or {}
+  if stop_recurse[node:type()] then
+    return acc
+  end
+  for child, name in node:iter_children() do
+    local ctype = child:type()
+    if gettxt[ctype] then
+      acc[#acc + 1] = { ctype, name, vim.treesitter.get_node_text(child, 0, {}) }
+    elseif gettxt[ctype] == false then
+      acc[#acc + 1] = { ctype, name, nil }
+    end
+    acc = walk(child, acc)
+  end
+  return acc
+end
 
 local function print_tree(node, level)
   if stop_recurse[node:type()] then
@@ -698,44 +716,32 @@ local function print_tree(node, level)
     end
 
     name = name or 'n/a'
-    vim.print(string.format('%s- [%d](%4d, %4d) type(%s), name(%s)%s', pfx, level, row, col, child:type(), name, ctext))
+    vim.print(string.format('%s- [%d](%d, %d) type(%s), name(%s)%s', pfx, level, row, col, child:type(), name, ctext))
     print_tree(child, level + 1)
   end
 end
 
-local function walk(node, acc)
-  acc = acc or {}
-  if stop_recurse[node:type()] then
-    return acc
-  end
-  for child, name in node:iter_children() do
-    local ctype = child:type()
-    if gettxt[ctype] then
-      acc[#acc + 1] = { ctype, name, vim.treesitter.get_node_text(child, 0, {}) }
-    elseif gettxt[ctype] == false then
-      acc[#acc + 1] = { ctype, name, nil }
-    end
-    acc = walk(child, acc)
-  end
-  return acc
-end
 M.test = function()
   -- TODO: delete/comment out when done testing/developing
   -- :Show lua require'pdh.outline'.test() -> results in new Tab
   local parser = vim.treesitter.get_parser(0, 'lua', {})
   local tree = parser:parse(true)
   local root = tree[1]:root()
+  local blines = vim.api.nvim_buf_get_lines(0, 1, -1, false)
 
   print_tree(root)
   vim.print(string.rep('=', 30))
 
   vim.print('walker')
   for child, name in root:iter_children() do
+    local row, _, _ = child:start()
     local ctype = child:type()
     name = name or 'unnamed'
-    vim.print(string.format('\ntype(%s), name(%s)', ctype, name))
+    vim.print('')
+    vim.print(string.format('[%03d] %s', row + 1, blines[row]))
+    vim.print(string.format('= type(%s), name(%s)', ctype, name))
     for _, elem in ipairs(walk(child)) do
-      P(elem)
+      vim.print(elem)
     end
   end
 end
