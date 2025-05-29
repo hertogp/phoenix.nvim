@@ -47,6 +47,7 @@ M.queries = {
   ]],
 }
 
+-- TODO: obsolete once elixir has its own config.outline.elixer entry
 M.depth = {
   -- max depth at which a tree-sitter query can generate a heading
   elixir = 5,
@@ -428,6 +429,7 @@ end
 --['[ MODULE ]]
 M.config = {
   outline = {
+    -- outliner specs by filetype -> spec (these are parser specific)
     rfc = {
       parser = 'lua',
       { '^RFC', skip = true }, -- skip page header
