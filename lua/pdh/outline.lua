@@ -224,7 +224,8 @@ function O.scm(otl, specs)
   local idx = {}
   -- or query:iter_matches ?
   -- for _, node, meta in query:iter_captures(root, 0, 0, -1) do
-  for _, node, meta in ts_query:iter_captures(root, otl.sbuf) do
+  for _, node, meta, _ in ts_query:iter_captures(root, otl.sbuf) do
+    -- ignoring the name and match return values of iter_captures
     local depth = ts_depth(node, root)
     local linenr = node:range()
     linenr = linenr + 1
@@ -433,6 +434,16 @@ M.config = {
   },
 }
 
+--[[ OTL table ]]
+-- otl = {
+--   sbuf = source buffer number
+--   swin = source window number
+--   obuf = outline buffer number
+--   owin = outline window number
+--   tick = last changedtick number
+--   idx = list of sbuf linenrs, indexed by obuf linenr
+-- }
+
 function M.open(buf)
   -- open otl window for given buf number
   buf = buf_sanitize(buf)
@@ -442,14 +453,6 @@ function M.open(buf)
     return
   end
 
-  -- otl = {
-  --   sbuf = source buffer number
-  --   swin = source window number
-  --   obuf = outline buffer number
-  --   owin = outline window number
-  --   tick = last changedtick number
-  --   idx = sbuf linenr pointed to by obuf linenr
-  -- }
   local otl = {}
 
   -- create new otl window with outline
