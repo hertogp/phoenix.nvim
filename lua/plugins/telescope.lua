@@ -13,16 +13,10 @@ return {
 
     keys = {
       --[[ TODO ]]
-      -- fix the todo color
       -- change below, use fzf-lua, move to fzg-lua plugin spec.
       -- misc
       { '<space>c', ":lua require'pdh.telescope'.codespell(0)<cr>", desc = 'codespell buffer' },
       { '<space>C', ":lua require'pdh.telescope'.codespell()<cr>", desc = 'codespell project' },
-
-      -- outlines
-      -- { "<space>o", ":lua require'pdh.outline'.toggle()<cr>", desc = "toggle outline" },
-
-      { '<space>m', ':Telescope heading<cr>', desc = 'telescope headings' },
     },
   },
 
