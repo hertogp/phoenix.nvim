@@ -619,7 +619,7 @@ end
 
 local function get_fragments(node, fragments)
   local frags = {}
-  for child, name in node:iter_children() do
+  for child, _ in node:iter_children() do
     for _, frag in ipairs(fragments) do
       if frag == child:type() then
         frags[#frags + 1] = vim.treesitter.get_node_text(child, 0)
