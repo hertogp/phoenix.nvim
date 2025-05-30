@@ -23,6 +23,8 @@ TODO's
     - active window is displayed in otl window (shuttle works)
       * when moving to another window that has no otl -> otl stays the same
       * when moving to another windown that has otl -> otl switches association with that window/buffer
+ [ ] a spec should be able to defer to another spec via a canonical name
+ [ ] a spec should be abel to have multiple outline providers, some of which maybe disabled
 --]]
 
 --[[ GLOBALS ]]
