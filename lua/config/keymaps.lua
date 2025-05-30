@@ -91,4 +91,4 @@ nmap('<leader>dl', "<Cmd>lua require'dap'.run_last()<CR>", 'debug, run last')
 
 --[[ development ]]
 
-nmap('<leader>rfc', ":Show lua =require('pdh.rfc').get(1)<cr>")
+nmap('<leader>fr', ":lua =require('pdh.rfc').search('rfc')<cr>")
