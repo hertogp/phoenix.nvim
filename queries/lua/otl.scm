@@ -9,6 +9,6 @@
   (expression_list (function_definition (("function") @c) ((parameters)@d))))
   (#join! "head" "" "[f] " @a " " @b " " @c @d))
 
-(((assignment_statement) @head) (#join! "head" "" "[s] " @head))
+(((assignment_statement) @head) (#join! "head" "" "[S] " @head))
 
 (((variable_declaration) @head) (#join! "head" "" "[v] " @head))

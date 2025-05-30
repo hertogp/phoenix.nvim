@@ -15,6 +15,8 @@ Behaviour
 TODO's
 [ ] add treesitter scm handler -> ~/config/nvim/queries/<lang>/outline.scm
 [ ] add treesitter cst handler -> with config to extract (simply) from treesitter's concrete syntax tree
+[?] add lsp sym(bols) handler -> using vim.lsp.buf.document_symbol()
+      * also see :FzfLua lsp_document_symbols (aka <space>s)
 [?] have only 1 otl window at all times (:topleft vnew | wincmd H | wincmd =)
     - configurable, left or right, always has entire heigt of window
     - multiple windows can have otl active
@@ -395,6 +397,16 @@ local function otl_select(sline)
   end
 end
 
+--[[ OTL table ]]
+-- otl = {
+--   sbuf = source buffer number
+--   swin = source window number
+--   obuf = outline buffer number
+--   owin = outline window number
+--   tick = last changedtick number
+--   idx = list of sbuf linenrs, indexed by obuf linenr
+-- }
+
 --[[ MODULE ]]
 
 M.config = {
@@ -422,7 +434,7 @@ M.config = {
     lua = {
       parser = 'scm',
       language = 'lua',
-      query = 'outline',
+      query = 'otl', -- outline is already taken: see outline plugin
       depth = 1,
     },
     elixir = {
@@ -433,16 +445,6 @@ M.config = {
     },
   },
 }
-
---[[ OTL table ]]
--- otl = {
---   sbuf = source buffer number
---   swin = source window number
---   obuf = outline buffer number
---   owin = outline window number
---   tick = last changedtick number
---   idx = list of sbuf linenrs, indexed by obuf linenr
--- }
 
 function M.open(buf)
   -- open otl window for given buf number
