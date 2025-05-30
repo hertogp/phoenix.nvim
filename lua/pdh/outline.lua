@@ -434,6 +434,7 @@ end
 M.config = {
   outline = {
     -- outliner specs by filetype -> spec (these are parser specific)
+    -- [ ] add parser AST, home grown ast filter to outline
     rfc = {
       parser = 'lua',
       { '^RFC', skip = true }, -- skip page header
@@ -711,6 +712,9 @@ M.test = function()
       vim.print(elem)
     end
   end
+
+  -- print symbol info
+  vim.print(vim.treesitter.language.inspect('lua'))
 end
 
 -- :luafile % -> will reload the module
