@@ -111,10 +111,6 @@ return {
     -- greps buffer's file (last save) on disk (won't work on nofile buffers)
     { '<space>gL', ":lua require 'fzf-lua'.grep_curbuf()<cr>", desc = 'grep, saved buffer' },
 
-    -- others
-    { '<space>q', ':FzfLua quickfix<cr>', desc = 'quickfix' },
-    { '<space>w', ':FzfLua loclist<cr>', desc = 'window loclist' },
-
     -- help
     {
       '<space>H',
@@ -127,11 +123,6 @@ return {
       desc = 'find, neovim helptags',
     },
 
-    -- others
-    { '<space>B', ":lua require 'fzf-lua'.builtin()<cr>", desc = 'find, builtin commands' },
-    { '<space>k', ":lua require 'fzf-lua'.keymaps()<cr>", desc = 'find, key mappings' },
-    { '<space>m', ":lua require 'fzf-lua'.man_pages()<cr>", desc = 'find, man pages' },
-
     -- diagnostics
     {
       '<space>d',
@@ -142,7 +133,7 @@ return {
     {
       '<space>D',
       ":lua require 'fzf-lua'.diagnostics_document()<cr>",
-      desc = 'find diagnostics of document',
+      desc = 'find, doc diagnostics',
     },
     {
       '<space>s',
@@ -151,8 +142,16 @@ return {
     },
 
     -- misc
+    { '<space>q', ':FzfLua quickfix<cr>', desc = 'quickfix' },
+    { '<space>w', ':FzfLua loclist<cr>', desc = 'window loclist' },
+
+    { '<space>B', ":lua require 'fzf-lua'.builtin()<cr>", desc = 'find, builtin commands' },
+    { '<space>k', ":lua require 'fzf-lua'.keymaps()<cr>", desc = 'find, key mappings' },
+    { '<space>m', ":lua require 'fzf-lua'.man_pages()<cr>", desc = 'find, man pages' },
+
     { '<leader>w', ":lua require 'fzf-lua'.grep_cword()<cr>", desc = 'find current word' },
     { '<leader>W', ":lua require 'fzf-lua'.grep_cWORD()<cr>", desc = 'find current WORD' },
+
     { '<space>O', ":lua require 'fzf-lua'.nvim_options()<cr>", desc = 'vim [O]ptions' },
     { '<space><space>', ":lua require 'fzf-lua'.resume()<cr>", desc = '[r]esume last search' },
     { '<space>o', ":lua require 'pdh.outline'.toggle()<cr>", desc = 'Toggle Outline of file' },
