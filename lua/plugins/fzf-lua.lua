@@ -33,32 +33,45 @@ return {
     -- TODO:
     -- [ ] <space>f{n, f, F, p, P} to find:
     --     n = notes
+    --     N = grep notes
     --     f = files under current project (if any)
     --     F = files under current buffer directory
     --     p = files under my nvim setup
     --     P = files under nvim's data path (stdpath('data')/nvim)
-    --     c = stdpath('cache') all cached stuff
-    --     d = stdpath('data') all data path's
+    --     N = neovim files under stdpath('cache')
+    --     n = neovim files under stdpath('data')
+    -- [ ] <space>g{n,f,F,p,P,n,N} - same as <space>f<*> but grep instead of find
     { '<space>b', ":lua require 'fzf-lua'.buffers()<cr>", desc = '[b]uffers' },
     {
-      '<space>f',
+      '<space>ff',
       ":lua require 'fzf-lua'.files({hidden=true, cwd=Project_root()})<cr>",
-      desc = 'find [f]iles in project',
+      desc = 'find [f]iles in cur project',
     },
     {
-      '<space>F',
+      '<space>fF',
       ":lua require 'fzf-lua'.files({hidden=true, cwd=vim.fn.expand('%:p:h')})<cr>",
-      desc = '[F]iles in/below bufdir',
+      desc = 'find [F]iles in cur bufdir',
     },
     {
-      '<space>p',
+      '<space>fn',
+      ":lua require 'fzf-lua'.files({cwd='~/notes', query='.md$ '})<cr>",
+      desc = 'find in [n]otes dirs',
+    },
+    -- use '<term> -- *.md *.txt !z.*' to grep only in md or txt files and never in z.ext files
+    {
+      '<space>fN',
+      ":lua require 'fzf-lua'.live_grep({cwd='~/notes'})<cr>",
+      desc = 'find in [N]otes grep',
+    },
+    {
+      '<space>fp',
       ":lua require 'fzf-lua'.files({hidden=true, cwd=vim.fn.stdpath('config')})<cr>",
-      desc = 'find [p]lugin files',
+      desc = 'find [p]lugin stdpath(config) files',
     },
     {
-      '<space>P',
+      '<space>fP',
       ":lua require 'fzf-lua'.files({hidden=true, cwd=vim.fn.stdpath('data')})<cr>",
-      desc = 'find [p]lugin files',
+      desc = 'find [P]lugin stdpath(data) files',
     },
     {
       '<space>g',
@@ -68,17 +81,6 @@ return {
     { '<space>l', ":lua require 'fzf-lua'.blines()<cr>", desc = '[l]ines in buffer' },
     -- greps buffer's file (last save) on disk (won't work on nofile buffers)
     { '<space>L', ":lua require 'fzf-lua'.grep_curbuf()<cr>", desc = '[l]ines in buffer (fuzzy)' },
-    {
-      '<space>n',
-      ":lua require 'fzf-lua'.files({cwd='~/notes', query='.md$ '})<cr>",
-      desc = '[n]otes files',
-    },
-    -- use '<term> -- *.md *.txt !z.*' to grep only in md or txt files and never in z.ext files
-    {
-      '<space>N',
-      ":lua require 'fzf-lua'.live_grep({cwd='~/notes'})<cr>",
-      desc = 'find in [N]otes grep',
-    },
     { '<space>q', ':FzfLua quickfix<cr>', desc = '[q]uickfix' },
     { '<space>w', ':FzfLua loclist<cr>', desc = '[w]indow location list' },
     -- keep typing to narrow down
@@ -94,7 +96,6 @@ return {
     },
 
     -- help
-    -- TODO: when selecting help, make it appear in its own tab using its full height and width
     {
       '<space>H',
       ":lua require 'fzf-lua'.helptags({query = vim.fn.expand('<cword>')})<cr>",

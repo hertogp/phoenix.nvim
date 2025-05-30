@@ -405,6 +405,25 @@ end
 --   owin = outline window number
 --   tick = last changedtick number
 --   idx = list of sbuf linenrs, indexed by obuf linenr
+--
+--   Outline provider for asciidoc, entry is an outline entry
+--   https://github.com/msr1k/outline-asciidoc-provider.nvim/blob/main/lua/outline/providers/asciidoc.lua
+--    local entry = {
+--   kind = 15,
+--   name = title,
+--   selectionRange = {
+--     start = { character = 1, line = line - 1 },
+--     ['end'] = { character = 1, line = line - 1 },
+--   },
+--   range = {
+--     start = { character = 1, line = line - 1 },
+--     ['end'] = { character = 1, line = line - 1 },
+--   },
+--   children = {},
+-- }
+--
+-- parent[#parent + 1] = entry
+-- level_symbols[depth] = entry
 -- }
 
 --[[ MODULE ]]
