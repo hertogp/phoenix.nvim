@@ -30,6 +30,15 @@ return {
   },
   keys = {
     -- buffers, files
+    -- TODO:
+    -- [ ] <space>f{n, f, F, p, P} to find:
+    --     n = notes
+    --     f = files under current project (if any)
+    --     F = files under current buffer directory
+    --     p = files under my nvim setup
+    --     P = files under nvim's data path (stdpath('data')/nvim)
+    --     c = stdpath('cache') all cached stuff
+    --     d = stdpath('data') all data path's
     { '<space>b', ":lua require 'fzf-lua'.buffers()<cr>", desc = '[b]uffers' },
     {
       '<space>f',
