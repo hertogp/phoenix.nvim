@@ -48,24 +48,36 @@ function Vim_run_cmd(opts)
       local cmd = vim.api.nvim_parse_cmd(vimcmd, {})
       local output = vim.api.nvim_cmd(cmd, { output = true })
       -- return lines table, no newlines allowed by nvim_buf_set_lines()
-      return vim.split(output, '\n', { 1 })
+      return vim.split(output, '\r?\n', { 1 })
     end)
 
-    if ok and opts and opts.insert then
-      -- vimcmd may have opened another buffer (e.g. `:h blah`)
-      local modifiable = vim.api.nvim_get_option_value('modifiable', { buf = 0 })
-      if bufnr == vim.api.nvim_get_current_buf() and modifiable then
-        -- we're still in the same (modifiable) buffer, so may insert the output
-        -- if type(x) == 'table' and #x > 0 then
-        vim.api.nvim_buf_set_lines(bufnr, row, row, false, x)
-        -- else
-        --   vim.notify('error: ' .. vim.inspect(x), vim.log.levels.WARN)
-      end
-    else
-      if not ok then
-        vim.notify('error ' .. vim.inspect(x), vim.log.levels.ERROR)
-      end
+    local no_output = #x < 1 or (#x == 1 and #x[1] == 0)
+
+    if not ok then
+      vim.notify('[error] ' .. vim.inspect(x), vim.log.levels.ERROR)
+      return
     end
+
+    if no_output then
+      vim.notify('[info] vim cmd produced no output', vim.log.levels.INFO)
+      return
+    end
+
+    if bufnr ~= vim.api.nvim_get_current_buf() then
+      -- don't mess with a new buffer, assume it shows the results
+      return
+    end
+
+    local insert = opts and opts.insert
+    if not insert or not vim.api.nvim_get_option_value('modifiable', { buf = 0 }) then
+      -- no insert or not modifiable -> print it
+      for _, xline in ipairs(x) do
+        vim.print(xline)
+      end
+      return
+    end
+
+    vim.api.nvim_buf_set_lines(bufnr, row, row, false, x)
   else
     vim.notify('no vim command (`:cmd .. `) found on current line', vim.log.levels.WARN)
   end
