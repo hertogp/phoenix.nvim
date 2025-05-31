@@ -21,10 +21,11 @@ function Vim_run_cmd()
   -- Examples: `:Show lua =vim.treesitter` or `:tab h treesitter`
   local col = vim.api.nvim_win_get_cursor(0)[2] + 1
   local line = vim.api.nvim_get_current_line()
+  vim.print(line)
   local vimcmd = nil
   local cmds = {}
   -- collect all commands on current line
-  for _, cmd, args, endpos in string.gmatch(line, '()`:(%w+)%s+([^`]+)`()') do
+  for _, cmd, args, endpos in string.gmatch(line, '()`:%s*(%g+)%s+([^`]+)`()') do
     cmds[#cmds + 1] = { endpos, cmd, args }
   end
   -- find first cmd that ends after cursor
