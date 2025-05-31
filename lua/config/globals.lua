@@ -16,6 +16,45 @@ local api = vim.api
 
 --[[ GLOBAL ]]
 
+function Vim_run_cmd()
+  -- execute a vim command enclosed in backticks (`:cmd ..`)
+  -- Examples: `:Show lua =vim.treesitter` or `:tab h treesitter`
+  local col = vim.api.nvim_win_get_cursor(0)[2] + 1
+  local line = vim.api.nvim_get_current_line()
+  local vimcmd = nil
+  local cmds = {}
+  -- collect all commands on current line
+  for _, cmd, args, endpos in string.gmatch(line, '()`:(%w+)%s+([^`]+)`()') do
+    cmds[#cmds + 1] = { endpos, cmd, args }
+  end
+  -- find first cmd that ends after cursor
+  for idx, cmd in ipairs(cmds) do
+    if col < cmd[1] or idx == #cmds then
+      vimcmd = cmd[2] .. ' ' .. cmd[3]
+      if string.match(vimcmd, '^h') then
+        -- show help in new tab
+        vimcmd = 'tab ' .. vimcmd
+      end
+      break
+    end
+  end
+  if vimcmd then
+    vim.cmd(vimcmd)
+  else
+    vim.notify('no vim command (`:cmd .. `) found on current line', vim.log.levels.WARN)
+  end
+end
+-- if cmd and #cmd > 0 then
+--   vim.print(vim.inspect(cmd))
+--   if string.match(cmd[1], '^h') then
+--     table.insert(cmd, 1, 'tab')
+--   end
+--   local str = table.concat(cmd, ' ')
+-- vim.print(vim.inspect(cmd))
+-- vim.cmd(str)
+-- `:h treesitter`
+-- end
+
 -- TODO: add T to dump a lua table, to be used as
 -- :Show lua =T(table), e.g. like :Show lua =T(vim.b)
 P = function(value)
@@ -145,12 +184,7 @@ local function show_in_tab(t)
     local cmd = api.nvim_parse_cmd(t.args, {})
     local output = api.nvim_cmd(cmd, { output = true })
     -- return lines table, no newlines allowed by nvim_buf_set_lines()
-    -- local lines = {}
     return vim.split(output, '\n', { 1 })
-    -- for line in output:gmatch '[^\r\n]+' do
-    --   table.insert(lines, line)
-    -- end
-    -- return lines
   end)
 
   -- open a new tab

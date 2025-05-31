@@ -730,6 +730,26 @@ M.test = function()
   -- handlers
   vim.print('\n-- vim.lsp.handlers (print vim.lsp to see a lot more)')
   vim.print(vim.lsp.handlers)
+
+  -- locals (symbols?)
+  vim.print('\n-- symbols via treesitter query "locals.scm"')
+  local query = vim.treesitter.query.get('lua', 'locals')
+  local linenr = -1
+  for _, tree in ipairs(parser:trees()) do
+    local subroot = tree:root()
+    vim.print('\n subroot ' .. vim.inspect(tree))
+    for id, node, meta in query:iter_captures(subroot, 0) do
+      local name = query.captures[id]
+      local range = { node:range() }
+      local depth = ts_depth(node, subroot)
+      local text = vim.treesitter.get_node_text(node, 0)
+      if linenr ~= range[1] then
+        linenr = range[1]
+        vim.print(string.format('\n[%d] %s %s', linenr + 1, text, vim.inspect(range)))
+      end
+      vim.print({ depth, id, name, range, vim.treesitter.get_node_text(node, 0) })
+    end
+  end
 end
 
 -- :luafile % -> will reload the module
