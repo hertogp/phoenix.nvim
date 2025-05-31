@@ -10,22 +10,26 @@ local g = vim.g -- namespace for global variables
 local go = vim.go -- namespace for global options
 local api = vim.api
 
---[[
-
--]]
-
 --[[ GLOBAL ]]
 
-function Vim_run_cmd()
-  -- execute a vim command enclosed in backticks (`:cmd ..`)
-  -- Examples: `:Show lua =vim.treesitter` or `:tab h treesitter`
-  local col = vim.api.nvim_win_get_cursor(0)[2] + 1
+function Vim_run_cmd(opts)
+  -- execute a vim command enclosed in backticks (`:cmd ..`) and insert result
+  -- except for :Show and :help commands.  Finds the next or last cmd to run
+  -- Examples:
+  -- `:Show lua =vim.treesitter` or `:tab h treesitter`
+  -- `:!ls` reads output of shell cmd 'ls' into buffer
+  -- `:!ls -lpah` same, but with more info
+  -- `:!ping -c 2 google.nl`, reads ping output: don't forget -c 2
+  -- `:lua =vim.lsp` shows module info
+  -- `:Show lua =vim.lsp`, same but in new scratch tab
+  local bufnr = vim.api.nvim_get_current_buf()
+  local row, col = unpack(vim.api.nvim_win_get_cursor(0))
+  col = col + 1
   local line = vim.api.nvim_get_current_line()
-  vim.print(line)
   local vimcmd = nil
   local cmds = {}
   -- collect all commands on current line
-  for _, cmd, args, endpos in string.gmatch(line, '()`:%s*(%g+)%s+([^`]+)`()') do
+  for _, cmd, args, endpos in string.gmatch(line, '()`:%s*(%g+)%s*([^`]*)`()') do
     cmds[#cmds + 1] = { endpos, cmd, args }
   end
   -- find first cmd that ends after cursor
@@ -40,21 +44,32 @@ function Vim_run_cmd()
     end
   end
   if vimcmd then
-    vim.cmd(vimcmd)
+    local ok, x = pcall(function()
+      local cmd = vim.api.nvim_parse_cmd(vimcmd, {})
+      local output = vim.api.nvim_cmd(cmd, { output = true })
+      -- return lines table, no newlines allowed by nvim_buf_set_lines()
+      return vim.split(output, '\n', { 1 })
+    end)
+
+    if ok and opts and opts.insert then
+      -- vimcmd may have opened another buffer (e.g. `:h blah`)
+      local modifiable = vim.api.nvim_get_option_value('modifiable', { buf = 0 })
+      if bufnr == vim.api.nvim_get_current_buf() and modifiable then
+        -- we're still in the same (modifiable) buffer, so may insert the output
+        -- if type(x) == 'table' and #x > 0 then
+        vim.api.nvim_buf_set_lines(bufnr, row, row, false, x)
+        -- else
+        --   vim.notify('error: ' .. vim.inspect(x), vim.log.levels.WARN)
+      end
+    else
+      if not ok then
+        vim.notify('error ' .. vim.inspect(x), vim.log.levels.ERROR)
+      end
+    end
   else
     vim.notify('no vim command (`:cmd .. `) found on current line', vim.log.levels.WARN)
   end
 end
--- if cmd and #cmd > 0 then
---   vim.print(vim.inspect(cmd))
---   if string.match(cmd[1], '^h') then
---     table.insert(cmd, 1, 'tab')
---   end
---   local str = table.concat(cmd, ' ')
--- vim.print(vim.inspect(cmd))
--- vim.cmd(str)
--- `:h treesitter`
--- end
 
 -- TODO: add T to dump a lua table, to be used as
 -- :Show lua =T(table), e.g. like :Show lua =T(vim.b)

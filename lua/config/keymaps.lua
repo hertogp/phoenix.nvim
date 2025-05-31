@@ -71,6 +71,7 @@ nmap('<leader>sv', '<cmd>source ~/.config/nvim/init.lua<cr>', 'source nvim init.
 nmap('<leader><leader>x', '<cmd>write|source %<cr>', 'save & source buffer')
 nmap('<leader><leader>X', '<cmd>write|source %<cr>', 'save & source buffer')
 nmap('<space>x', ':lua Vim_run_cmd()<cr>', 'run a vim cmd (`:cmd ..`) on current line')
+nmap('<space>X', ':lua Vim_run_cmd({insert=true})<cr>', 'run a vim cmd (`:cmd ..`) and insert result')
 
 --[[ DEBUGGING ]]
 nmap('<F8>', "<cmd>lua require'dap'.toggle_breakpoint()<CR>", 'toggle breakpoint')
