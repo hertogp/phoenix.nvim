@@ -26,7 +26,8 @@ return {
     --   ts_update()
     -- end,
 
-    build = ':TSUpdate',
+    -- build = ':TSUpdate',
+    -- branch = 'master',
 
     keys = {
       { '<space>i', ':Inspect<cr>', desc = 'TS inspect current word' },
@@ -36,9 +37,12 @@ return {
     config = function()
       local configs = require 'nvim-treesitter.configs'
 
-      configs.setup {
+      configs.setup({
+        -- warning about missing modules in TSConfig is known & harmless
         -- A list of parser names, or "all"
         -- :Inspect, :InspectTree
+        build = ':TSUpdate',
+        branch = 'master',
         ensure_installed = {
           'c',
           'lua',
@@ -79,7 +83,7 @@ return {
             node_decremental = '<Backspace>',
           },
         },
-      }
+      })
     end,
   },
 }

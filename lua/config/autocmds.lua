@@ -38,6 +38,7 @@ local EasyQuitTable = {
   ['quickfix'] = true,
   ['loclist'] = true,
   ['prompt'] = true,
+  ['oil'] = true,
   [''] = false,
 }
 
@@ -50,8 +51,8 @@ api.nvim_create_autocmd({ 'FileType' }, {
     -- P('FileType EasyQuit called for btype is ' .. vim.bo.buftype .. ', and ftype is ' .. vim.bo.filetype)
     if EasyQuitTable[vim.bo.buftype] or EasyQuitTable[vim.bo.filetype] then
       -- '!' forces the close command even if modified (e.g. a prompt buffer)
-      -- vim.api.nvim_buf_set_keymap(0, 'n', 'q', '<cmd>close!<cr>', { noremap = true, silent = true })
-      vim.api.nvim_buf_set_keymap(0, 'n', 'q', ':bdelete<cr>', { noremap = true, silent = true })
+      vim.api.nvim_buf_set_keymap(0, 'n', 'q', ':close!<cr>', { noremap = true, silent = true })
+      -- vim.api.nvim_buf_set_keymap(0, 'n', 'q', ':bdelete<cr>', { noremap = true, silent = true })
     end
   end,
 })

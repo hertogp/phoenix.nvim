@@ -713,8 +713,23 @@ M.test = function()
     end
   end
 
-  -- print symbol info
+  -- all sorts of info
+  vim.print('\n-- vim.treesitter.language.inspect(lua)')
   vim.print(vim.treesitter.language.inspect('lua'))
+  vim.print('\n-- vim.lsp.protocol.SymbolKind, maps idx->name and name->idx')
+  vim.print(vim.lsp.protocol.SymbolKind)
+
+  -- print predicate available
+  vim.print('\n-- vim.treesitter.query.list_predicates()')
+  vim.print(vim.treesitter.query.list_predicates())
+
+  -- print directives available
+  vim.print('\n-- vim.treesitter.query.list_directives()')
+  vim.print(vim.treesitter.query.list_directives())
+
+  -- handlers
+  vim.print('\n-- vim.lsp.handlers (print vim.lsp to see a lot more)')
+  vim.print(vim.lsp.handlers)
 end
 
 -- :luafile % -> will reload the module
