@@ -583,9 +583,13 @@ M.up = function()
   end
 
   local line = vim.api.nvim_win_get_cursor(0)[1]
-  if line == 1 then
-    line = vim.api.nvim_buf_line_count(0)
-  else
+  -- TODO: make wrapping (cycle) configurable
+  -- if line == 1 then
+  --   line = vim.api.nvim_buf_line_count(0)
+  -- else
+  --   line = line - 1
+  -- end
+  if line > 1 then
     line = line - 1
   end
 
@@ -605,9 +609,13 @@ M.down = function()
   end
 
   local line = vim.api.nvim_win_get_cursor(0)[1]
-  if line == vim.api.nvim_buf_line_count(0) then
-    line = 1
-  else
+  -- TODO: make wrapping (cycle) configurable
+  -- if line == vim.api.nvim_buf_line_count(0) then
+  --   line = 1
+  -- else
+  --   line = line + 1
+  -- end
+  if line < vim.api.nvim_buf_line_count(0) then
     line = line + 1
   end
 
@@ -698,6 +706,11 @@ M.test = function()
   local root = tree[1]:root()
   local blines = vim.api.nvim_buf_get_lines(0, 1, -1, false)
 
+  vim.print('tree ' .. vim.inspect(tree))
+  vim.print('tree len ' .. #tree)
+  vim.print('tree[1] ' .. vim.inspect(tree[1]))
+  vim.print('parser:children() ' .. vim.inspect(parser:children()))
+
   print_tree(root)
   vim.print(string.rep('=', 30))
 
@@ -705,11 +718,11 @@ M.test = function()
   -- iterate over root's direct children
   for child, name in root:iter_children() do
     local row, _, _ = child:start()
-    local ctype = child:type()
+    local type = child:type()
     name = name or 'unnamed'
     vim.print('')
     vim.print(string.format('[%03d] %s', row + 1, blines[row]))
-    vim.print(string.format('= type(%s), name(%s)', ctype, name))
+    vim.print(string.format('= type(%s), name(%s)', type, name))
     for _, elem in ipairs(walk(child)) do
       vim.print(elem)
     end
@@ -752,6 +765,9 @@ M.test = function()
       vim.print({ depth, id, name, range, vim.treesitter.get_node_text(node, 0) })
     end
   end
+
+  -- lsp client
+  -- [ ] lsp client code examples
 end
 
 -- :luafile % -> will reload the module
