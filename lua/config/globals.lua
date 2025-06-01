@@ -225,7 +225,7 @@ local function show_in_tab(t)
     local cmd = api.nvim_parse_cmd(t.args, {})
     local output = api.nvim_cmd(cmd, { output = true })
     -- return lines table, no newlines allowed by nvim_buf_set_lines()
-    return vim.split(output, '\n', { 1 })
+    return vim.split(output, '\r?\n', { 1 })
   end)
 
   -- open a new tab
