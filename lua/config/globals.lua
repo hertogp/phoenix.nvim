@@ -43,44 +43,57 @@ function Vim_run_cmd(opts)
       break
     end
   end
-  if vimcmd then
-    local ok, x = pcall(function()
-      local cmd = vim.api.nvim_parse_cmd(vimcmd, {})
-      local output = vim.api.nvim_cmd(cmd, { output = true })
-      -- return lines table, no newlines allowed by nvim_buf_set_lines()
-      return vim.split(output, '\r?\n', { 1 })
-    end)
-
-    local no_output = #x < 1 or (#x == 1 and #x[1] == 0)
-
-    if not ok then
-      vim.notify('[error] ' .. vim.inspect(x), vim.log.levels.ERROR)
-      return
-    end
-
-    if no_output then
-      vim.notify('[info] vim cmd produced no output', vim.log.levels.INFO)
-      return
-    end
-
-    if bufnr ~= vim.api.nvim_get_current_buf() then
-      -- don't mess with a new buffer, assume it shows the results
-      return
-    end
-
-    local insert = opts and opts.insert
-    if not insert or not vim.api.nvim_get_option_value('modifiable', { buf = 0 }) then
-      -- no insert or not modifiable -> print it
-      for _, xline in ipairs(x) do
-        vim.print(xline)
-      end
-      return
-    end
-
-    vim.api.nvim_buf_set_lines(bufnr, row, row, false, x)
-  else
-    vim.notify('no vim command (`:cmd .. `) found on current line', vim.log.levels.WARN)
+  if not vimcmd then
+    vim.notify('[info] no vim command (`:cmd .. `) found on current line', vim.log.levels.INFO)
+    return
   end
+
+  local ok, output = pcall(function()
+    local cmd = vim.api.nvim_parse_cmd(vimcmd, {})
+    if string.match(vimcmd, 'https?') then
+      -- do not expand '%' or '#' (more use cases, besides https?)
+      cmd.magic.file = false
+    end
+
+    -- dianogstic error is due to name clash between blink and nvim
+    -- see `:!open https://github.com/Saghen/blink.cmp/issues/767`
+    -- disbaling blink plugin, makes diagnostics go away
+    local output = vim.api.nvim_cmd(cmd, { output = true })
+    -- return lines table, no newlines allowed by nvim_buf_set_lines()
+    if #output == 0 then
+      return {} -- avoids {""} for no output
+    else
+      -- output[1] is the cmd, followed by two empty lines: trim?
+      return vim.split(output, '\r?\n', { 1 })
+    end
+  end)
+
+  if not ok then
+    vim.notify('[error] ' .. vim.inspect(output), vim.log.levels.ERROR)
+    return
+  end
+
+  if #output == 0 then
+    vim.notify('[info] vim cmd produced no output', vim.log.levels.INFO)
+    return
+  end
+
+  if bufnr ~= vim.api.nvim_get_current_buf() then
+    -- don't mess with a new buffer, assume it shows the results
+    return
+  end
+
+  local insert = opts and opts.insert
+  local modifiable = vim.api.nvim_get_option_value('modifiable', { buf = bufnr })
+  if not insert or not modifiable then
+    for _, oline in ipairs(output) do
+      vim.print(oline)
+    end
+    return
+  end
+
+  -- insert was requested and bufnr is modifiable
+  vim.api.nvim_buf_set_lines(bufnr, row, row, false, output)
 end
 
 -- TODO: add T to dump a lua table, to be used as

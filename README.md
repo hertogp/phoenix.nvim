@@ -17,4 +17,6 @@ git clone git@github.com:hertogp/phoenix.nvim.git
 NVIM_APPNAME=phoenix.nvim nvim
 ```
 
+Check out the DNS records: `:!dig ns rws.nl`
 
+ hmm `:!open https://google.nl`
