@@ -113,7 +113,7 @@ local function win_centerline(win, linenr)
   if vim.api.nvim_win_is_valid(win) then
     pcall(vim.api.nvim_win_set_cursor, win, { linenr, 0 })
     vim.api.nvim_win_call(win, function()
-      vim.cmd 'normal! zz'
+      vim.cmd 'normal! zt'
     end)
   end
 end
@@ -195,7 +195,7 @@ function O.scm(otl, specs)
   -- 'config.outline.<ftype>' = {
   --   parser = 'scm',           -- these are the scm specs
   --   language = '..'           -- language name for <ftype>, e.g. 'lua'
-  --   query = 'outline'         -- name of the outline scm query file to load
+  --   query = 'otl'             -- name of the outline scm query file to load
   --   depth = 0 .. n            -- max_depth to traverse (default: 0)
   -- }
   --
@@ -463,7 +463,7 @@ M.config = {
     elixir = {
       parser = 'scm',
       language = 'elixir',
-      query = 'outline',
+      query = 'otl',
       depth = 5,
     },
   },
@@ -589,7 +589,8 @@ M.up = function()
     line = line - 1
   end
 
-  win_centerline(otl.owin, line)
+  -- win_centerline(otl.owin, line)
+  pcall(vim.api.nvim_win_set_cursor, otl.owin, { line, 0 })
   line = otl.idx[line]
   win_centerline(otl.swin, line)
 end
@@ -610,7 +611,8 @@ M.down = function()
     line = line + 1
   end
 
-  win_centerline(otl.owin, line)
+  -- win_centerline(otl.owin, line)
+  pcall(vim.api.nvim_win_set_cursor, otl.owin, { line, 0 })
   line = otl.idx[line]
   win_centerline(otl.swin, line)
 end
