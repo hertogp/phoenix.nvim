@@ -21,7 +21,7 @@ local H = {} -- private helpers
 
 --[[ locals ]]
 
-local ok, plenary, fzf_lua
+local ok, plenary, fzf_lua, snacks
 
 ok, plenary = pcall(require, 'plenary')
 if not ok then
@@ -30,6 +30,12 @@ if not ok then
 end
 
 ok, fzf_lua = pcall(require, 'fzf-lua')
+if not ok then
+  error('fzf-lua, a dependency, is missing')
+  return
+end
+
+ok, snacks = pcall(require, 'snacks')
 if not ok then
   error('fzf-lua, a dependency, is missing')
   return
@@ -318,12 +324,14 @@ end
 
 function M.find()
   local topdir = H.to_dir(M.config.data)
-  fzf_lua.files({ hidden = true, cwd = topdir })
+  -- fzf_lua.files({ hidden = true, cwd = topdir })
+  snacks.picker.files({ hidden = true, cwd = topdir })
 end
 
 function M.grep()
   local topdir = H.to_dir(M.config.data)
-  fzf_lua.live_grep({ hidden = true, cwd = topdir })
+  -- fzf_lua.live_grep({ hidden = true, cwd = topdir })
+  snacks.picker.grep({ hidden = true, cwd = topdir })
 end
 
 function M.test(topic, id)
