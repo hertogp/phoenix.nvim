@@ -249,6 +249,34 @@ end
 
 local O = {}
 
+-- otl = {
+--   sbuf = source buffer number
+--   swin = source window number
+--   obuf = outline buffer number
+--   owin = outline window number
+--   tick = last changedtick number
+--   idx = list of sbuf linenrs, indexed by obuf linenr
+--
+--   Outline provider for asciidoc, entry is an outline entry
+--   https://github.com/msr1k/outline-asciidoc-provider.nvim/blob/main/lua/outline/providers/asciidoc.lua
+--    local entry = {
+--   kind = 15,
+--   name = title,
+--   selectionRange = {
+--     start = { character = 1, line = line - 1 },
+--     ['end'] = { character = 1, line = line - 1 },
+--   },
+--   range = {
+--     start = { character = 1, line = line - 1 },
+--     ['end'] = { character = 1, line = line - 1 },
+--   },
+--   children = {},
+-- }
+--
+-- parent[#parent + 1] = entry
+-- level_symbols[depth] = entry
+-- }
+
 --- get outline, set otl.idx and fill otl.obuf with lines
 --- @param otl table
 function O.outline(otl)
@@ -405,34 +433,6 @@ function O.select(sline)
 end
 
 --[[ OTL table ]]
--- otl = {
---   sbuf = source buffer number
---   swin = source window number
---   obuf = outline buffer number
---   owin = outline window number
---   tick = last changedtick number
---   idx = list of sbuf linenrs, indexed by obuf linenr
---
---   Outline provider for asciidoc, entry is an outline entry
---   https://github.com/msr1k/outline-asciidoc-provider.nvim/blob/main/lua/outline/providers/asciidoc.lua
---    local entry = {
---   kind = 15,
---   name = title,
---   selectionRange = {
---     start = { character = 1, line = line - 1 },
---     ['end'] = { character = 1, line = line - 1 },
---   },
---   range = {
---     start = { character = 1, line = line - 1 },
---     ['end'] = { character = 1, line = line - 1 },
---   },
---   children = {},
--- }
---
--- parent[#parent + 1] = entry
--- level_symbols[depth] = entry
--- }
-
 --[[ MODULE ]]
 
 M.config = {
@@ -495,7 +495,7 @@ function M.open(buf)
   end
 end
 
-M.close = function(buf)
+function M.close(buf)
   -- close otl window, move to swin
   buf = buf_sanitize(buf)
   if buf == nil then
@@ -518,7 +518,7 @@ M.close = function(buf)
   W.goto(otl.swin)
 end
 
-M.shuttle = function()
+function M.shuttle()
   -- move back and forth between the associated otl windows
   local buf = vim.api.nvim_get_current_buf()
   local otl = vim.b[buf].otl
@@ -562,7 +562,7 @@ M.shuttle = function()
   -- vim.notify("[error] shuttle: no window for src buf", vim.log.levels.ERROR)
 end
 
-M.toggle = function()
+function M.toggle()
   -- open or close otl for current buffer
   local buf = vim.api.nvim_get_current_buf()
   local otl = vim.b[buf].otl
@@ -577,7 +577,7 @@ M.toggle = function()
   M.close(otl.sbuf)
 end
 
-M.up = function()
+function M.up()
   -- <Up> in otl window
   local buf = vim.api.nvim_get_current_buf()
   local otl = vim.b[buf].otl
@@ -603,7 +603,7 @@ M.up = function()
   W.centerline(otl.swin, line)
 end
 
-M.down = function()
+function M.down()
   -- <Down> in otl window
   local buf = vim.api.nvim_get_current_buf()
   local otl = vim.b[buf].otl
