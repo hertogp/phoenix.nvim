@@ -144,11 +144,11 @@ function W.goto(winid)
   end
 end
 
---[[ OUTLINERS ]]
+--[[ Parsers ]]
 
-local O = {}
+local P = {}
 
-function O.lua(otl, specs)
+function P.lua(otl, specs)
   -- returns idx, olines using lua spec patterns
   -- lua specs = {
   --   parser = 'lua',
@@ -192,7 +192,7 @@ function O.lua(otl, specs)
   return idx, olines
 end
 
-function O.scm(otl, specs)
+function P.scm(otl, specs)
   -- returns idx, olines using a TS query
   -- 'config.outline.<ftype>' = {
   --   parser = 'scm',           -- these are the scm specs
@@ -247,9 +247,11 @@ end
 
 --[[ OTL funcs ]]
 
+local O = {}
+
 --- get outline, set otl.idx and fill otl.obuf with lines
 --- @param otl table
-local function otl_outline(otl)
+function O.outline(otl)
   -- get the outline for otl.sbuf & create/fill owin/obuf if needed
   -- local lines = { " one", " ten", " twenty", " thirty", " sixty", " hundred" }
   -- otl.idx = { 1, 10, 20, 30, 60, 100 }
@@ -262,7 +264,7 @@ local function otl_outline(otl)
     return
   end
 
-  local parser = O[specs.parser]
+  local parser = P[specs.parser]
   if parser == nil then
     vim.notify('parser "' .. specs.parser .. '" for filetype ' .. ft .. ' unknown', vim.log.levels.ERROR)
     return
@@ -292,7 +294,7 @@ end
 
 ---sync otl table between src/dst
 ---@param otl table
-local function otl_sync(otl)
+function O.sync(otl)
   -- store otl as src/dst buffer variable, assumes a valid otl
   -- alt: vim.b[otl.obuf].otl = otl
   vim.api.nvim_buf_set_var(otl.obuf, 'otl', otl)
@@ -300,7 +302,7 @@ local function otl_sync(otl)
   return otl
 end
 
-local function otl_settings(otl)
+function O.settings(otl)
   -- otl window options
   vim.api.nvim_set_option_value('list', false, { win = otl.win })
   vim.api.nvim_set_option_value('winfixwidth', true, { win = otl.win })
@@ -372,14 +374,14 @@ local function otl_settings(otl)
         local otick = otl.tick
         local stick = vim.b[otl.sbuf].changedtick
         if stick > otick then
-          otl_outline(otl)
+          O.outline(otl)
         end
       end
     end,
   })
 end
 
-local function otl_nosettings(otl)
+function O.nosettings(otl)
   -- remove otl keymaps in sbuf
   pcall(vim.api.nvim_buf_del_keymap, otl.sbuf, 'n', '<cr>')
 
@@ -387,7 +389,7 @@ local function otl_nosettings(otl)
   pcall(vim.api.nvim_del_augroup_by_name, 'OtlAuGrp')
 end
 
-local function otl_select(sline)
+function O.select(sline)
   -- given the linenr in sbuf (sline), find the closest match in otl.idx
   -- and move to the associated otl buffer line (oline)
   local line = 1
@@ -459,7 +461,7 @@ M.config = {
     lua = {
       parser = 'scm',
       language = 'lua',
-      query = 'otl', -- outline is already taken: see outline plugin
+      query = 'otl', -- outline is already taken
       depth = 1,
     },
     elixir = {
@@ -485,11 +487,11 @@ function M.open(buf)
   -- create new otl window with outline
   otl.sbuf = buf
   otl.swin = vim.api.nvim_get_current_win()
-  if otl_outline(otl) then
-    otl_settings(otl)
-    otl_sync(otl)
+  if O.outline(otl) then
+    O.settings(otl)
+    O.sync(otl)
     local line = vim.api.nvim_win_get_cursor(otl.swin)[1]
-    otl_select(line)
+    O.select(line)
   end
 end
 
@@ -508,7 +510,7 @@ M.close = function(buf)
   end
 
   -- wipe the otl association
-  otl_nosettings(otl)
+  O.nosettings(otl)
   vim.b[otl.sbuf].otl = nil
   vim.b[otl.obuf].otl = nil
 
@@ -532,9 +534,9 @@ M.shuttle = function()
   if buf == otl.sbuf then
     -- shuttle in *a* window showing sbuf, adopt it as swin and moveto otl
     otl.swin = win
-    otl_sync(otl)
+    O.sync(otl)
     W.goto(otl.owin)
-    otl_select(line)
+    O.select(line)
     return
   end
 
@@ -552,7 +554,7 @@ M.shuttle = function()
     return M.close()
   else
     line = otl.idx[line]
-    otl_sync(otl)
+    O.sync(otl)
     W.goto(otl.swin)
     W.centerline(otl.swin, line)
   end
