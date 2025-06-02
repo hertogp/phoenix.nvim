@@ -67,7 +67,7 @@ return {
     },
     {
       '<space>fn',
-      ":lua require 'fzf-lua'.files({cwd='~/notes', query='.md$ '})<cr>",
+      ":lua require 'fzf-lua'.files({cwd='~/notes', query='md$ | txt$ '})<cr>",
       desc = 'find, notes',
     },
     -- use '<term> -- *.md *.txt !z.*' to grep only in md or txt files and never in z.ext files
@@ -107,9 +107,9 @@ return {
       desc = "find, project todo's",
     },
 
-    { '<space>gl', ":lua require 'fzf-lua'.blines()<cr>", desc = 'grep, buffer' },
+    { '<space>fl', ":lua require 'fzf-lua'.blines()<cr>", desc = 'grep, buffer' },
     -- greps buffer's file (last save) on disk (won't work on nofile buffers)
-    { '<space>gL', ":lua require 'fzf-lua'.grep_curbuf()<cr>", desc = 'grep, saved buffer' },
+    { '<space>gl', ":lua require 'fzf-lua'.grep_curbuf()<cr>", desc = 'grep, saved buffer' },
 
     -- help
     {

@@ -30,7 +30,7 @@ return {
     -- branch = 'master',
 
     keys = {
-      { '<space>i', ':Inspect<cr>', desc = 'TS inspect current word' },
+      { '<space>i', ':Inspect!<cr>', desc = 'TS inspect current word' },
       { '<space>I', ':InspectTree<cr>', desc = 'TS toggle tree' },
     },
 
@@ -39,11 +39,12 @@ return {
 
       configs.setup({
         -- warning about missing modules in TSConfig is known & harmless
-        -- A list of parser names, or "all"
         -- :Inspect, :InspectTree
+        -- modules = {},  -- needed to keep lsp diagnostics happy?
         build = ':TSUpdate',
         branch = 'master',
         ensure_installed = {
+          -- A list of parser names, or "all"
           'c',
           'lua',
           'elixir',
