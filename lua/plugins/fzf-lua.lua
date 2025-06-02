@@ -147,14 +147,14 @@ return {
     -- { '<space>q', ':FzfLua quickfix<cr>', desc = 'quickfix' },
     -- { '<space>w', ':FzfLua loclist<cr>', desc = 'window loclist' },
 
-    { '<space>B', ":lua require 'fzf-lua'.builtin()<cr>", desc = 'find, builtin commands' },
+    -- { '<space>B', ":lua require 'fzf-lua'.builtin()<cr>", desc = 'find, builtin commands' },
     -- { '<space>k', ":lua require 'fzf-lua'.keymaps()<cr>", desc = 'find, key mappings' },
     -- { '<space>m', ":lua require 'fzf-lua'.man_pages()<cr>", desc = 'find, man pages' },
 
     -- { '<leader>w', ":lua require 'fzf-lua'.grep_cword()<cr>", desc = 'find current word' },
     -- { '<leader>W', ":lua require 'fzf-lua'.grep_cWORD()<cr>", desc = 'find current WORD' },
 
-    { '<space>O', ":lua require 'fzf-lua'.nvim_options()<cr>", desc = 'vim [O]ptions' },
+    -- { '<space>O', ":lua require 'fzf-lua'.nvim_options()<cr>", desc = 'vim [O]ptions' },
     -- { '<space><space>', ":lua require 'fzf-lua'.resume()<cr>", desc = '[r]esume last search' },
     -- { '<space>o', ":lua require 'pdh.outline'.toggle()<cr>", desc = 'Toggle Outline of file' },
   },

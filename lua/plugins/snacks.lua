@@ -94,6 +94,13 @@ return {
       desc = 'Buffer Lines',
     },
     {
+      '<space>g',
+      function()
+        Snacks.picker.grep()
+      end,
+      desc = 'Grep',
+    },
+    {
       '<space>G',
       function()
         Snacks.picker.grep()

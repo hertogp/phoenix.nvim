@@ -66,35 +66,35 @@ return {
           -- https://github.com/ibhagwan/fzf-lua/issues/944
           -- :FzfLua lsp_code_actions previewer=codeaction_native
           -- map('grn', vim.lsp.buf.rename, '[R]e[n]ame')
-          map('grn', function()
-            require('fzf-lua').lsp_code_actions { previewer = codeaction_native }
-          end, '[R]e[n]ame')
+          -- map('grn', function()
+          --   require('fzf-lua').lsp_code_actions { previewer = codeaction_native }
+          -- end, '[R]e[n]ame')
 
           -- Execute a code action, usually your cursor needs to be on top of an error/warning
-          map('gra', vim.lsp.buf.code_action, '[G]oto Code [A]ction', { 'n', 'x' })
+          -- map('ca', vim.lsp.buf.code_action, '[G]oto Code [A]ction', { 'n', 'x' })
 
           -- Find references for the word under your cursor.
-          map('grr', require('fzf-lua').lsp_references, '[G]oto [R]eferences')
+          -- map('grr', require('fzf-lua').lsp_references, '[G]oto [R]eferences')
 
           -- Jump to the implementation of the word under your cursor.
-          map('gri', require('fzf-lua').lsp_implementations, '[G]oto [I]mplementation')
+          -- map('gri', require('fzf-lua').lsp_implementations, '[G]oto [I]mplementation')
 
           -- Jump to the definition of the word under your cursor, use <C-t> to jump back
-          map('grd', require('fzf-lua').lsp_definitions, '[G]oto [D]efinition')
+          -- map('grd', require('fzf-lua').lsp_definitions, '[G]oto [D]efinition')
 
           -- Jump to the declaration (not definition!) of word under cursor
-          map('grD', vim.lsp.buf.declaration, '[G]oto [D]eclaration')
+          -- map('grD', vim.lsp.buf.declaration, '[G]oto [D]eclaration')
 
           -- Fuzzy find all the symbols in your current document.
-          map('gO', require('fzf-lua').lsp_document_symbols, '[G] [O]pen Document Symbols')
+          -- map('gO', require('fzf-lua').lsp_document_symbols, '[G] [O]pen Document Symbols')
 
           -- Fuzzy find all the symbols in your current workspace (i.e. project)
-          map('gW', require('fzf-lua').lsp_live_workspace_symbols, 'Open Workspace Symbols')
+          -- map('gW', require('fzf-lua').lsp_live_workspace_symbols, 'Open Workspace Symbols')
 
           -- Jump to the type of the word under your cursor.
           --  Useful when you're not sure what type a variable is and you want to see
           --  the definition of its *type*, not where it was *defined*.
-          map('grt', require('fzf-lua').lsp_typedefs, '[G]oto [T]ype Definition')
+          -- map('grt', require('fzf-lua').lsp_typedefs, '[G]oto [T]ype Definition')
 
           -- This function resolves a difference between neovim nightly (version 0.11) and stable (version 0.10)
           ---@param client vim.lsp.Client
