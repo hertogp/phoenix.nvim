@@ -107,6 +107,8 @@ return {
       desc = "find, project todo's",
     },
 
+    -- muscle memory fades slowly it seems
+    { '<space>l', ":lua require 'fzf-lua'.blines()<cr>", desc = 'grep, buffer' },
     { '<space>fl', ":lua require 'fzf-lua'.blines()<cr>", desc = 'grep, buffer' },
     -- greps buffer's file (last save) on disk (won't work on nofile buffers)
     { '<space>gl', ":lua require 'fzf-lua'.grep_curbuf()<cr>", desc = 'grep, saved buffer' },

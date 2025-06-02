@@ -107,9 +107,10 @@ local function buf_sanitize(buf)
 end
 
 --[[ WINDOW funcs ]]
+local W = {}
 
-local function win_centerline(win, linenr)
-  -- try to center linenr in window win
+function W.centerline(win, linenr)
+  -- try to keep line in window at same spot
   if vim.api.nvim_win_is_valid(win) then
     pcall(vim.api.nvim_win_set_cursor, win, { linenr, 0 })
     vim.api.nvim_win_call(win, function()
@@ -118,7 +119,7 @@ local function win_centerline(win, linenr)
   end
 end
 
-local function win_isvalid(winid)
+function W.isvalid(winid)
   if type(winid) == 'number' then
     return vim.api.nvim_win_is_valid(winid)
   else
@@ -126,18 +127,19 @@ local function win_isvalid(winid)
   end
 end
 
-local function win_close(winid)
+function W.close(winid)
   -- safely close a window by its id.
-  if win_isvalid(winid) then
+  if W.isvalid(winid) then
     vim.api.nvim_win_close(winid, true)
   end
 end
 
-local function win_goto(winid)
+function W.goto(winid)
   if winid == 0 or winid == vim.api.nvim_get_current_win() then
+    -- already there
     return
   end
-  if vim.api.nvim_win_is_valid(winid) then
+  if W.isvalid(winid) then
     vim.api.nvim_set_current_win(winid)
   end
 end
@@ -510,8 +512,8 @@ M.close = function(buf)
   vim.b[otl.sbuf].otl = nil
   vim.b[otl.obuf].otl = nil
 
-  win_close(otl.owin)
-  win_goto(otl.swin)
+  W.close(otl.owin)
+  W.goto(otl.swin)
 end
 
 M.shuttle = function()
@@ -531,16 +533,16 @@ M.shuttle = function()
     -- shuttle in *a* window showing sbuf, adopt it as swin and moveto otl
     otl.swin = win
     otl_sync(otl)
-    win_goto(otl.owin)
+    W.goto(otl.owin)
     otl_select(line)
     return
   end
 
-  if win_isvalid(otl.swin) and otl.sbuf == vim.api.nvim_win_get_buf(otl.swin) then
+  if W.isvalid(otl.swin) and otl.sbuf == vim.api.nvim_win_get_buf(otl.swin) then
     -- shuttle called in the otl window and swin still shows sbuf
     line = otl.idx[line]
-    win_goto(otl.swin)
-    win_centerline(otl.swin, line)
+    W.goto(otl.swin)
+    W.centerline(otl.swin, line)
     return
   end
 
@@ -551,8 +553,8 @@ M.shuttle = function()
   else
     line = otl.idx[line]
     otl_sync(otl)
-    win_goto(otl.swin)
-    win_centerline(otl.swin, line)
+    W.goto(otl.swin)
+    W.centerline(otl.swin, line)
   end
 
   -- vim.notify("[error] shuttle: no window for src buf", vim.log.levels.ERROR)
@@ -593,10 +595,10 @@ M.up = function()
     line = line - 1
   end
 
-  -- win_centerline(otl.owin, line)
+  -- W.centerline(otl.owin, line)
   pcall(vim.api.nvim_win_set_cursor, otl.owin, { line, 0 })
   line = otl.idx[line]
-  win_centerline(otl.swin, line)
+  W.centerline(otl.swin, line)
 end
 
 M.down = function()
@@ -619,10 +621,10 @@ M.down = function()
     line = line + 1
   end
 
-  -- win_centerline(otl.owin, line)
+  -- W.centerline(otl.owin, line)
   pcall(vim.api.nvim_win_set_cursor, otl.owin, { line, 0 })
   line = otl.idx[line]
-  win_centerline(otl.swin, line)
+  W.centerline(otl.swin, line)
 end
 
 --[[ EXPERIMENT outliner CST ]]
