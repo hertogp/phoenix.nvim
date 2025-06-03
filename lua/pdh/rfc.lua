@@ -189,6 +189,16 @@ function H.to_url(topic, id)
   error('id must be one of: "index" or a number')
 end
 
+function H.to_symbol(topic, id)
+  -- local symbol = { '', '' }
+  local fname = H.to_fname(topic, id)
+  if fname and vim.fn.filereadable(fname) == 1 then
+    return ''
+  else
+    return ''
+  end
+end
+
 function H.fetch(topic, id)
   -- return a, possibly empty, list of lines
   local rv = plenary.curl.get({ url = H.to_url(topic, id), accept = 'plain/text' })
@@ -209,7 +219,7 @@ function H.load_index(topic)
   local fname = H.to_fname(topic, 'index')
 
   if not H.valid[topic] or fname == nil then
-    return idx
+    return idx -- i.e. {}
   end
 
   if H.ttl(fname) < 0 then
@@ -218,7 +228,7 @@ function H.load_index(topic)
 
     if #lines == 0 then
       vim.notify('index download failed for ' .. topic, vim.log.levels.ERROR)
-      return idx
+      return idx -- i.e. {}
     end
 
     idx = H.to_index(topic, lines)
@@ -242,9 +252,18 @@ function H.save(topic, id, lines)
     return fname
   end
 
-  local modeline = H.modeline(M.config.modeline)
-  if modeline then
-    lines[#lines + 1] = modeline
+  if id ~= 'index' then
+    -- only add modeline for rfc, bcp etc.. not for index files
+    local modeline = H.modeline(M.config.modeline)
+    if modeline then
+      lines[#lines + 1] = modeline
+    end
+  end
+
+  for idx, line in ipairs(lines) do
+    -- in snacks.picker.preview.lua, line:find("[%z\1-\8\11\12\14-\31]") -> binary is true
+    -- so eleminate (most) control chars (like ^L, aka FormFeed 0xFF, or \12)
+    lines[idx] = string.gsub(line, '[%z\1-\8\11\12\14-\31]', '')
   end
 
   local dir = vim.fs.dirname(fname)
@@ -277,6 +296,60 @@ function M.reload()
   return require('plenary.reload').reload_module('pdh.rfc')
 end
 
+function M.snack()
+  local longest_name = 0
+  local index = H.load_index('rfc')
+
+  if #index == 0 then
+    vim.notify('argh, indez has 0 entries')
+    return
+  end
+
+  local items = {}
+  for i, line in ipairs(index) do
+    local topic, id, text = H.entry_parse(line)
+    if topic and id and text then
+      table.insert(items, {
+        -- insert an Item
+        idx = i,
+        score = i,
+        text = text,
+        name = string.format('%s%d.txt', topic, id),
+        -- extra
+        file = H.to_fname(topic, id),
+        topic = topic,
+        id = id,
+        symbol = H.to_symbol(topic, id),
+      })
+      longest_name = math.max(longest_name, #items[#items].name)
+    else
+      vim.notify('ill formed index entry ' .. vim.inspect(line), vim.log.levels.WARN)
+    end
+  end
+  longest_name = longest_name + 1
+
+  return Snacks.picker({
+    items = items,
+    layout = {
+      preset = 'ivy',
+      preview = 'main',
+    },
+    format = function(item)
+      -- format an item for display in picker list
+      -- return list: { { str1, id1 }, { str2, id2 }, .. }
+      local ret = {}
+      ret[#ret + 1] = { ('%s %-' .. longest_name .. 's'):format(item.symbol, item.name), 'name' }
+      ret[#ret + 1] = { H.sep, 'sep' }
+      ret[#ret + 1] = { item.text, 'text' }
+      return ret
+    end,
+    confirm = function(picker, item)
+      picker:close()
+      vim.print('roll of the dice:')
+      vim.print(vim.inspect(item))
+    end,
+  })
+end
 function M.search(stream)
   -- search the index for `stream`
   -- TODO:
