@@ -291,7 +291,11 @@ return {
     {
       '<leader>ft',
       function()
-        Snacks.picker.grep({ buf = true, cwd = vim.expand('%:p:h'), search = 'TODO|ToDo|FIXME|NOTES?|BUG|XXX|REVIEW' })
+        Snacks.picker.grep({
+          buf = true,
+          cwd = vim.fn.expand('%:p:h'),
+          search = 'TODO|ToDo|FIXME|NOTES?|BUG|XXX|REVIEW',
+        })
       end,
       desc = 'Find Todo-s',
     },
@@ -333,6 +337,14 @@ return {
       '<leader>p',
       function()
         Snacks.picker.pickers()
+      end,
+      desc = 'Find Command',
+    },
+
+    {
+      '<leader>H',
+      function()
+        Snacks.picker.highlights()
       end,
       desc = 'Find Command',
     },

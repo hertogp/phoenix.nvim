@@ -204,7 +204,10 @@ function H.fetch(topic, id)
   local rv = plenary.curl.get({ url = H.to_url(topic, id), accept = 'plain/text' })
 
   if rv and rv.status == 200 then
-    local lines = vim.split(rv.body, '[\r\n]')
+    -- REVIEW: does the \f indeed eliminate the ^L formfeeds
+    -- (\12 aka \f aka FF aka 0x0C)?  If so, no need to do that
+    -- again in H.save()
+    local lines = vim.split(rv.body, '[\r\n\f]')
     return lines
   else
     vim.notify('failed to download ' .. topic .. ' id ' .. id, vim.log.levels.WARN)
@@ -276,8 +279,6 @@ function H.save(topic, id, lines)
 end
 
 --[[ Module ]]
---TODO:
--- [ ] H.grep -> grep through doc's in data dir
 
 M.config = {
   cache = vim.fn.stdpath('cache'), -- store indices only once
@@ -297,6 +298,11 @@ function M.reload()
 end
 
 function M.snack()
+  -- Use the source Luke!
+  -- * `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/preview.lua`
+  -- *  ``:!open https://github.com/folke/todo-comments.nvim/blob/main/lua/todo-comments/search.lua`
+  -- * `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/preview.lua`
+
   local longest_name = 0
   local index = H.load_index('rfc')
 
@@ -315,8 +321,10 @@ function M.snack()
         score = i,
         text = text,
         name = string.format('%s%d.txt', topic, id),
-        -- extra
+        -- file is used for preview
         file = H.to_fname(topic, id),
+        -- ft = 'rfc',
+        -- extra
         topic = topic,
         id = id,
         symbol = H.to_symbol(topic, id),
@@ -331,22 +339,28 @@ function M.snack()
   return Snacks.picker({
     items = items,
     layout = {
-      preset = 'ivy',
-      preview = 'main',
+      fullscreen = true,
+      -- preset = 'ivy_split',
+      -- preview = 'main',
     },
     format = function(item)
       -- format an item for display in picker list
       -- return list: { { str1, id1 }, { str2, id2 }, .. }
       local ret = {}
-      ret[#ret + 1] = { ('%s %-' .. longest_name .. 's'):format(item.symbol, item.name), 'name' }
-      ret[#ret + 1] = { H.sep, 'sep' }
-      ret[#ret + 1] = { item.text, 'text' }
+      ret[#ret + 1] = { ('%s %-' .. longest_name .. 's'):format(item.symbol, item.name), '' }
+      ret[#ret + 1] = { H.sep, 'SnacksIconNotifierWarn' }
+      ret[#ret + 1] = { item.text, '' }
       return ret
     end,
     confirm = function(picker, item)
+      vim.notify(picker:count() .. ' items in selection')
       picker:close()
-      vim.print('roll of the dice:')
-      vim.print(vim.inspect(item))
+      if vim.fn.filereadable(item.file) == 0 then
+        vim.notify('downloading ' .. item.name)
+        local lines = H.fetch(item.topic, item.id)
+        H.save(item.topic, item.id, lines)
+      end
+      vim.cmd('edit ' .. item.file)
     end,
   })
 end
@@ -365,6 +379,7 @@ function M.search(stream)
     return
   end
 
+  -- TODO: replace with snacks picker
   fzf_lua.fzf_exec(index, {
     prompt = 'search> ',
     winopts = {
@@ -397,13 +412,11 @@ end
 
 function M.find()
   local topdir = H.to_dir(M.config.data)
-  -- fzf_lua.files({ hidden = true, cwd = topdir })
   snacks.picker.files({ hidden = true, cwd = topdir })
 end
 
 function M.grep()
   local topdir = H.to_dir(M.config.data)
-  -- fzf_lua.live_grep({ hidden = true, cwd = topdir })
   snacks.picker.grep({ hidden = true, cwd = topdir })
 end
 
