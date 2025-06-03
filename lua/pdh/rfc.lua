@@ -37,7 +37,7 @@ end
 
 ok, snacks = pcall(require, 'snacks')
 if not ok then
-  error('fzf-lua, a dependency, is missing')
+  error('snacks, a dependency, is missing')
   return
 end
 
@@ -297,73 +297,26 @@ function M.reload()
   return require('plenary.reload').reload_module('pdh.rfc')
 end
 
-function M.snack()
-  -- Use the source Luke!
-  -- * `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/preview.lua`
-  -- *  ``:!open https://github.com/folke/todo-comments.nvim/blob/main/lua/todo-comments/search.lua`
-  -- * `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/preview.lua`
-
-  local longest_name = 0
-  local index = H.load_index('rfc')
-
-  if #index == 0 then
-    vim.notify('argh, indez has 0 entries')
-    return
-  end
-
-  local items = {}
-  for i, line in ipairs(index) do
-    local topic, id, text = H.entry_parse(line)
-    if topic and id and text then
-      table.insert(items, {
-        -- insert an Item
-        idx = i,
-        score = i,
-        text = text,
-        name = string.format('%s%d.txt', topic, id),
-        -- file is used for preview
-        file = H.to_fname(topic, id),
-        -- ft = 'rfc',
-        -- extra
-        topic = topic,
-        id = id,
-        symbol = H.to_symbol(topic, id),
-      })
-      longest_name = math.max(longest_name, #items[#items].name)
-    else
-      vim.notify('ill formed index entry ' .. vim.inspect(line), vim.log.levels.WARN)
-    end
-  end
-  longest_name = longest_name + 1
-
-  return Snacks.picker({
-    items = items,
-    layout = {
-      fullscreen = true,
-      -- preset = 'ivy_split',
-      -- preview = 'main',
-    },
-    format = function(item)
-      -- format an item for display in picker list
-      -- return list: { { str1, id1 }, { str2, id2 }, .. }
-      local ret = {}
-      ret[#ret + 1] = { ('%s %-' .. longest_name .. 's'):format(item.symbol, item.name), '' }
-      ret[#ret + 1] = { H.sep, 'SnacksIconNotifierWarn' }
-      ret[#ret + 1] = { item.text, '' }
-      return ret
-    end,
-    confirm = function(picker, item)
-      vim.notify(picker:count() .. ' items in selection')
-      picker:close()
-      if vim.fn.filereadable(item.file) == 0 then
-        vim.notify('downloading ' .. item.name)
-        local lines = H.fetch(item.topic, item.id)
-        H.save(item.topic, item.id, lines)
-      end
-      vim.cmd('edit ' .. item.file)
-    end,
-  })
+function M.find()
+  local topdir = H.to_dir(M.config.data)
+  snacks.picker.files({ hidden = true, cwd = topdir })
 end
+
+function M.grep()
+  local topdir = H.to_dir(M.config.data)
+  snacks.picker.grep({ hidden = true, cwd = topdir })
+end
+
+function M.test(topic, id)
+  vim.notify('test ' .. topic .. ' ' .. id)
+end
+
+function M.setup(opts)
+  M.config = vim.tbl_extend('force', M.config, opts)
+
+  return M
+end
+
 function M.search(stream)
   -- search the index for `stream`
   -- TODO:
@@ -410,24 +363,74 @@ function M.search(stream)
   })
 end
 
-function M.find()
-  local topdir = H.to_dir(M.config.data)
-  snacks.picker.files({ hidden = true, cwd = topdir })
+function M.snack(stream)
+  -- Use the source Luke!
+  -- * `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/preview.lua`
+  -- *  ``:!open https://github.com/folke/todo-comments.nvim/blob/main/lua/todo-comments/search.lua`
+  -- * `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/preview.lua`
+
+  stream = stream or 'rfc'
+  local index = H.load_index(stream)
+
+  if #index == 0 then
+    vim.notify('argh, indez has 0 entries')
+    return
+  end
+
+  local items = {}
+  local name_width = 3 + #('' .. #index) + 2 + 4 -- 'rfc' + xxxx + 2 + '.txt'
+  for i, line in ipairs(index) do
+    local topic, id, text = H.entry_parse(line)
+    local fname = H.to_fname(topic, id)
+    if topic and id and text then
+      table.insert(items, {
+        -- insert an Item
+        idx = i,
+        score = i,
+        text = text,
+        name = string.format('%s%d.txt', topic, id),
+        -- file is used for preview
+        file = fname,
+        -- extra
+        exists = fname and vim.fn.filereadable(fname) == 1,
+        topic = topic,
+        id = id,
+        symbol = H.to_symbol(topic, id),
+      })
+    else
+      vim.notify('ill formed index entry ' .. vim.inspect(line), vim.log.levels.WARN)
+    end
+  end
+
+  return snacks.picker({
+    items = items,
+    layout = {
+      fullscreen = true,
+      -- preset = 'ivy_split',
+      -- preview = 'main',
+    },
+    format = function(item)
+      -- format an item for display in picker list
+      -- return list: { { str1, hl_name1 }, { str2, hl_nameN }, .. }
+      local hl_item = (item.exists and 'SnacksPickerCode') or 'SnacksPicker'
+      vim.print('hl_item ' .. hl_item)
+      local ret = {}
+      ret[#ret + 1] = { item.symbol, hl_item }
+      ret[#ret + 1] = { (' %-' .. name_width .. 's'):format(item.name), '' }
+      ret[#ret + 1] = { H.sep, 'SnacksWinKeySep' }
+      ret[#ret + 1] = { item.text, '' }
+      return ret
+    end,
+    confirm = function(picker, item)
+      vim.notify(picker:count() .. ' items in selection')
+      picker:close()
+      if vim.fn.filereadable(item.file) == 0 then
+        vim.notify('downloading ' .. item.name)
+        local lines = H.fetch(item.topic, item.id)
+        H.save(item.topic, item.id, lines)
+      end
+      vim.cmd('edit ' .. item.file)
+    end,
+  })
 end
-
-function M.grep()
-  local topdir = H.to_dir(M.config.data)
-  snacks.picker.grep({ hidden = true, cwd = topdir })
-end
-
-function M.test(topic, id)
-  vim.notify('test ' .. topic .. ' ' .. id)
-end
-
-function M.setup(opts)
-  M.config = vim.tbl_extend('force', M.config, opts)
-
-  return M
-end
-
 return M
