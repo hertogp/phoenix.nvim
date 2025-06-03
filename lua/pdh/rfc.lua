@@ -10,6 +10,20 @@ fuzzy> 'bgp !info 'path | 'select
 - | acts as OR operator: ^core go$ | rb$ | py$ <- match entries that start with core and end with either go, rb or py
 - fzf -e or --exact uses exact matching; '-prefix unquotes the term
 
+TODO: these need some TLC
+- [ ] parse an entry into topic|nr|title|status|formats|doi|updates|updated_by|obsoletes|obsoleted_by
+      those will go into an item, along with other fields like file, url, etc ..
+      - Authors are harder to parse since a title may contain '.' as well as '.' as its last char
+      - there are a nr of rfc with title=Not Issued. (!)
+      - date is (usually) <Month> <YYYY>.
+      - some are Not Issued. -> nothing there, needs to be handled (no formats, but has an info/rfc<x> page)
+- [ ] formats other than TXT are redirected to browser w/ a URL (.pdf, .html etc..) or the info page
+      e.g. https://www.editor-rfc.org/info/rfc8  (no extension)
+- [ ] info page the default when choosing to browse for an rfc, rather than downloading it?
+- [ ] no local file, just show the item without the error msg.  Howto avoid that error?
+- [ ] when download fails, flash a warning and do not create a local file with just a modeline.
+- [ ] how to handle icons properly?
+
 --]]
 
 --[[ dependency check ]]
@@ -66,7 +80,7 @@ function H.modeline(spec)
       if vim.fn.exists(string.format('&%s', k)) == 1 then
         opts = string.format('%s %s=%s', opts, k, v)
       else
-        vim.notify('modeline: ignore unknown option ' .. vim.inspect(k), vim.log.levels.ERROR)
+        vim.notify('modeline: ignoring unknown option ' .. vim.inspect(k), vim.log.levels.WARN)
       end
     end
     if #opts > 0 then
@@ -77,11 +91,48 @@ function H.modeline(spec)
   return nil -- do not add modeline
 end
 
+function H.title_parse(line)
+  -- take out all (tag: stuff) and (word word words) parts
+  -- (Status: ..) (Format: ..) (DOI: ..)
+  -- (Obsoletes rfc..) (Obsoleted by rfc...)
+  -- (Updates rfc...) (Updated by rfc ..)
+  -- vim.split
+  local tags = {}
+  -- for k, v in string.gmatch(line, '%(([^:)]+):([^)]+)%)') do
+  --   tags[k:lower()] = vim.trim(v:lower())
+  --   line = string.gsub(line, '%s*%(' .. k .. ':' .. v .. '%)', '', 1)
+  -- end
+
+  -- remaining ()'s
+  local wanted = {
+    obsoletes = true,
+    obsoleted_by = true,
+    updates = true,
+    updated_by = true,
+    also = true,
+    status = true,
+    format = true,
+    doi = true,
+  }
+  for part in string.gmatch(line, '%(([^)]+)%)') do
+    local part2 = string.gsub(part, '%s+by', '_by', 1):gsub(':', '', 1)
+    local k, v = string.match(part2, '^([^%s]+)%s+(.*)$')
+    if k and v and wanted[k:lower()] then
+      tags[k:lower()] = vim.trim(v:lower())
+      line = string.gsub(line, '%s%(' .. part .. '%)', '', 1)
+    end
+  end
+
+  return line, tags
+end
+
 function H.entry_build(topic, line)
   -- return string formatted like 'topic|nr|text' or nil
+  -- topic|nr|text
   local nr, rest = string.match(line, '^(%d+)%s+(.*)')
+
   if nr ~= nil then
-    return string.format('%3s%s%05d%s %s', topic, H.sep, tonumber(nr), H.sep, rest)
+    return string.format('%3s%s%05d%s%s', topic, H.sep, tonumber(nr), H.sep, rest)
   end
   return nil -- this will cause candidate deletion
 end
@@ -92,6 +143,10 @@ function H.entry_parse(line)
 end
 function H.to_index(topic, lines)
   -- collect eligible lines and format as entries
+  -- --------------------- example
+  -- 0001 this is the
+  --      title of rfc 1
+  -- ---------------------
   -- 1. a line that starts with a number, starts a candidate entry
   -- 2. a line that does not start with a number is added to the current candidate
   -- 3. candidates that do not start with a number are eliminated
@@ -373,25 +428,33 @@ function M.snack(stream)
   local index = H.load_index(stream)
 
   if #index == 0 then
-    vim.notify('argh, indez has 0 entries')
+    vim.notify('argh, index has 0 entries')
     return
   end
 
   local items = {}
-  local name_width = 3 + #('' .. #index) + 2 + 4 -- 'rfc' + xxxx + 2 + '.txt'
+  local name_width = 3 + #tostring(#index) + 4 + 1 -- '<rfc><xxxx><.txt>' + 1
+  local name_fmt = ' %-' .. name_width .. 's'
+
   for i, line in ipairs(index) do
     local topic, id, text = H.entry_parse(line)
-    local fname = H.to_fname(topic, id)
     if topic and id and text then
+      local fname = H.to_fname(topic, id)
+      local title, labels = H.title_parse(text)
+      if #title < 1 then
+        vim.print(vim.inspect({ 'title', title, labels }))
+      end
+
       table.insert(items, {
         -- insert an Item
         idx = i,
         score = i,
-        text = text,
-        name = string.format('%s%d.txt', topic, id),
-        -- file is used for preview
-        file = fname,
+        text = title,
+        name = string.format('%s%d.txt', topic, id), -- TODO: .txt available?
+        file = fname, -- used for preview
+
         -- extra
+        labels = labels,
         exists = fname and vim.fn.filereadable(fname) == 1,
         topic = topic,
         id = id,
@@ -404,19 +467,64 @@ function M.snack(stream)
 
   return snacks.picker({
     items = items,
+    -- TODO: tie actions (f=fetch, F=fetch selection, etc..) to keys, but how?
+    -- see `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/config/defaults.lua`
+    -- around Line 200, win = { input = { keys = { ... }}}
+    win = {
+      list = {
+        -- this is the window where list being search/filtered is displayed
+        -- ('/' toggle focus between list/input window)
+        -- <c-g/G> originally toggles live_grep which is not supported in
+        -- search anyway.  Hmm. can't override it here.
+        keys = {
+          -- [<TAB>] is select_and_next, will select an item (input/list win)
+          ['<c-x>'] = { 'download', mode = { 'n', 'i' } },
+          ['<c-m-x>'] = { 'download_selection', mode = { 'n', 'i' } },
+        },
+      },
+      input = {
+        keys = {
+          ['<c-x>'] = { 'download', mode = { 'n', 'i' } },
+          ['<c-m-x>'] = { 'download_selection', mode = { 'n', 'i' } },
+          ['<c-y>'] = { 'echo', mode = { 'n', 'i' } },
+        },
+      },
+    },
+
+    actions = {
+      download = function(picker, item)
+        vim.print({ 'download item', vim.inspect(item) })
+      end,
+
+      download_selection = function(picker, item)
+        -- item is current item in the list
+        -- picker.list.selected is list of selected items
+        local x = picker.list.selected
+        vim.print({
+          'download selection (' .. #x .. 'items)',
+          'item is',
+          vim.inspect(item),
+          'selection is',
+          vim.inspect(x),
+        })
+      end,
+
+      echo = function(picker)
+        vim.print({ 'echo', vim.inspect(picker) })
+      end,
+    },
+
     layout = {
       fullscreen = true,
-      -- preset = 'ivy_split',
-      -- preview = 'main',
     },
     format = function(item)
       -- format an item for display in picker list
       -- return list: { { str1, hl_name1 }, { str2, hl_nameN }, .. }
+      -- `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/format.lua`
       local hl_item = (item.exists and 'SnacksPickerCode') or 'SnacksPicker'
-      vim.print('hl_item ' .. hl_item)
       local ret = {}
       ret[#ret + 1] = { item.symbol, hl_item }
-      ret[#ret + 1] = { (' %-' .. name_width .. 's'):format(item.name), '' }
+      ret[#ret + 1] = { name_fmt:format(item.name), hl_item }
       ret[#ret + 1] = { H.sep, 'SnacksWinKeySep' }
       ret[#ret + 1] = { item.text, '' }
       return ret
