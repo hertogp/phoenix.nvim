@@ -537,6 +537,84 @@ read(fname) -> lines -> ok, lines
 
 
 --]]
+
+--[[ ITEMs ]]
+-- state and functions that work with picker items
+local Itm = { list = {}, streams = {} }
+
+function Itm:from(streams)
+  -- build Itm.list of items for given streams
+
+  local index = Idx.index(streams) -- { {stream, nr, text}, .. }
+  self.streams = streams
+
+  if #index == 0 then
+    vim.notify('[warn] found 0 items for streams: ' .. table.concat(streams, ', '), vim.log.levels.WARN)
+    return
+  end
+
+  self.list = {}
+  for idx, entry in ipairs(index) do
+    local stream, id, text = unpack(entry)
+    if stream and id and text then
+      local fname = H.fname(stream, id)
+      local title, tags = self.tags(text)
+      -- TODO: delete this or use it to skip to next entry
+      if #title < 1 then
+        vim.print(vim.inspect({ 'title', title, tags }))
+      end
+
+      table.insert(self.list, {
+        -- insert an Item
+        idx = idx,
+        score = idx,
+        text = title,
+        name = string.format('%s%d', stream, id),
+        file = fname, -- used for preview
+
+        -- extra
+        tags = tags,
+        exists = fname and vim.fn.filereadable(fname) == 1,
+        stream = stream,
+        id = id,
+        symbol = H.to_symbol(stream, id),
+      })
+    else
+      vim.notify('ill formed index entry ' .. vim.inspect(entry), vim.log.levels.WARN)
+    end
+  end
+
+  return #self.list
+end
+
+function Itm.tags(text)
+  -- take out all (tag: stuff) and (word word words) parts
+  -- (Status: _) (Format: _) (DOI: _) (Obsoletes _) (Obsoleted by _) (Updates _) (Updated by _)
+  local tags = {}
+  local wanted = {
+    obsoletes = true,
+    obsoleted_by = true,
+    updates = true,
+    updated_by = true,
+    also = true,
+    status = true,
+    format = true,
+    doi = true,
+  }
+
+  for part in string.gmatch(text, '%(([^)]+)%)') do
+    local prepped = string.gsub(part, '%s+by', '_by', 1):gsub(':', '', 1)
+    local k, v = string.match(prepped, '^([^%s]+)%s+(.*)$')
+    if k and v and wanted[k:lower()] then
+      tags[k:lower()] = vim.trim(v:gsub('%s+', ''):lower())
+      -- remove matched ()-text, including a ws prefix if possible
+      text = string.gsub(text, '%s?%(' .. part .. '%)', '', 1)
+    end
+  end
+
+  return text, tags
+end
+
 --[[ Module ]]
 
 M.config = {
@@ -572,7 +650,7 @@ function M.setup(opts)
   return M
 end
 
-function M.search(stream)
+function M.search(streams)
   -- search the stream(s) index/indices
   -- TODO:
   -- [ ] arg maybe streams, e.g. {'rfc', 'bcp', 'std'} and concat the index lists of named topics
@@ -583,52 +661,14 @@ function M.search(stream)
   -- *  ``:!open https://github.com/folke/todo-comments.nvim/blob/main/lua/todo-comments/search.lua`
   -- * `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/preview.lua`
 
-  stream = stream or 'rfc'
-  local index = H.load_index(stream)
-
-  if #index == 0 then
-    vim.notify('[warn] index ' .. stream .. ' has 0 entries', vim.log.levels.WARN)
-    return
-  end
-
-  local items = {}
-  local name_width = 3 + #tostring(#index) + 4 + 1 -- '<rfc><xxxx><.txt>' + 1
-  local name_fmt = ' %-' .. name_width .. 's'
-
-  for i, line in ipairs(index) do
-    local topic, id, text = H.idx_entry_parse(line)
-    if topic and id and text then
-      local fname = H.to_fname(topic, id)
-      local title, labels = H.title_parse(text)
-      if #title < 1 then
-        vim.print(vim.inspect({ 'title', title, labels }))
-      end
-
-      table.insert(items, {
-        -- insert an Item
-        idx = i,
-        score = i,
-        text = title,
-        name = string.format('%s%d.txt', topic, id), -- TODO: .txt available?
-        file = fname, -- used for preview
-
-        -- extra
-        labels = labels,
-        exists = fname and vim.fn.filereadable(fname) == 1,
-        topic = topic,
-        id = id,
-        symbol = H.to_symbol(topic, id),
-      })
-    else
-      vim.notify('ill formed index entry ' .. vim.inspect(line), vim.log.levels.WARN)
-    end
-  end
+  Itm:from(streams)
+  local name_fmt = '%-' .. (3 + #(tostring(#Itm.list))) .. 's'
+  vim.print(vim.inspect({ #Itm.list, name_fmt }))
 
   return snacks.picker({
-    items = items,
-    -- TODO: tie actions (f=fetch, F=fetch selection, etc..) to keys, but how?
+    items = Itm.list,
     -- see `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/config/defaults.lua`
-    -- around Line 200, win = { input = { keys = { ... }}}
+    -- around Line 200, win = { input = { keys = {..}}, list = { keys = {..}}}
     win = {
       list = {
         -- this is the window where list being search/filtered is displayed
@@ -636,7 +676,9 @@ function M.search(stream)
         -- <c-g/G> originally toggles live_grep which is not supported in
         -- search anyway.  Hmm. can't override it here.
         keys = {
+          -- <enter> is confirm & act on selection
           -- [<TAB>] is select_and_next, will select an item (input/list win)
+          -- <c-a> will (de)select all
           ['<c-x>'] = { 'download', mode = { 'n', 'i' } },
           ['<c-m-x>'] = { 'download_selection', mode = { 'n', 'i' } },
         },
@@ -683,6 +725,7 @@ function M.search(stream)
       local hl_item = (item.exists and 'SnacksPickerCode') or 'SnacksPicker'
       local ret = {}
       ret[#ret + 1] = { item.symbol, hl_item }
+      ret[#ret + 1] = { ' ' .. H.sep, 'SnacksWinKeySep' }
       ret[#ret + 1] = { name_fmt:format(item.name), hl_item }
       ret[#ret + 1] = { H.sep, 'SnacksWinKeySep' }
       ret[#ret + 1] = { item.text, '' }
@@ -693,9 +736,9 @@ function M.search(stream)
       picker:close()
       if vim.fn.filereadable(item.file) == 0 then
         vim.notify('downloading ' .. item.name)
-        local lines = H.fetch(item.topic, item.id)
+        local lines = H.fetch(item.stream, item.id)
         if #lines > 0 then
-          H.save(item.topic, item.id, lines)
+          H.save(item.stream, item.id, lines)
           vim.cmd('edit ' .. item.file)
         end
       else
@@ -705,10 +748,15 @@ function M.search(stream)
   })
 end
 
-function M.test()
-  local idx = Idx.index({ 'ien', 'fyi' })
-  for _, itm in ipairs(idx) do
-    vim.print(vim.inspect(itm))
+function M.test(streams)
+  -- sanitize input
+  streams = streams or { 'rfc' }
+  streams = type(streams) == 'string' and { streams } or streams
+
+  local count = Itm:from(streams)
+  vim.print('Got ' .. count .. 'entries for stream(s): ' .. table.concat(streams, ','))
+  for idx, item in ipairs(Itm.list) do
+    vim.print({ idx, vim.inspect(item) })
   end
 end
 
