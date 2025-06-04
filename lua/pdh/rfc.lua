@@ -76,36 +76,6 @@ function H.modeline(spec)
   return nil -- do not add modeline
 end
 
-function H.title_parse(line)
-  -- take out all (tag: stuff) and (word word words) parts
-  -- (Status: ..) (Format: ..) (DOI: ..)
-  -- (Obsoletes rfc..) (Obsoleted by rfc...)
-  -- (Updates rfc...) (Updated by rfc ..)
-  -- vim.split
-  local tags = {}
-  local wanted = {
-    obsoletes = true,
-    obsoleted_by = true,
-    updates = true,
-    updated_by = true,
-    also = true,
-    status = true,
-    format = true,
-    doi = true,
-  }
-
-  for part in string.gmatch(line, '%(([^)]+)%)') do
-    local part2 = string.gsub(part, '%s+by', '_by', 1):gsub(':', '', 1)
-    local k, v = string.match(part2, '^([^%s]+)%s+(.*)$')
-    if k and v and wanted[k:lower()] then
-      tags[k:lower()] = vim.trim(v:lower())
-      line = string.gsub(line, '%s%(' .. part .. '%)', '', 1)
-    end
-  end
-
-  return line, tags
-end
-
 function H.idx_entry_build(topic, line)
   -- return string formatted like 'topic|nr|text' or nil
   -- topic|nr|text
