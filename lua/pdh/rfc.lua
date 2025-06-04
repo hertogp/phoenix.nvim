@@ -292,6 +292,17 @@ end
 -- helper functions for small tasks
 -- note that caller is assumed to check validity of args and values
 -- so here we `assert` and possibly fail hard
+function H.curl(url)
+  -- return a, possibly empty, list of lines
+  local rv = plenary.curl.get({ url = url, accept = 'plain/text' })
+  local lines = {}
+
+  if rv and rv.status == 200 then
+    -- no newline's for buf set lines, no formfeed for snacks preview
+    lines = vim.split(rv.body, '[\r\n\f]')
+  end
+  return { status = rv.status, lines = lines }
+end
 
 function H.fname(stream, id)
   assert(H.valid[stream])
@@ -385,18 +396,6 @@ function H.url(stream, id, ext)
   end
 
   return string.format(fmt, base, stream, stream, id, ext)
-end
-
-function H.curl(url)
-  -- return a, possibly empty, list of lines
-  local rv = plenary.curl.get({ url = url, accept = 'plain/text' })
-  local lines = {}
-
-  if rv and rv.status == 200 then
-    -- no newline's for buf set lines, no formfeed for snacks preview
-    lines = vim.split(rv.body, '[\r\n\f]')
-  end
-  return { status = rv.status, lines = lines }
 end
 
 --[[ INDEX ]]
