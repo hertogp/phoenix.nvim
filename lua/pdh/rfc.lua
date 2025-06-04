@@ -419,9 +419,9 @@ function Idx.curl(stream)
     return {}
   end
 
-  -- parse raw, assembled, content line
   local parse = function(line)
-    local nr, title = string.match(line, '^%s*(%d+)%s+(.*)')
+    -- parse accumulated entry line (if any)
+    local nr, title = string.match(line, '^(%d+)%s+(.*)')
     nr = tonumber(nr) -- eleminate any leading zero's
     if nr ~= nil then
       return { stream, nr, title }
@@ -431,17 +431,22 @@ function Idx.curl(stream)
 
   -- build parsed entries
   local idx = {} -- parsed content { {s, n, t}, ... }
-  local acc = '' -- accumulating content
+  local acc = '' -- start of accumulated lines
+  local max = stream == 'ien' and 3 or 1
   for _, line in ipairs(rv.lines) do
-    local start = string.match(line, '^(%s*)%d+%s')
-    -- avoid pesky spurious continuation lines that actually start with an nr
-    if start and #start < 5 then --string.match(line, '^%s*%d+%s') then
-      vim.print(vim.inspect({ #start, line }))
+    local start = string.match(line, '^(%s*)%d+%s+%S')
+    if start and #start < max then
+      -- starter line: parse current, start new
+      vim.print(vim.inspect({ #start, max, line }))
       idx[#idx + 1] = parse(acc)
-      acc = vim.trim(line) -- start new accumulator
-    elseif string.match(line, '^%s+%D]') then
-      -- NOTE: simply tag on any continuation lines, there won't be many ..
+      acc = vim.trim(line) -- trim leading ws(!) for parse()
+    elseif #acc > 0 and string.match(line, '^%s+%S') then
+      -- continuation line: accumulate
       acc = acc .. ' ' .. vim.trim(line)
+    else
+      -- neither a starter, nor continuation: parse current, restart
+      idx[#idx + 1] = parse(acc)
+      acc = ''
     end
   end
   -- don't forget the last entry
@@ -701,7 +706,7 @@ function M.search(stream)
 end
 
 function M.test()
-  local idx = Idx.index({ 'ien' })
+  local idx = Idx.index({ 'rfc' })
   for _, itm in ipairs(idx) do
     vim.print(vim.inspect(itm))
   end
