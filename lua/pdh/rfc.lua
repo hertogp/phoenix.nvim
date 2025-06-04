@@ -419,12 +419,6 @@ function Idx.curl(stream)
     return {}
   end
 
-  -- prep the raw input lines
-  local lines = {}
-  for _, line in ipairs(lines) do
-    ::next::
-  end
-
   -- parse raw, assembled, content line
   local parse = function(line)
     local nr, title = string.match(line, '^%s*(%d+)%s+(.*)')
@@ -439,10 +433,14 @@ function Idx.curl(stream)
   local idx = {} -- parsed content { {s, n, t}, ... }
   local acc = '' -- accumulating content
   for _, line in ipairs(rv.lines) do
-    if string.match(line, '^%s*%d+%s') then
+    local start = string.match(line, '^(%s*)%d+%s')
+    -- avoid pesky spurious continuation lines that actually start with an nr
+    if start and #start < 5 then --string.match(line, '^%s*%d+%s') then
+      vim.print(vim.inspect({ #start, line }))
       idx[#idx + 1] = parse(acc)
-      acc = line -- start new accumulator
-    elseif string.match(line, '^%s+') then
+      acc = vim.trim(line) -- start new accumulator
+    elseif string.match(line, '^%s+%D]') then
+      -- NOTE: simply tag on any continuation lines, there won't be many ..
       acc = acc .. ' ' .. vim.trim(line)
     end
   end
