@@ -299,18 +299,18 @@ function H.load_index(topic)
 end
 
 --[[ H mod new]]
--- caller is assumed to check validity of args and values
+-- helper functions for small tasks
+-- note that caller is assumed to check validity of args and values
 -- so here we `assert` and possibly fail hard
 
 function H.fname(stream, id)
+  assert(H.valid[stream])
+
   -- return full file path for (stream, id) or nil
   id = id or 'index'
   local fdir, fname
   local cfg = M.config
   local top = M.config.top or H.top
-
-  vim.print('stream is ' .. vim.inspect(stream))
-  assert(H.valid[stream])
 
   if id == 'index' then
     -- it's an document index
@@ -321,6 +321,7 @@ function H.fname(stream, id)
 
   -- id is an ietf document number
   id = tonumber(id) -- eliminate leading zero's (if any)
+  assert(id)
 
   -- find fdir based on markers
   if type(cfg.data) == 'table' then
@@ -399,6 +400,7 @@ function H.curl(url)
 end
 
 --[[ INDEX ]]
+-- functions that work with the indices of streams of ietf documents
 
 local Idx = {}
 
@@ -447,6 +449,7 @@ function Idx.curl(stream)
 end
 
 function Idx.get(stream)
+  -- get a single stream, either from disk or from ietf
   assert(H.valid[stream])
 
   local idx = {}
@@ -456,16 +459,18 @@ function Idx.get(stream)
     idx = Idx.curl(stream)
     Idx.save(idx)
   else
-    idx = Idx.read(stream) -- load from disk
+    idx = Idx.read(stream)
   end
 
   return idx
 end
 
 function Idx.index(streams)
+  -- returns { {stream<1>, nr, title}, ... {stream<n>, nr, title} }
   streams = streams or { 'rfc' }
   local idx = {}
   for _, stream in ipairs(streams) do
+    assert(H.valid[stream])
     for _, entry in ipairs(Idx.get(stream)) do
       idx[#idx + 1] = entry
     end
@@ -474,30 +479,27 @@ function Idx.index(streams)
 end
 
 function Idx.save(idx)
-  -- save index entries to their respective index files on disk
-  vim.print('Idx.save called')
+  -- save index entries to their respective <stream>-index files on disk
   local streams = {}
-  local idx_ = {}
   for _, entry in ipairs(idx) do
     local stream, nr, title = unpack(entry)
     local sep = H.sep
     local line = string.format('%s%s%d%s%s', stream, sep, nr, sep, title)
+
     if streams[stream] == nil then
-      streams[stream] = {}
+      streams[stream] = {} -- add table for new stream
     end
-    table.insert(streams[stream], string.format('%s%s%d%s%s', stream, sep, nr, sep, title))
+
+    table.insert(streams[stream], line)
   end
 
   for stream, lines in pairs(streams) do
-    vim.print('saving ' .. #lines .. ' to disk')
     H.save(stream, 'index', lines)
   end
 end
 
 function Idx.read(stream)
   -- read an index from disk, don't mind the ttl at this point
-  -- fname be missing, have 0 bytes ...
-  vim.print('reading stream ' .. vim.inspect(stream))
   assert(H.valid[stream])
 
   local fname = H.fname(stream, 'index')
