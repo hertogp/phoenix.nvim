@@ -338,9 +338,9 @@ function H.symbol(topic, id)
   -- local symbol = { '', '' }
   local fname = H.to_fname(topic, id)
   if fname and vim.fn.filereadable(fname) == 1 then
-    return '☻ ' --  '
+    return '☻ ' --  ''
   else
-    return '☺ ' -- ''
+    return '☺ ' -- ''
   end
 end
 
@@ -445,6 +445,7 @@ end
 function Idx.index(streams)
   -- returns { {stream<1>, nr, title}, ... {stream<n>, nr, title} }
   streams = streams or { 'rfc' }
+  streams = type(streams) == 'string' and { streams } or streams
   local idx = {}
   for _, stream in ipairs(streams) do
     assert(H.valid[stream])
