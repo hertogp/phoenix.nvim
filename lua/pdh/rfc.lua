@@ -420,13 +420,13 @@ function Idx.curl(stream)
   end
 
   local parse = function(line)
-    -- parse accumulated entry line (if any)
+    -- return a parsed accumulated entry line (if any) or nil upon failure
     local nr, title = string.match(line, '^(%d+)%s+(.*)')
     nr = tonumber(nr) -- eleminate any leading zero's
     if nr ~= nil then
       return { stream, nr, title }
     end
-    return nil -- won't add the candidate
+    return nil -- so it actually won't add the entry
   end
 
   -- build parsed entries
@@ -449,7 +449,7 @@ function Idx.curl(stream)
       acc = ''
     end
   end
-  -- don't forget the last entry
+  -- don't forget the last entry (if any)
   idx[#idx + 1] = parse(acc)
 
   return idx -- { {stream, nr, title }, .. }
@@ -706,7 +706,7 @@ function M.search(stream)
 end
 
 function M.test()
-  local idx = Idx.index({ 'rfc' })
+  local idx = Idx.index({ 'ien', 'fyi' })
   for _, itm in ipairs(idx) do
     vim.print(vim.inspect(itm))
   end
