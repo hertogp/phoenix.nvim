@@ -8,7 +8,6 @@ fuzzy> 'bgp !info 'path | 'select
 - ^str match exact occurrences at start of the string
 - str$ match exact occurrences at end of the string
 - | acts as OR operator: ^core go$ | rb$ | py$ <- match entries that start with core and end with either go, rb or py
-- fzf -e or --exact uses exact matching; '-prefix unquotes the term
 
 TODO: these need some TLC
 - [x] parse an entry into topic|nr|title|status|formats|doi|updates|updated_by|obsoletes|obsoleted_by
@@ -32,17 +31,11 @@ local H = {} -- private helpers
 
 --[[ locals ]]
 
-local ok, plenary, fzf_lua, snacks
+local ok, plenary, snacks
 
 ok, plenary = pcall(require, 'plenary')
 if not ok then
   error('plenary, a dependency, is missing')
-  return
-end
-
-ok, fzf_lua = pcall(require, 'fzf-lua')
-if not ok then
-  error('fzf-lua, a dependency, is missing')
   return
 end
 
@@ -57,11 +50,6 @@ end
 H.valid = { rfc = true, bcp = true, std = true, fyi = true, ien = true }
 H.top = 'ietf.org'
 H.sep = '│'
-
-function H.ttl(fname)
-  -- remaining seconds to live
-  return M.config.ttl + vim.fn.getftime(fname) - vim.fn.localtime()
-end
 
 function H.modeline(spec)
   -- returns modeline string if possible, nil otherwise
@@ -118,7 +106,7 @@ function H.title_parse(line)
   return line, tags
 end
 
-function H.entry_build(topic, line)
+function H.idx_entry_build(topic, line)
   -- return string formatted like 'topic|nr|text' or nil
   -- topic|nr|text
   local nr, rest = string.match(line, '^%s*(%d+)%s+(.*)')
@@ -129,17 +117,19 @@ function H.entry_build(topic, line)
   return nil -- this will cause candidate deletion
 end
 
-function H.entry_parse(line)
+function H.idx_entry_parse(line)
   -- break a selected entry 'topic|nr|text' into its consituents
   return unpack(vim.split(line, H.sep))
 end
-function H.to_index(topic, lines)
+
+function H.idx_build(topic, lines)
+  -- downloaded topic-index.txt lines -> formatted index lines (stream|nr|text)
   -- collect eligible lines and format as entries
   -- --------------------- example
   -- 0001 this is the
   --      title of rfc 1
   -- ---------------------
-  -- 1. a line that starts with a number, starts a candidate entry
+  -- 1. a line that starts with a number (ignoring leading wspace), starts a candidate entry
   -- 2. a line that does not start with a number is added to the current candidate
   -- 3. candidates that do not start with a number are eliminated
   -- ien index: nrs donot start at first column ... so this will fail
@@ -148,7 +138,7 @@ function H.to_index(topic, lines)
   for _, line in ipairs(lines) do
     if string.match(line, '^%s*%d+%s') then
       -- format current entry, then start new entry
-      idx[#idx] = H.entry_build(topic, idx[#idx])
+      idx[#idx] = H.idx_entry_build(topic, idx[#idx])
       idx[#idx + 1] = line
     elseif string.match(line, '^%s+') then
       -- accumulate in new candidate
@@ -158,8 +148,23 @@ function H.to_index(topic, lines)
   end
 
   -- also format last accumulated candidate (possibly deleting it)
-  idx[#idx] = H.entry_build(topic, idx[#idx])
+  idx[#idx] = H.idx_entry_build(topic, idx[#idx])
   vim.notify('index ' .. topic .. ' has ' .. #idx .. ' entries', vim.log.levels.WARN)
+  return idx
+end
+
+function H.idx_parse(index)
+  -- index is list of formatted index lines (stream|nr|text)
+  -- return list of { {topic, id, text}, .. }
+  local idx = {}
+  for _, line in ipairs(index) do
+    local topic, id, text = H.idx_entry_parse(line)
+    if topic and id and text then
+      idx[#idx + 1] = { topic, id, text }
+    else
+      vim.notify('[error] ill-formed index line ' .. line, vim.log.levels.WARN)
+    end
+  end
   return idx
 end
 
@@ -280,7 +285,7 @@ function H.load_index(topic)
       return idx -- i.e. {}
     end
 
-    idx = H.to_index(topic, lines)
+    idx = H.idx_build(topic, lines)
     vim.notify('index has ' .. #idx .. ' entries')
     H.save(topic, 'index', idx)
     return idx
@@ -293,9 +298,42 @@ function H.load_index(topic)
   end
 end
 
-function H.save(topic, id, lines)
+--[[ H mod new]]
+-- caller is assumed to check validity of args and values
+-- so here we `assert` and possibly fail hard
+
+function H.fname(stream, id)
+  -- return full file path for (stream, id) or nil
+  local fdir, fname
+  local cfg = M.config
+  local top = M.config.top or H.top
+
+  assert(H.valid[stream])
+
+  if id == 'index' then
+    -- it's an document index
+    fdir = cfg.cache
+    fname = vim.fs.joinpath(fdir, top, string.format('%s-index.txt', stream))
+    return vim.fs.normalize(fname)
+  end
+
+  -- id is an ietf document number
+  id = tonumber(id) -- eliminate leading zero's (if any)
+
+  -- find fdir based on markers
+  if type(cfg.data) == 'table' then
+    fdir = vim.fs.root(0, cfg.data)
+  end
+
+  fdir = fdir or cfg.data or vim.fn.stdpath('data')
+  fname = vim.fs.joinpath(fdir, top, stream, string.format('%s%d.txt', stream, id))
+
+  return vim.fs.normalize(fname)
+end
+
+function H.save(stream, id, lines)
   -- save to disk, creating directory as needed
-  local fname = H.to_fname(topic, id)
+  local fname = H.fname(stream, id)
 
   if fname == nil then
     return fname
@@ -303,27 +341,179 @@ function H.save(topic, id, lines)
 
   if id ~= 'index' then
     -- only add modeline for rfc, bcp etc.. not for index files
-    local modeline = H.modeline(M.config.modeline)
-    if modeline then
-      lines[#lines + 1] = modeline
-    end
+    lines[#lines + 1] = '/* vim: set ft=rfc: */'
   end
 
   for idx, line in ipairs(lines) do
-    -- in snacks.picker.preview.lua, line:find("[%z\1-\8\11\12\14-\31]") -> binary is true
-    -- so eleminate (most) control chars (like ^L, aka FormFeed 0xFF, or \12)
+    -- snacks.picker.preview.lua, line:find("[%z\1-\8\11\12\14-\31]") -> binary is true
+    -- so keep snacks happy
     lines[idx] = string.gsub(line, '[%z\1-\8\11\12\14-\31]', '')
   end
 
   local dir = vim.fs.dirname(fname)
   vim.fn.mkdir(dir, 'p')
   if vim.fn.writefile(lines, fname) < 0 then
-    vim.notify('could not write index ' .. topic .. ' to ' .. fname, vim.log.levels.ERROR)
+    vim.notify('could not write index ' .. stream .. ' to ' .. fname, vim.log.levels.ERROR)
   end
 
   return fname
 end
 
+function H.ttl(fname)
+  -- remaining TTL [seconds], fname not found, getftime will be -1
+  local ttl = M.config.ttl or 0
+  return ttl + vim.fn.getftime(fname) - vim.fn.localtime()
+end
+
+function H.url(stream, id, ext)
+  -- returns url for stream document or its index
+  assert(H.valid[stream]) -- would be internal error
+
+  ext = ext or 'txt'
+  local base = 'https://www.rfc-editor.org'
+  local fmt
+  if id == 'index' then
+    fmt = '%s/%s/%s-%s.%s' -- base/stream/stream-index.ext
+  else
+    id = tonumber(id) -- assume pos integer, no floats
+    assert(id)
+    fmt = '%s/%s/%s%d.%s' -- base/stream/stream<id>.ext
+  end
+
+  return string.format(fmt, base, stream, stream, id, ext)
+end
+
+function H.curl(url)
+  -- return a, possibly empty, list of lines
+  local rv = plenary.curl.get({ url = url, accept = 'plain/text' })
+  local lines = {}
+
+  if rv and rv.status == 200 then
+    -- no newline's for buf set lines, no formfeed for snacks preview
+    lines = vim.split(rv.body, '[\r\n\f]')
+  end
+  return { status = rv.status, lines = lines }
+end
+
+--[[ INDEX ]]
+
+local Idx = {}
+
+function Idx.curl(stream)
+  -- retrieve index from rfc-editor -> { {stream, nr, text}, .. }
+  if not H.valid[stream] then
+    vim.notify('[warn] stream ' .. vim.inspect(stream) .. 'not supported', vim.log.levels.WARN)
+    return {}
+  end
+
+  -- retrieve raw content
+  local url = H.url(stream, 'index')
+  vim.print(vim.inspect(url))
+  local rv = H.curl(url)
+  if rv.status ~= 200 then
+    vim.notify('[warn] download failed: [' .. rv.status .. '] ' .. url, vim.log.levels.ERROR)
+    return {}
+  end
+
+  -- parse raw, assembled, content line
+  local parse = function(line)
+    local nr, title = string.match(line, '^%s*(%d+)%s+(.*)')
+    nr = tonumber(nr) -- eleminate any leading zero's
+    if nr ~= nil then
+      return { stream, nr, title }
+    end
+    return nil -- won't add the candidate
+  end
+
+  -- build parsed entries
+  local idx = {} -- parsed content { {s, n, t}, ... }
+  local acc = '' -- accumulating content
+  for _, line in ipairs(rv.lines) do
+    if string.match(line, '^%s*%d+%s') then
+      idx[#idx + 1] = parse(acc)
+      acc = line -- start new assembly
+    elseif string.match(line, '^%s+') then
+      acc = acc .. ' ' .. vim.trim(line)
+      -- TODO: we'll miss out if content does not end with empty line(s)!
+    end
+  end
+  -- don't forget the last entry
+  idx[#idx + 1] = parse(acc)
+
+  return idx -- { {stream, nr, title }, .. }
+end
+
+function Idx.get(stream)
+  assert(H.valid[stream])
+
+  -- read from disk if possible, otherwise curl it
+  local fname = H.fname(stream, 'index')
+  local idx = {}
+
+  if H.ttl(fname) < 1 then
+    idx = Idx.curl(stream)
+    Idx.save(stream, idx)
+  else
+    idx = Idx.read(fname) -- load from disk
+  end
+  return idx
+end
+
+function Idx.index(streams)
+  streams = streams or { 'rfc' }
+  local idx = {}
+  for _, stream in streams do
+    for _, entry in Idx.get(stream) do
+      idx[#idx + 1] = entry
+    end
+  end
+  return idx
+end
+
+function Idx.save(idx)
+  -- save index entries to their respective index file on disk
+  vim.print('Idx.save called')
+  local streams = {}
+  local idx_ = {}
+  for _, entry in ipairs(idx) do
+    local stream, nr, title = unpack(entry)
+    local sep = H.sep
+    local line = string.format('%s%s%d%s%s', stream, sep, nr, sep, title)
+    if streams[stream] == nil then
+      streams[stream] = {}
+    end
+    table.insert(streams[stream], string.format('%s%s%d%s%s', stream, sep, nr, sep, title))
+  end
+
+  for stream, lines in pairs(streams) do
+    vim.print('saving ' .. #lines .. ' to disk')
+    H.save(stream, 'index', lines)
+  end
+end
+
+function Idx.read(stream)
+  vim.print('reading stream ' .. stream)
+  return {}
+end
+
+--[[
+idx_curl(stream)      : raw -> idx = { {s,n,t}, ..}
+idx_save(idx)         : idx = { {s,n,t}, ..} -> disk by <s>-index.txt
+idx_read(stream)      : disk -> idx = { {s,n,t} .. }
+idx_items(idx}        : { {s,n,t}, .. } -> { items } (t is parsed, fields added)
+
+itm_curl
+itm_save
+itm_read
+itm_item
+
+ttl(fname, max_age) -> remaining seconds
+curl(url) -> rv {status=.., content=lines}
+save(fname, lines) -> ok, #lines
+read(fname) -> lines -> ok, lines
+
+
+--]]
 --[[ Module ]]
 
 M.config = {
@@ -353,10 +543,6 @@ function M.grep()
   snacks.picker.grep({ hidden = true, cwd = topdir })
 end
 
-function M.test(topic, id)
-  vim.notify('test ' .. topic .. ' ' .. id)
-end
-
 function M.setup(opts)
   M.config = vim.tbl_extend('force', M.config, opts)
 
@@ -364,55 +550,11 @@ function M.setup(opts)
 end
 
 function M.search(stream)
-  -- search the index for `stream`
+  -- search the stream(s) index/indices
   -- TODO:
   -- [ ] arg maybe streams, e.g. {'rfc', 'bcp', 'std'} and concat the index lists of named topics
   -- [x] use H.sep instead of magical '|' char
-  -- [x] entry_format(topic, id, text)  & entry_parse(entry) -> topic, id
-
-  stream = stream or 'rfc'
-  local index = H.load_index(stream)
-
-  if #index == 0 then
-    vim.notify('no index available for ' .. stream, vim.log.levels.ERROR)
-    return
-  end
-
-  -- TODO: replace with snacks picker
-  --   fzf_lua.fzf_exec(index, {
-  --     prompt = 'search> ',
-  --     winopts = {
-  --       wrap = true,
-  --       title = '| ietf |',
-  --       border = 'rounded',
-  --     },
-  --     actions = {
-  --       default = function(selected)
-  --         -- this is actually ["ctrl-m"], selected is a list of 1 string
-  --         local topic, id, _ = H.entry_parse(selected[1])
-  --         local edit = M.config.edit or 'e '
-  --         vim.notify('url ' .. H.to_url(topic, id) .. ' -> ' .. H.to_fname(topic, id))
-  --         local lines = H.fetch(topic, id)
-  --         if #lines > 0 then
-  --           -- fetch warns if download failed
-  --           local fname = H.save(topic, id, lines)
-  --           vim.cmd(edit .. fname)
-  --         end
-  --       end,
-  --       ['ctrl-x'] = function(selected)
-  --         local topic, id, _ = H.entry_parse(selected[1])
-  --         local url = H.to_url(topic, id)
-  --         if url ~= nil then
-  --           vim.ui.open(url)
-  --         else
-  --           vim.notify('cannot open ' .. vim.inspect({ topic, id, url }))
-  --         end
-  --       end,
-  --     },
-  --   })
-end
-
-function M.snack(stream)
+  -- [x] idx_entry_build(topic, line)  & idx_entry_parse(entry) -> topic, id
   -- Use the source Luke!
   -- * `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/preview.lua`
   -- *  ``:!open https://github.com/folke/todo-comments.nvim/blob/main/lua/todo-comments/search.lua`
@@ -422,7 +564,7 @@ function M.snack(stream)
   local index = H.load_index(stream)
 
   if #index == 0 then
-    vim.notify('argh, index has 0 entries')
+    vim.notify('[warn] index ' .. stream .. ' has 0 entries', vim.log.levels.WARN)
     return
   end
 
@@ -431,7 +573,7 @@ function M.snack(stream)
   local name_fmt = ' %-' .. name_width .. 's'
 
   for i, line in ipairs(index) do
-    local topic, id, text = H.entry_parse(line)
+    local topic, id, text = H.idx_entry_parse(line)
     if topic and id and text then
       local fname = H.to_fname(topic, id)
       local title, labels = H.title_parse(text)
@@ -539,4 +681,11 @@ function M.snack(stream)
     end,
   })
 end
+
+function M.test(stream)
+  local idx = Idx.curl(stream)
+  vim.print(vim.inspect(idx))
+  Idx.save(idx)
+end
+
 return M
