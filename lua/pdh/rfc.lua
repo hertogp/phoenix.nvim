@@ -276,7 +276,7 @@ function H.load_index(topic)
     return idx -- i.e. {}
   end
 
-  if H.ttl(fname) < 0 then
+  if H.ttl(topic) < 0 then
     vim.notify('downloading index for ' .. topic, vim.log.levels.WARN)
     local lines = H.fetch(topic, 'index')
 
@@ -304,10 +304,12 @@ end
 
 function H.fname(stream, id)
   -- return full file path for (stream, id) or nil
+  id = id or 'index'
   local fdir, fname
   local cfg = M.config
   local top = M.config.top or H.top
 
+  vim.print('stream is ' .. vim.inspect(stream))
   assert(H.valid[stream])
 
   if id == 'index' then
@@ -359,8 +361,9 @@ function H.save(stream, id, lines)
   return fname
 end
 
-function H.ttl(fname)
+function H.ttl(stream)
   -- remaining TTL [seconds], fname not found, getftime will be -1
+  local fname = H.fname(stream)
   local ttl = M.config.ttl or 0
   return ttl + vim.fn.getftime(fname) - vim.fn.localtime()
 end
@@ -446,24 +449,24 @@ end
 function Idx.get(stream)
   assert(H.valid[stream])
 
-  -- read from disk if possible, otherwise curl it
-  local fname = H.fname(stream, 'index')
   local idx = {}
 
-  if H.ttl(fname) < 1 then
+  if H.ttl(stream) < 1 then
+    -- idx on disk either too old or doesn't exist
     idx = Idx.curl(stream)
-    Idx.save(stream, idx)
+    Idx.save(idx)
   else
-    idx = Idx.read(fname) -- load from disk
+    idx = Idx.read(stream) -- load from disk
   end
+
   return idx
 end
 
 function Idx.index(streams)
   streams = streams or { 'rfc' }
   local idx = {}
-  for _, stream in streams do
-    for _, entry in Idx.get(stream) do
+  for _, stream in ipairs(streams) do
+    for _, entry in ipairs(Idx.get(stream)) do
       idx[#idx + 1] = entry
     end
   end
@@ -471,7 +474,7 @@ function Idx.index(streams)
 end
 
 function Idx.save(idx)
-  -- save index entries to their respective index file on disk
+  -- save index entries to their respective index files on disk
   vim.print('Idx.save called')
   local streams = {}
   local idx_ = {}
@@ -492,8 +495,19 @@ function Idx.save(idx)
 end
 
 function Idx.read(stream)
-  vim.print('reading stream ' .. stream)
-  return {}
+  -- read an index from disk, don't mind the ttl at this point
+  -- fname be missing, have 0 bytes ...
+  vim.print('reading stream ' .. vim.inspect(stream))
+  assert(H.valid[stream])
+
+  local fname = H.fname(stream, 'index')
+  local idx = {}
+
+  local lines = vim.fn.readfile(fname) -- failure to read returns empty list
+  for _, line in ipairs(lines) do
+    idx[#idx + 1] = vim.split(line, H.sep)
+  end
+  return idx
 end
 
 --[[
@@ -682,8 +696,8 @@ function M.search(stream)
   })
 end
 
-function M.test(stream)
-  local idx = Idx.curl(stream)
+function M.test()
+  local idx = Idx.index({ 'ien', 'fyi' })
   vim.print(vim.inspect(idx))
   Idx.save(idx)
 end
