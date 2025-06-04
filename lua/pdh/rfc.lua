@@ -413,11 +413,16 @@ function Idx.curl(stream)
 
   -- retrieve raw content
   local url = H.url(stream, 'index')
-  vim.print(vim.inspect(url))
   local rv = H.curl(url)
   if rv.status ~= 200 then
     vim.notify('[warn] download failed: [' .. rv.status .. '] ' .. url, vim.log.levels.ERROR)
     return {}
+  end
+
+  -- prep the raw input lines
+  local lines = {}
+  for _, line in ipairs(lines) do
+    ::next::
   end
 
   -- parse raw, assembled, content line
@@ -436,10 +441,9 @@ function Idx.curl(stream)
   for _, line in ipairs(rv.lines) do
     if string.match(line, '^%s*%d+%s') then
       idx[#idx + 1] = parse(acc)
-      acc = line -- start new assembly
+      acc = line -- start new accumulator
     elseif string.match(line, '^%s+') then
       acc = acc .. ' ' .. vim.trim(line)
-      -- TODO: we'll miss out if content does not end with empty line(s)!
     end
   end
   -- don't forget the last entry
@@ -478,6 +482,20 @@ function Idx.index(streams)
   return idx
 end
 
+function Idx.read(stream)
+  -- read an index from disk, don't mind the ttl at this point
+  assert(H.valid[stream])
+
+  local fname = H.fname(stream, 'index')
+  local idx = {}
+
+  local lines = vim.fn.readfile(fname) -- failure to read returns empty list
+  for _, line in ipairs(lines) do
+    idx[#idx + 1] = vim.split(line, H.sep) -- Itm.parse
+  end
+  return idx
+end
+
 function Idx.save(idx)
   -- save index entries to their respective <stream>-index files on disk
   local streams = {}
@@ -496,20 +514,6 @@ function Idx.save(idx)
   for stream, lines in pairs(streams) do
     H.save(stream, 'index', lines)
   end
-end
-
-function Idx.read(stream)
-  -- read an index from disk, don't mind the ttl at this point
-  assert(H.valid[stream])
-
-  local fname = H.fname(stream, 'index')
-  local idx = {}
-
-  local lines = vim.fn.readfile(fname) -- failure to read returns empty list
-  for _, line in ipairs(lines) do
-    idx[#idx + 1] = vim.split(line, H.sep)
-  end
-  return idx
 end
 
 --[[
@@ -699,9 +703,10 @@ function M.search(stream)
 end
 
 function M.test()
-  local idx = Idx.index({ 'ien', 'fyi' })
-  vim.print(vim.inspect(idx))
-  Idx.save(idx)
+  local idx = Idx.index({ 'ien' })
+  for _, itm in ipairs(idx) do
+    vim.print(vim.inspect(itm))
+  end
 end
 
 return M
