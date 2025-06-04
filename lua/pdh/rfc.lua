@@ -47,10 +47,6 @@ end
 
 --[[ Helpers ]]
 
-H.valid = { rfc = true, bcp = true, std = true, fyi = true, ien = true }
-H.top = 'ietf.org'
-H.sep = '│'
-
 function H.modeline(spec)
   -- returns modeline string if possible, nil otherwise
   if type(spec) == 'string' then
@@ -76,67 +72,67 @@ function H.modeline(spec)
   return nil -- do not add modeline
 end
 
-function H.idx_entry_build(topic, line)
-  -- return string formatted like 'topic|nr|text' or nil
-  -- topic|nr|text
-  local nr, rest = string.match(line, '^%s*(%d+)%s+(.*)')
+-- function H.idx_entry_build(topic, line)
+--   -- return string formatted like 'topic|nr|text' or nil
+--   -- topic|nr|text
+--   local nr, rest = string.match(line, '^%s*(%d+)%s+(.*)')
+--
+--   if nr ~= nil then
+--     return string.format('%3s%s%05d%s%s', topic, H.sep, tonumber(nr), H.sep, rest)
+--   end
+--   return nil -- this will cause candidate deletion
+-- end
 
-  if nr ~= nil then
-    return string.format('%3s%s%05d%s%s', topic, H.sep, tonumber(nr), H.sep, rest)
-  end
-  return nil -- this will cause candidate deletion
-end
+-- function H.idx_entry_parse(line)
+--   -- break a selected entry 'topic|nr|text' into its consituents
+--   return unpack(vim.split(line, H.sep))
+-- end
 
-function H.idx_entry_parse(line)
-  -- break a selected entry 'topic|nr|text' into its consituents
-  return unpack(vim.split(line, H.sep))
-end
+-- function H.idx_build(topic, lines)
+--   -- downloaded topic-index.txt lines -> formatted index lines (stream|nr|text)
+--   -- collect eligible lines and format as entries
+--   -- --------------------- example
+--   -- 0001 this is the
+--   --      title of rfc 1
+--   -- ---------------------
+--   -- 1. a line that starts with a number (ignoring leading wspace), starts a candidate entry
+--   -- 2. a line that does not start with a number is added to the current candidate
+--   -- 3. candidates that do not start with a number are eliminated
+--   -- ien index: nrs donot start at first column ... so this will fail
+--   local idx = { '' }
+--
+--   for _, line in ipairs(lines) do
+--     if string.match(line, '^%s*%d+%s') then
+--       -- format current entry, then start new entry
+--       idx[#idx] = H.idx_entry_build(topic, idx[#idx])
+--       idx[#idx + 1] = line
+--     elseif string.match(line, '^%s+') then
+--       -- accumulate in new candidate
+--       -- TODO: do we actually need to check for starting whitespace?
+--       idx[#idx] = idx[#idx] .. ' ' .. vim.trim(line)
+--     end
+--   end
+--
+--   -- also format last accumulated candidate (possibly deleting it)
+--   idx[#idx] = H.idx_entry_build(topic, idx[#idx])
+--   vim.notify('index ' .. topic .. ' has ' .. #idx .. ' entries', vim.log.levels.WARN)
+--   return idx
+-- end
 
-function H.idx_build(topic, lines)
-  -- downloaded topic-index.txt lines -> formatted index lines (stream|nr|text)
-  -- collect eligible lines and format as entries
-  -- --------------------- example
-  -- 0001 this is the
-  --      title of rfc 1
-  -- ---------------------
-  -- 1. a line that starts with a number (ignoring leading wspace), starts a candidate entry
-  -- 2. a line that does not start with a number is added to the current candidate
-  -- 3. candidates that do not start with a number are eliminated
-  -- ien index: nrs donot start at first column ... so this will fail
-  local idx = { '' }
-
-  for _, line in ipairs(lines) do
-    if string.match(line, '^%s*%d+%s') then
-      -- format current entry, then start new entry
-      idx[#idx] = H.idx_entry_build(topic, idx[#idx])
-      idx[#idx + 1] = line
-    elseif string.match(line, '^%s+') then
-      -- accumulate in new candidate
-      -- TODO: do we actually need to check for starting whitespace?
-      idx[#idx] = idx[#idx] .. ' ' .. vim.trim(line)
-    end
-  end
-
-  -- also format last accumulated candidate (possibly deleting it)
-  idx[#idx] = H.idx_entry_build(topic, idx[#idx])
-  vim.notify('index ' .. topic .. ' has ' .. #idx .. ' entries', vim.log.levels.WARN)
-  return idx
-end
-
-function H.idx_parse(index)
-  -- index is list of formatted index lines (stream|nr|text)
-  -- return list of { {topic, id, text}, .. }
-  local idx = {}
-  for _, line in ipairs(index) do
-    local topic, id, text = H.idx_entry_parse(line)
-    if topic and id and text then
-      idx[#idx + 1] = { topic, id, text }
-    else
-      vim.notify('[error] ill-formed index line ' .. line, vim.log.levels.WARN)
-    end
-  end
-  return idx
-end
+-- function H.idx_parse(index)
+--   -- index is list of formatted index lines (stream|nr|text)
+--   -- return list of { {topic, id, text}, .. }
+--   local idx = {}
+--   for _, line in ipairs(index) do
+--     local topic, id, text = H.idx_entry_parse(line)
+--     if topic and id and text then
+--       idx[#idx + 1] = { topic, id, text }
+--     else
+--       vim.notify('[error] ill-formed index line ' .. line, vim.log.levels.WARN)
+--     end
+--   end
+--   return idx
+-- end
 
 function H.to_dir(spec)
   -- find root dir or use spec if valid, fallback is stdpath data dir
@@ -226,42 +222,47 @@ function H.fetch(topic, id)
   end
 end
 
-function H.load_index(topic)
-  -- loads index for topic, downloading it if needed
-  -- fname can be too old, be missing, have 0 bytes ...
-  local idx = {} -- empty means failure
-  local fname = H.to_fname(topic, 'index')
-
-  if not H.valid[topic] or fname == nil then
-    return idx -- i.e. {}
-  end
-
-  if H.ttl(topic) < 0 then
-    vim.notify('downloading index for ' .. topic, vim.log.levels.WARN)
-    local lines = H.fetch(topic, 'index')
-
-    if #lines == 0 then
-      vim.notify('index download failed for ' .. topic, vim.log.levels.ERROR)
-      return idx -- i.e. {}
-    end
-
-    idx = H.idx_build(topic, lines)
-    vim.notify('index has ' .. #idx .. ' entries')
-    H.save(topic, 'index', idx)
-    return idx
-  else
-    idx = vim.fn.readfile(fname) -- failure to read returns empty list
-    if #idx == 0 then
-      vim.notify('could not read ' .. fname, vim.log.levels.WARN)
-    end
-    return idx
-  end
-end
+-- function H.load_index(topic)
+--   -- loads index for topic, downloading it if needed
+--   -- fname can be too old, be missing, have 0 bytes ...
+--   local idx = {} -- empty means failure
+--   local fname = H.to_fname(topic, 'index')
+--
+--   if not H.valid[topic] or fname == nil then
+--     return idx -- i.e. {}
+--   end
+--
+--   if H.ttl(topic) < 0 then
+--     vim.notify('downloading index for ' .. topic, vim.log.levels.WARN)
+--     local lines = H.fetch(topic, 'index')
+--
+--     if #lines == 0 then
+--       vim.notify('index download failed for ' .. topic, vim.log.levels.ERROR)
+--       return idx -- i.e. {}
+--     end
+--
+--     idx = H.idx_build(topic, lines)
+--     vim.notify('index has ' .. #idx .. ' entries')
+--     H.save(topic, 'index', idx)
+--     return idx
+--   else
+--     idx = vim.fn.readfile(fname) -- failure to read returns empty list
+--     if #idx == 0 then
+--       vim.notify('could not read ' .. fname, vim.log.levels.WARN)
+--     end
+--     return idx
+--   end
+-- end
 
 --[[ H mod new]]
 -- helper functions for small tasks
 -- note that caller is assumed to check validity of args and values
 -- so here we `assert` and possibly fail hard
+
+H.valid = { rfc = true, bcp = true, std = true, fyi = true, ien = true }
+H.top = 'ietf.org'
+H.sep = '│'
+
 function H.curl(url)
   -- return a, possibly empty, list of lines
   local rv = plenary.curl.get({ url = url, accept = 'plain/text' })
@@ -337,9 +338,9 @@ function H.symbol(topic, id)
   -- local symbol = { '', '' }
   local fname = H.to_fname(topic, id)
   if fname and vim.fn.filereadable(fname) == 1 then
-    return ''
+    return '☻ ' --  '
   else
-    return ''
+    return '☺ ' -- ''
   end
 end
 
