@@ -240,16 +240,6 @@ function H.to_url(topic, id)
   error('id must be one of: "index" or a number')
 end
 
-function H.to_symbol(topic, id)
-  -- local symbol = { '', '' }
-  local fname = H.to_fname(topic, id)
-  if fname and vim.fn.filereadable(fname) == 1 then
-    return ''
-  else
-    return ''
-  end
-end
-
 function H.fetch(topic, id)
   -- return a, possibly empty, list of lines
   local url = H.to_url(topic, id)
@@ -360,6 +350,16 @@ function H.save(stream, id, lines)
   end
 
   return fname
+end
+
+function H.symbol(topic, id)
+  -- local symbol = { '', '' }
+  local fname = H.to_fname(topic, id)
+  if fname and vim.fn.filereadable(fname) == 1 then
+    return ''
+  else
+    return ''
+  end
 end
 
 function H.ttl(stream)
@@ -543,14 +543,14 @@ read(fname) -> lines -> ok, lines
 local Itm = { list = {}, streams = {} }
 
 function Itm:from(streams)
-  -- build Itm.list of items for given streams
+  -- builds Itm.list of items for given streams, returns num of entries found
 
   local index = Idx.index(streams) -- { {stream, nr, text}, .. }
   self.streams = streams
 
   if #index == 0 then
     vim.notify('[warn] found 0 items for streams: ' .. table.concat(streams, ', '), vim.log.levels.WARN)
-    return
+    return 0 -- zero entries
   end
 
   self.list = {}
@@ -577,7 +577,7 @@ function Itm:from(streams)
         exists = fname and vim.fn.filereadable(fname) == 1,
         stream = stream,
         id = id,
-        symbol = H.to_symbol(stream, id),
+        symbol = H.symbol(stream, id),
       })
     else
       vim.notify('ill formed index entry ' .. vim.inspect(entry), vim.log.levels.WARN)
