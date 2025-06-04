@@ -11,12 +11,9 @@ fuzzy> 'bgp !info 'path | 'select
 - fzf -e or --exact uses exact matching; '-prefix unquotes the term
 
 TODO: these need some TLC
-- [ ] parse an entry into topic|nr|title|status|formats|doi|updates|updated_by|obsoletes|obsoleted_by
-      those will go into an item, along with other fields like file, url, etc ..
-      - Authors are harder to parse since a title may contain '.' as well as '.' as its last char
-      - there are a nr of rfc with title=Not Issued. (!)
-      - date is (usually) <Month> <YYYY>.
-      - some are Not Issued. -> nothing there, needs to be handled (no formats, but has an info/rfc<x> page)
+- [x] parse an entry into topic|nr|title|status|formats|doi|updates|updated_by|obsoletes|obsoleted_by
+      - status and other known (label ..) are parsed into tags for an entry & removed from display
+      - this is parsed when loading index for searching, rather than when saving index to disk
 - [ ] formats other than TXT are redirected to browser w/ a URL (.pdf, .html etc..) or the info page
       e.g. https://www.editor-rfc.org/info/rfc8  (no extension)
 - [ ] info page the default when choosing to browse for an rfc, rather than downloading it?
@@ -98,12 +95,6 @@ function H.title_parse(line)
   -- (Updates rfc...) (Updated by rfc ..)
   -- vim.split
   local tags = {}
-  -- for k, v in string.gmatch(line, '%(([^:)]+):([^)]+)%)') do
-  --   tags[k:lower()] = vim.trim(v:lower())
-  --   line = string.gsub(line, '%s*%(' .. k .. ':' .. v .. '%)', '', 1)
-  -- end
-
-  -- remaining ()'s
   local wanted = {
     obsoletes = true,
     obsoleted_by = true,
@@ -114,6 +105,7 @@ function H.title_parse(line)
     format = true,
     doi = true,
   }
+
   for part in string.gmatch(line, '%(([^)]+)%)') do
     local part2 = string.gsub(part, '%s+by', '_by', 1):gsub(':', '', 1)
     local k, v = string.match(part2, '^([^%s]+)%s+(.*)$')
@@ -129,7 +121,7 @@ end
 function H.entry_build(topic, line)
   -- return string formatted like 'topic|nr|text' or nil
   -- topic|nr|text
-  local nr, rest = string.match(line, '^(%d+)%s+(.*)')
+  local nr, rest = string.match(line, '^%s*(%d+)%s+(.*)')
 
   if nr ~= nil then
     return string.format('%3s%s%05d%s%s', topic, H.sep, tonumber(nr), H.sep, rest)
@@ -153,9 +145,8 @@ function H.to_index(topic, lines)
   -- ien index: nrs donot start at first column ... so this will fail
   local idx = { '' }
 
-  -- traverse only once
   for _, line in ipairs(lines) do
-    if string.match(line, '^%d') then
+    if string.match(line, '^%s*%d+%s') then
       -- format current entry, then start new entry
       idx[#idx] = H.entry_build(topic, idx[#idx])
       idx[#idx + 1] = line
@@ -256,16 +247,16 @@ end
 
 function H.fetch(topic, id)
   -- return a, possibly empty, list of lines
-  local rv = plenary.curl.get({ url = H.to_url(topic, id), accept = 'plain/text' })
+  local url = H.to_url(topic, id)
+  local rv = plenary.curl.get({ url = url, accept = 'plain/text' })
 
   if rv and rv.status == 200 then
-    -- REVIEW: does the \f indeed eliminate the ^L formfeeds
-    -- (\12 aka \f aka FF aka 0x0C)?  If so, no need to do that
-    -- again in H.save()
+    -- no newline's for buf set lines, no formfeed for snacks preview
     local lines = vim.split(rv.body, '[\r\n\f]')
+    vim.notify('downloaded ' .. topic .. ' (' .. #lines .. 'lines)')
     return lines
   else
-    vim.notify('failed to download ' .. topic .. ' id ' .. id, vim.log.levels.WARN)
+    vim.notify('[failed] status: ' .. rv.status .. ' for ' .. url, vim.log.levels.WARN)
     return {}
   end
 end
@@ -388,34 +379,37 @@ function M.search(stream)
   end
 
   -- TODO: replace with snacks picker
-  fzf_lua.fzf_exec(index, {
-    prompt = 'search> ',
-    winopts = {
-      wrap = true,
-      title = '| ietf |',
-      border = 'rounded',
-    },
-    actions = {
-      default = function(selected)
-        -- this is actually ["ctrl-m"], selected is a list of 1 string
-        local topic, id, _ = H.entry_parse(selected[1])
-        local edit = M.config.edit or 'e '
-        vim.notify('url ' .. H.to_url(topic, id) .. ' -> ' .. H.to_fname(topic, id))
-        local rv = H.fetch(topic, id)
-        local fname = H.save(topic, id, rv)
-        vim.cmd(edit .. fname)
-      end,
-      ['ctrl-x'] = function(selected)
-        local topic, id, _ = H.entry_parse(selected[1])
-        local url = H.to_url(topic, id)
-        if url ~= nil then
-          vim.ui.open(url)
-        else
-          vim.notify('cannot open ' .. vim.inspect({ topic, id, url }))
-        end
-      end,
-    },
-  })
+  --   fzf_lua.fzf_exec(index, {
+  --     prompt = 'search> ',
+  --     winopts = {
+  --       wrap = true,
+  --       title = '| ietf |',
+  --       border = 'rounded',
+  --     },
+  --     actions = {
+  --       default = function(selected)
+  --         -- this is actually ["ctrl-m"], selected is a list of 1 string
+  --         local topic, id, _ = H.entry_parse(selected[1])
+  --         local edit = M.config.edit or 'e '
+  --         vim.notify('url ' .. H.to_url(topic, id) .. ' -> ' .. H.to_fname(topic, id))
+  --         local lines = H.fetch(topic, id)
+  --         if #lines > 0 then
+  --           -- fetch warns if download failed
+  --           local fname = H.save(topic, id, lines)
+  --           vim.cmd(edit .. fname)
+  --         end
+  --       end,
+  --       ['ctrl-x'] = function(selected)
+  --         local topic, id, _ = H.entry_parse(selected[1])
+  --         local url = H.to_url(topic, id)
+  --         if url ~= nil then
+  --           vim.ui.open(url)
+  --         else
+  --           vim.notify('cannot open ' .. vim.inspect({ topic, id, url }))
+  --         end
+  --       end,
+  --     },
+  --   })
 end
 
 function M.snack(stream)
@@ -535,9 +529,13 @@ function M.snack(stream)
       if vim.fn.filereadable(item.file) == 0 then
         vim.notify('downloading ' .. item.name)
         local lines = H.fetch(item.topic, item.id)
-        H.save(item.topic, item.id, lines)
+        if #lines > 0 then
+          H.save(item.topic, item.id, lines)
+          vim.cmd('edit ' .. item.file)
+        end
+      else
+        vim.cmd('edit ' .. item.file)
       end
-      vim.cmd('edit ' .. item.file)
     end,
   })
 end

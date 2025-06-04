@@ -73,6 +73,13 @@ return {
       desc = 'Diagnostics',
     },
     {
+      '<space>N',
+      function()
+        Snacks.picker.notifications()
+      end,
+      desc = 'Notifications',
+    },
+    {
       '<space>f',
       function()
         Snacks.picker.files()
