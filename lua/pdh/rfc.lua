@@ -184,58 +184,26 @@ function H.to_fname(topic, id)
   return vim.fs.normalize(fname)
 end
 
-function H.to_url(topic, id)
-  -- return url for an item or index
-  local base = 'https://www.rfc-editor.org'
-  topic = string.lower(topic)
-
-  if not H.valid[topic] then
-    error('topic must one of: rfc, bcp, std, fyi or ien')
-  end
-
-  if id == 'index' then
-    return string.format('%s/%s/%s-%s.txt', base, topic, topic, id)
-  end
-
-  id = tonumber(id)
-  if id ~= nil then
-    -- removes leading zero's, so 0009 -> 9
-    return string.format('%s/%s/%s%d.txt', base, topic, topic, id)
-  end
-
-  error('id must be one of: "index" or a number')
-end
-
--- function H.load_index(topic)
---   -- loads index for topic, downloading it if needed
---   -- fname can be too old, be missing, have 0 bytes ...
---   local idx = {} -- empty means failure
---   local fname = H.to_fname(topic, 'index')
+-- function H.to_url(topic, id)
+--   -- return url for an item or index
+--   local base = 'https://www.rfc-editor.org'
+--   topic = string.lower(topic)
 --
---   if not H.valid[topic] or fname == nil then
---     return idx -- i.e. {}
+--   if not H.valid[topic] then
+--     error('topic must one of: rfc, bcp, std, fyi or ien')
 --   end
 --
---   if H.ttl(topic) < 0 then
---     vim.notify('downloading index for ' .. topic, vim.log.levels.WARN)
---     local lines = H.fetch(topic, 'index')
---
---     if #lines == 0 then
---       vim.notify('index download failed for ' .. topic, vim.log.levels.ERROR)
---       return idx -- i.e. {}
---     end
---
---     idx = H.idx_build(topic, lines)
---     vim.notify('index has ' .. #idx .. ' entries')
---     H.save(topic, 'index', idx)
---     return idx
---   else
---     idx = vim.fn.readfile(fname) -- failure to read returns empty list
---     if #idx == 0 then
---       vim.notify('could not read ' .. fname, vim.log.levels.WARN)
---     end
---     return idx
+--   if id == 'index' then
+--     return string.format('%s/%s/%s-%s.txt', base, topic, topic, id)
 --   end
+--
+--   id = tonumber(id)
+--   if id ~= nil then
+--     -- removes leading zero's, so 0009 -> 9
+--     return string.format('%s/%s/%s%d.txt', base, topic, topic, id)
+--   end
+--
+--   error('id must be one of: "index" or a number')
 -- end
 
 --[[ H mod new]]
@@ -514,7 +482,8 @@ read(fname) -> lines -> ok, lines
 --]]
 
 --[[ ITEMs ]]
--- state and functions that work with picker items
+
+--- state and functions that work with picker items
 local Itm = { list = {} }
 
 --- returns title, ft, lines for use in a preview
@@ -553,7 +522,7 @@ function Itm.preview(item)
     f(fmt2cols, 'UPDATES', item.tags.updates or '-'),
     f(fmt2cols, 'UPDATED by', item.tags.updated_by or '-'),
     '',
-    '### locations',
+    '### URI',
     '',
     f(fmt2cols, 'PATH', vim.fn.fnamemodify(item.file, ':p:~:.')),
     f(fmt2cols, 'URL', H.url(item.stream, item.id, ext)),
