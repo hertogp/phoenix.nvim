@@ -566,17 +566,17 @@ function Itm:from(streams)
 
   self.list = {}
   for idx, entry in ipairs(index) do
-    table.insert(self.list, Itm.parse(idx, entry))
+    table.insert(self.list, Itm.new(idx, entry))
   end
   return #self.list -- num of entries in self.list
 end
 
 --- create a new picker item for given (idx, {stream, id, text})
-function Itm.parse(idx, entry)
+function Itm.new(idx, entry)
   local item = nil -- returned if entry is malformed
   local stream, id, text = unpack(entry)
   if stream and id and text then
-    local title, tags = Itm.tags(text)
+    local title, tags = Itm.parse(text)
     local ext = tags.formats and tags.formats[1] or 'txt'
     local fname = H.fname(stream, id, ext)
     local exists = fname and vim.fn.filereadable(fname) == 1
@@ -602,7 +602,7 @@ function Itm.parse(idx, entry)
 end
 
 --- extracs known (_tags_) from document title
-function Itm.tags(text)
+function Itm.parse(text)
   -- take out all (tag: stuff) and (word word words) parts
   -- (Status: _) (Format: _) (DOI: _) (Obsoletes _) (Obsoleted by _) (Updates _) (Updated by _)
   local tags = { format = '' }
