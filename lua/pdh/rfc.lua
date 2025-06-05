@@ -526,6 +526,9 @@ function Itm.preview(item)
   local ext = item.tags.formats and item.tags.formats[1] or 'txt'
   local fmt2cols = '   %-15s%s'
   local f = string.format
+  local authors = #item.tags.authors > 0 and table.concat(item.tags.authors, ', ')
+  local formats = #item.tags.formats > 0 and table.concat(item.tags.formats, ', ')
+  local obsoletes = item.tags.obsoletes
 
   local lines = {
     '',
@@ -534,13 +537,16 @@ function Itm.preview(item)
     '',
     f('## %s', item.text),
     '',
-    f(fmt2cols, 'AUTHORS', item.tags.authors or 'n/a'),
+    f(fmt2cols, 'AUTHORS', authors or 'n/a'),
     f(fmt2cols, 'STATUS', item.tags.status or 'n/a'),
     f(fmt2cols, 'DATE', item.tags.date or 'n/a'),
     '',
     f(fmt2cols, 'STREAM', item.stream),
-    f(fmt2cols, 'FORMATS', string.upper(table.concat(item.tags.formats or { 'n/a' }, ', '))),
+    f(fmt2cols, 'FORMATS', formats or 'n/a'),
     f(fmt2cols, 'DOI', item.tags.doi or 'n/a'),
+    '',
+    f(fmt2cols, 'OBSOLETES', item.tags.obsoletes or '-'),
+    f(fmt2cols, 'OBSOLETED by', item.tags.obsoleted_by or '-'),
     '',
     f(fmt2cols, 'PATH', vim.fn.fnamemodify(item.file, ':p:~:.')),
     f(fmt2cols, 'URL', H.url(item.stream, item.id, ext)),
@@ -560,13 +566,13 @@ function Itm:from(streams)
 
   self.list = {}
   for idx, entry in ipairs(index) do
-    table.insert(self.list, Itm.new(idx, entry))
+    table.insert(self.list, Itm.parse(idx, entry))
   end
   return #self.list -- num of entries in self.list
 end
 
 --- create a new picker item for given (idx, {stream, id, text})
-function Itm.new(idx, entry)
+function Itm.parse(idx, entry)
   local item = nil -- returned if entry is malformed
   local stream, id, text = unpack(entry)
   if stream and id and text then
