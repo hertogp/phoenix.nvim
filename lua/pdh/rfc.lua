@@ -275,11 +275,12 @@ function H.fetch(topic, id)
   end
 end
 
-function H.fname(stream, id)
+function H.fname(stream, id, ext)
   assert(H.valid[stream])
 
   -- return full file path for (stream, id) or nil
   id = id or 'index'
+  ext = ext or 'txt'
   local fdir, fname
   local cfg = M.config
   local top = M.config.top or H.top
@@ -287,7 +288,7 @@ function H.fname(stream, id)
   if id == 'index' then
     -- it's an document index
     fdir = cfg.cache
-    fname = vim.fs.joinpath(fdir, top, string.format('%s-index.txt', stream))
+    fname = vim.fs.joinpath(fdir, top, string.format('%s-index.%s', stream, ext))
     return vim.fs.normalize(fname)
   end
 
@@ -301,7 +302,7 @@ function H.fname(stream, id)
   end
 
   fdir = fdir or cfg.data or vim.fn.stdpath('data')
-  fname = vim.fs.joinpath(fdir, top, stream, string.format('%s%d.txt', stream, id))
+  fname = vim.fs.joinpath(fdir, top, stream, string.format('%s%d.%s', stream, id, ext))
 
   return vim.fs.normalize(fname)
 end
@@ -514,13 +515,43 @@ read(fname) -> lines -> ok, lines
 
 --[[ ITEMs ]]
 -- state and functions that work with picker items
-local Itm = { list = {}, streams = {} }
+local Itm = { list = {} }
 
+--- returns title, ft, lines for use in a preview
+--- (in case no text file is present to be previewd)
+function Itm.preview(item)
+  -- will be viewed with filetype `markdown`
+  local title = tostring(item.title)
+  local ft = 'markdown'
+  local ext = item.tags.formats and item.tags.formats[1] or 'txt'
+  local fmt2cols = '   %-15s%s'
+  local f = string.format
+
+  local lines = {
+    '',
+    f('# %s', string.upper(item.name)),
+    '',
+    '',
+    f('## %s', item.text),
+    '',
+    f(fmt2cols, 'AUTHORS', item.tags.authors or 'n/a'),
+    f(fmt2cols, 'STATUS', item.tags.status or 'n/a'),
+    f(fmt2cols, 'DATE', item.tags.date or 'n/a'),
+    '',
+    f(fmt2cols, 'STREAM', item.stream),
+    f(fmt2cols, 'FORMATS', string.upper(table.concat(item.tags.formats or { 'n/a' }, ', '))),
+    f(fmt2cols, 'DOI', item.tags.doi or 'n/a'),
+    '',
+    f(fmt2cols, 'PATH', vim.fn.fnamemodify(item.file, ':p:~:.')),
+    f(fmt2cols, 'URL', H.url(item.stream, item.id, ext)),
+  }
+
+  return title, ft, lines
+end
+
+--- Builds self.list of picker items, from 1 or more streams; returns #items
 function Itm:from(streams)
-  -- builds Itm.list of items for given streams, returns num of entries found
-
   local index = Idx.index(streams) -- { {stream, nr, text}, .. }
-  self.streams = streams
 
   if #index == 0 then
     vim.notify('[warn] found 0 items for streams: ' .. table.concat(streams, ', '), vim.log.levels.WARN)
@@ -531,45 +562,17 @@ function Itm:from(streams)
   for idx, entry in ipairs(index) do
     table.insert(self.list, Itm.new(idx, entry))
   end
-  -- local stream, id, text = unpack(entry)
-  -- if stream and id and text then
-  --   local fname = H.fname(stream, id)
-  --   local title, tags = self.tags(text)
-  --   -- TODO: delete this or use it to skip to next entry
-  --   if #title < 1 then
-  --     vim.print(vim.inspect({ 'title', title, tags }))
-  --   end
-
-  -- table.insert(self.list, {
-  --   -- insert an Item
-  --   idx = idx,
-  --   score = idx,
-  --   text = title,
-  --   name = string.format('%s%d', stream, id),
-  --   file = fname, -- used for preview
-  --   title = string.format('%s%s', stream, id), -- preview
-  --
-  --   -- extra
-  --   tags = tags,
-  --   exists = fname and vim.fn.filereadable(fname) == 1,
-  --   stream = stream,
-  --   id = id,
-  --   symbol = H.symbol(stream, id),
-  -- })
-  -- else
-  --   vim.notify('ill formed index entry ' .. vim.inspect(entry), vim.log.levels.WARN)
-  -- end
-  -- end
   return #self.list -- num of entries in self.list
 end
 
---- create a new item table for given idx, entry: {stream, id, text}
+--- create a new picker item for given (idx, {stream, id, text})
 function Itm.new(idx, entry)
   local item = nil -- returned if entry is malformed
   local stream, id, text = unpack(entry)
   if stream and id and text then
     local title, tags = Itm.tags(text)
-    local fname = H.fname(stream, id)
+    local ext = tags.formats and tags.formats[1] or 'txt'
+    local fname = H.fname(stream, id, ext)
     local exists = fname and vim.fn.filereadable(fname) == 1
 
     item = {
@@ -643,7 +646,6 @@ function Itm.tags(text)
   -- extract authors
   local authors = text:match('%s%u%.%u?%.?%s.*%.')
   if authors and #authors > 0 then
-    vim.print(vim.inspect({ authors, text }))
     text = text:gsub(authors, '', 1)
     authors = vim.split(authors:gsub('^%s', '', 1):gsub('%.+$', '', 1), ', *')
   end
@@ -707,27 +709,28 @@ function M.search(streams)
     -- gets called as preview function, perhaps see snacks.picker.prewiew for
     -- example code?
     preview = function(ctx)
-      -- vim.print(vim.inspect(ctx.item))
       if ctx.item.exists then
-        -- lines = vim.split(vim.inspect(snacks.picker.preview), '\n')
+        -- defer to regular previewing in nvim
+        -- TODO: what if it's a pdf-file?
         snacks.picker.preview.file(ctx)
-      elseif ctx.item.preview then
-        -- snacks.picker.preview.preview(ctx) -- generic, show preview={text=.., etc..}
+      elseif ctx.item.missing then
+        -- we've seen it before, use previously assembled info
+        -- we donot use ctx.item.preview={ft=.., text=".."} since text must be split
+        -- each time its the current item in the list
         -- see snacks.picker.core.preview for funcs below ..
-        local text = 'preview: \n\n\n' .. ctx.item.preview.text
-        local lines = vim.split(text, '\n')
         ctx.preview:reset()
-        ctx.preview:set_lines(lines)
-        ctx.preview:set_title(ctx.item.title)
-        ctx.preview:highlight({ ft = ctx.item.preview.ft })
+        ctx.preview:set_lines(ctx.item.missing.lines)
+        ctx.preview:set_title(ctx.item.missing.title)
+        ctx.preview:highlight({ ft = ctx.item.missing.ft })
       else
-        local text = vim.inspect(ctx.item)
-        local lines = vim.split(text, '\n')
+        -- create table `missing` to use for previewing
+        local title, ft, lines = Itm.preview(ctx.item)
         ctx.preview:reset()
         ctx.preview:set_lines(lines)
-        ctx.preview:set_title(ctx.item.title)
-        ctx.preview:highlight({ ft = 'lua' })
-        ctx.item.preview = { ft = 'lua', text = text }
+        ctx.preview:set_title(title)
+        ctx.preview:highlight({ ft = ft })
+        -- create table for next time this item needs to be previewed
+        ctx.item.missing = { title = title, ft = ft, lines = lines }
       end
     end,
     -- see `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/config/defaults.lua`
