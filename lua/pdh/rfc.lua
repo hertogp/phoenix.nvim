@@ -206,22 +206,6 @@ function H.to_url(topic, id)
   error('id must be one of: "index" or a number')
 end
 
-function H.fetch(topic, id)
-  -- return a, possibly empty, list of lines
-  local url = H.to_url(topic, id)
-  local rv = plenary.curl.get({ url = url, accept = 'plain/text' })
-
-  if rv and rv.status == 200 then
-    -- no newline's for buf set lines, no formfeed for snacks preview
-    local lines = vim.split(rv.body, '[\r\n\f]')
-    vim.notify('downloaded ' .. topic .. ' (' .. #lines .. 'lines)')
-    return lines
-  else
-    vim.notify('[failed] status: ' .. rv.status .. ' for ' .. url, vim.log.levels.WARN)
-    return {}
-  end
-end
-
 -- function H.load_index(topic)
 --   -- loads index for topic, downloading it if needed
 --   -- fname can be too old, be missing, have 0 bytes ...
@@ -273,6 +257,22 @@ function H.curl(url)
     lines = vim.split(rv.body, '[\r\n\f]')
   end
   return { status = rv.status, lines = lines }
+end
+
+function H.fetch(topic, id)
+  -- return a, possibly empty, list of lines
+  local url = H.url(topic, id)
+  local rv = plenary.curl.get({ url = url, accept = 'plain/text' })
+
+  if rv and rv.status == 200 then
+    -- no newline's for buf set lines, no formfeed for snacks preview
+    local lines = vim.split(rv.body, '[\r\n\f]')
+    vim.notify('downloaded ' .. topic .. ' (' .. #lines .. 'lines)')
+    return lines
+  else
+    vim.notify('[failed] status: ' .. rv.status .. ' for ' .. url, vim.log.levels.WARN)
+    return {}
+  end
 end
 
 function H.fname(stream, id)
@@ -335,12 +335,12 @@ function H.save(stream, id, lines)
 end
 
 function H.symbol(topic, id)
-  -- local symbol = { '', '' }
-  local fname = H.to_fname(topic, id)
+  -- local symbol = { '', '', ☻ , ☹ ,  🗎🗋}
+  local fname = H.fname(topic, id)
   if fname and vim.fn.filereadable(fname) == 1 then
-    return '☻ ' --  ''
+    return '🗎'
   else
-    return '☺ ' -- ''
+    return '🗋'
   end
 end
 
@@ -374,8 +374,9 @@ end
 
 local Idx = {}
 
+--- retrieve an index from the ietf
 function Idx.curl(stream)
-  -- retrieve index from rfc-editor -> { {stream, nr, text}, .. }
+  -- returns, possibly empty, list: { {stream, nr, text}, .. }
   if not H.valid[stream] then
     vim.notify('[warn] stream ' .. vim.inspect(stream) .. 'not supported', vim.log.levels.WARN)
     return {}
@@ -389,6 +390,7 @@ function Idx.curl(stream)
     return {}
   end
 
+  -- parse assembled line into {stream, id, text}
   local parse = function(line)
     -- return a parsed accumulated entry line (if any) or nil upon failure
     local nr, title = string.match(line, '^(%d+)%s+(.*)')
@@ -399,9 +401,9 @@ function Idx.curl(stream)
     return nil -- so it actually won't add the entry
   end
 
-  -- build parsed entries
+  -- assemble and parse lines
   local idx = {} -- parsed content { {s, n, t}, ... }
-  local acc = '' -- start of accumulated lines
+  local acc = '' -- start of accumulated line
   local max = stream == 'ien' and 3 or 1
   for _, line in ipairs(rv.lines) do
     local start = string.match(line, '^(%s*)%d+%s+%S')
@@ -425,6 +427,7 @@ function Idx.curl(stream)
   return idx -- { {stream, nr, title }, .. }
 end
 
+--- retrieve a stream's index from disk or ietf
 function Idx.get(stream)
   -- get a single stream, either from disk or from ietf
   assert(H.valid[stream])
@@ -442,6 +445,7 @@ function Idx.get(stream)
   return idx
 end
 
+--- build an index for 1 or more types of streams
 function Idx.index(streams)
   -- returns { {stream<1>, nr, title}, ... {stream<n>, nr, title} }
   streams = streams or { 'rfc' }
@@ -542,6 +546,7 @@ function Itm:from(streams)
         text = title,
         name = string.format('%s%d', stream, id),
         file = fname, -- used for preview
+        title = string.format('%s%s', stream, id), -- preview
 
         -- extra
         tags = tags,
@@ -558,6 +563,7 @@ function Itm:from(streams)
   return #self.list
 end
 
+--- extracs known (_tags_) from document title
 function Itm.tags(text)
   -- take out all (tag: stuff) and (word word words) parts
   -- (Status: _) (Format: _) (DOI: _) (Obsoletes _) (Obsoleted by _) (Updates _) (Updated by _)
@@ -573,6 +579,7 @@ function Itm.tags(text)
     doi = true,
   }
 
+  -- extract (<wanted> ... )-parts
   for part in string.gmatch(text, '%(([^)]+)%)') do
     local prepped = string.gsub(part, '%s+by', '_by', 1):gsub(':', '', 1)
     local k, v = string.match(prepped, '^([^%s]+)%s+(.*)$')
@@ -581,6 +588,24 @@ function Itm.tags(text)
       -- remove matched ()-text, including a ws prefix if possible
       text = string.gsub(text, '%s?%(' .. part .. '%)', '', 1)
     end
+  end
+
+  -- fix format tags
+  local fmts = { 'txt', 'html', 'pdf', 'xml' } -- skip the json
+  local format = tags['format'] or ''
+  local seen = {}
+  for _, fmt in ipairs(fmts) do
+    if string.match(format, fmt) then
+      seen[#seen + 1] = fmt
+    end
+  end
+  tags['format'] = seen
+
+  -- extract dates like: Month<ws>YEAR (4 digits) (covers rfc,bcp and std)
+  local date = text:match('%s%u%l+%s-%d%d%d%d%.?')
+  if date then
+    tags['date'] = vim.trim(date):gsub('%.$', '', 1) -- TODO: keep the trailing dot?
+    text = string.gsub(text, date, '', 1)
   end
 
   return text, tags
@@ -624,7 +649,7 @@ end
 function M.search(streams)
   -- search the stream(s) index/indices
   -- TODO:
-  -- [ ] arg maybe streams, e.g. {'rfc', 'bcp', 'std'} and concat the index lists of named topics
+  -- [x] arg maybe streams, e.g. {'rfc', 'bcp', 'std'} and concat the index lists of named topics
   -- [x] use H.sep instead of magical '|' char
   -- [x] idx_entry_build(topic, line)  & idx_entry_parse(entry) -> topic, id
   -- Use the source Luke!
@@ -638,6 +663,23 @@ function M.search(streams)
 
   return snacks.picker({
     items = Itm.list,
+    -- gets called as preview function, perhaps see snacks.picker.prewiew for
+    -- example code?
+    preview = function(ctx)
+      -- vim.print(vim.inspect(ctx.item))
+      if ctx.item.exists then
+        -- lines = vim.split(vim.inspect(snacks.picker.preview), '\n')
+        snacks.picker.preview.file(ctx)
+      else
+        -- snacks.picker.preview.preview(ctx) -- generic, show preview={text=.., etc..}
+        -- see snacks.picker.core.preview for funcs below ..
+        local lines = vim.split(vim.inspect(ctx.item), '\n')
+        ctx.preview:reset()
+        ctx.preview:set_lines(lines)
+        ctx.preview:set_title(ctx.item.title)
+        ctx.preview:highlight({ ft = 'json' })
+      end
+    end,
     -- see `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/config/defaults.lua`
     -- around Line 200, win = { input = { keys = {..}}, list = { keys = {..}}}
     win = {
@@ -693,7 +735,7 @@ function M.search(streams)
       -- format an item for display in picker list
       -- return list: { { str1, hl_name1 }, { str2, hl_nameN }, .. }
       -- `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/format.lua`
-      local hl_item = (item.exists and 'SnacksPickerCode') or 'SnacksPicker'
+      local hl_item = (item.exists and 'SnacksPickerGitStatusAdded') or 'SnacksPickerGitStatusUntracked'
       local ret = {}
       ret[#ret + 1] = { item.symbol, hl_item }
       ret[#ret + 1] = { ' ' .. H.sep, 'SnacksWinKeySep' }

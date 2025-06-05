@@ -66,7 +66,7 @@ local function joincaptures(match, _, bufnr, predicate, meta)
     end
   else
     -- ("join!", name, char, id1, id2, ..}
-    -- where idx may be a string, in which case its added as-is
+    -- where id<x> may be a string, in which case its added as-is
     local char = predicate[3] -- used to join text from match[id<x>]
     for i = 4, #predicate do
       local key = predicate[i]
