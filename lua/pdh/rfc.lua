@@ -567,7 +567,7 @@ end
 function Itm.tags(text)
   -- take out all (tag: stuff) and (word word words) parts
   -- (Status: _) (Format: _) (DOI: _) (Obsoletes _) (Obsoleted by _) (Updates _) (Updated by _)
-  local tags = {}
+  local tags = { format = '' }
   local wanted = {
     obsoletes = true,
     obsoleted_by = true,
@@ -584,22 +584,24 @@ function Itm.tags(text)
     local prepped = string.gsub(part, '%s+by', '_by', 1):gsub(':', '', 1)
     local k, v = string.match(prepped, '^([^%s]+)%s+(.*)$')
     if k and v and wanted[k:lower()] then
-      tags[k:lower()] = vim.trim(v:gsub('%s+', ''):lower())
+      tags[k:lower()] = v:gsub('%s+', ''):lower()
       -- remove matched ()-text, including a ws prefix if possible
       text = string.gsub(text, '%s?%(' .. part .. '%)', '', 1)
     end
   end
 
   -- fix format tags
-  local fmts = { 'txt', 'html', 'pdf', 'xml' } -- skip the json
-  local format = tags['format'] or ''
+  -- order is important: first item in the list will be used to open it
+  local known = { 'txt', 'html', 'pdf', 'xml' } -- json is not a pub format
+  local formats = tags['format'] or ''
   local seen = {}
-  for _, fmt in ipairs(fmts) do
-    if string.match(format, fmt) then
+  for _, fmt in ipairs(known) do
+    if string.match(formats, fmt) then
       seen[#seen + 1] = fmt
     end
   end
-  tags['format'] = seen
+  tags['format'] = nil
+  tags['formats'] = seen
 
   -- extract dates like: Month<ws>YEAR (4 digits) (covers rfc,bcp and std)
   local date = text:match('%s%u%l+%s-%d%d%d%d%.?')
@@ -607,6 +609,15 @@ function Itm.tags(text)
     tags['date'] = vim.trim(date):gsub('%.$', '', 1) -- TODO: keep the trailing dot?
     text = string.gsub(text, date, '', 1)
   end
+
+  -- extract authors
+  local authors = text:match('%s%u%.%u?%.?%s.*%.')
+  if authors and #authors > 0 then
+    vim.print(vim.inspect({ authors, text }))
+    text = text:gsub(authors, '', 1)
+    authors = vim.split(authors:gsub('^%s', '', 1):gsub('%.+$', '', 1), ', *')
+  end
+  tags['authors'] = authors or {}
 
   return text, tags
 end
