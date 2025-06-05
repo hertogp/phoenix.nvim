@@ -134,26 +134,6 @@ end
 --   return idx
 -- end
 
-function H.to_dir(spec)
-  -- find root dir or use spec if valid, fallback is stdpath data dir
-  local path
-  local top = M.config.top or H.top
-
-  if type(spec) == 'table' then
-    -- find root dir based on markers in cfg.data
-    path = vim.fs.root(0, spec)
-  elseif type(spec) == 'string' then
-    path = vim.fs.normalize(spec)
-  end
-
-  if path == nil or vim.fn.filereadable(path) == 0 then
-    path = vim.fn.stdpath('data')
-  end
-
-  -- path = (path and vim.fn.filereadable(path)) or vim.fn.stdpath('data')
-  return vim.fs.joinpath(path, top)
-end
-
 function H.to_fname(topic, id)
   -- return full file path for (topic, id) or nil
   local fdir, fname
@@ -227,6 +207,7 @@ function H.curl(url)
   return { status = rv.status, lines = lines }
 end
 
+--- fetch an ietf document, returns (possibly empty) list of lines
 function H.fetch(topic, id)
   -- return a, possibly empty, list of lines
   local url = H.url(topic, id)
@@ -243,6 +224,25 @@ function H.fetch(topic, id)
   end
 end
 
+--- find root dir or use cfg.top, fallback to stdpath data dir
+function H.dir(spec)
+  local path
+  local top = M.config.top or H.top
+
+  if type(spec) == 'table' then
+    -- find root dir based on markers in cfg.data
+    path = vim.fs.root(0, spec)
+  elseif type(spec) == 'string' then
+    path = vim.fs.normalize(spec)
+  end
+
+  if path == nil or vim.fn.filereadable(path) == 0 then
+    path = vim.fn.stdpath('data')
+  end
+
+  -- path = (path and vim.fn.filereadable(path)) or vim.fn.stdpath('data')
+  return vim.fs.joinpath(path, top)
+end
 function H.fname(stream, id, ext)
   assert(H.valid[stream])
 
@@ -656,12 +656,12 @@ function M.reload()
 end
 
 function M.find()
-  local topdir = H.to_dir(M.config.data)
+  local topdir = H.dir(M.config.data)
   snacks.picker.files({ hidden = true, cwd = topdir })
 end
 
 function M.grep()
-  local topdir = H.to_dir(M.config.data)
+  local topdir = H.dir(M.config.data)
   snacks.picker.grep({ hidden = true, cwd = topdir })
 end
 
