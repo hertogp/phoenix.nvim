@@ -22,14 +22,7 @@ TODO: these need some TLC
 
 --]]
 
---[[ dependency check ]]
-
--- :lua =R('pdh.rfc') to reload package after modifications were made
-
-local M = {} -- module to be returned
-local H = {} -- private helpers
-
---[[ locals ]]
+--[[ DEPENDENCIES ]]
 
 local ok, plenary, snacks
 
@@ -45,155 +38,15 @@ if not ok then
   return
 end
 
---[[ Helpers ]]
+--[[ HELPERS ]]
+-- H.methods assume caller already checked validity of arguments supplied
+-- so they simply `assert` and possibly fail hard
 
-function H.modeline(spec)
-  -- returns modeline string if possible, nil otherwise
-  if type(spec) == 'string' then
-    -- use verbatim
-    return spec
-  end
-
-  if type(spec) == 'table' then
-    -- build modeline, ignore unknown options
-    local opts = ''
-    for k, v in pairs(spec) do
-      if vim.fn.exists(string.format('&%s', k)) == 1 then
-        opts = string.format('%s %s=%s', opts, k, v)
-      else
-        vim.notify('modeline: ignoring unknown option ' .. vim.inspect(k), vim.log.levels.WARN)
-      end
-    end
-    if #opts > 0 then
-      return string.format('/* vim: set%s: */', opts)
-    end
-  end
-
-  return nil -- do not add modeline
-end
-
--- function H.idx_entry_build(topic, line)
---   -- return string formatted like 'topic|nr|text' or nil
---   -- topic|nr|text
---   local nr, rest = string.match(line, '^%s*(%d+)%s+(.*)')
---
---   if nr ~= nil then
---     return string.format('%3s%s%05d%s%s', topic, H.sep, tonumber(nr), H.sep, rest)
---   end
---   return nil -- this will cause candidate deletion
--- end
-
--- function H.idx_entry_parse(line)
---   -- break a selected entry 'topic|nr|text' into its consituents
---   return unpack(vim.split(line, H.sep))
--- end
-
--- function H.idx_build(topic, lines)
---   -- downloaded topic-index.txt lines -> formatted index lines (stream|nr|text)
---   -- collect eligible lines and format as entries
---   -- --------------------- example
---   -- 0001 this is the
---   --      title of rfc 1
---   -- ---------------------
---   -- 1. a line that starts with a number (ignoring leading wspace), starts a candidate entry
---   -- 2. a line that does not start with a number is added to the current candidate
---   -- 3. candidates that do not start with a number are eliminated
---   -- ien index: nrs donot start at first column ... so this will fail
---   local idx = { '' }
---
---   for _, line in ipairs(lines) do
---     if string.match(line, '^%s*%d+%s') then
---       -- format current entry, then start new entry
---       idx[#idx] = H.idx_entry_build(topic, idx[#idx])
---       idx[#idx + 1] = line
---     elseif string.match(line, '^%s+') then
---       -- accumulate in new candidate
---       -- TODO: do we actually need to check for starting whitespace?
---       idx[#idx] = idx[#idx] .. ' ' .. vim.trim(line)
---     end
---   end
---
---   -- also format last accumulated candidate (possibly deleting it)
---   idx[#idx] = H.idx_entry_build(topic, idx[#idx])
---   vim.notify('index ' .. topic .. ' has ' .. #idx .. ' entries', vim.log.levels.WARN)
---   return idx
--- end
-
--- function H.idx_parse(index)
---   -- index is list of formatted index lines (stream|nr|text)
---   -- return list of { {topic, id, text}, .. }
---   local idx = {}
---   for _, line in ipairs(index) do
---     local topic, id, text = H.idx_entry_parse(line)
---     if topic and id and text then
---       idx[#idx + 1] = { topic, id, text }
---     else
---       vim.notify('[error] ill-formed index line ' .. line, vim.log.levels.WARN)
---     end
---   end
---   return idx
--- end
-
-function H.to_fname(topic, id)
-  -- return full file path for (topic, id) or nil
-  local fdir, fname
-  local cfg = M.config
-  local top = M.config.top or H.top
-
-  if not H.valid[topic] then
-    return nil
-  end
-
-  if id == 'index' then
-    -- it's an document index
-    fdir = cfg.cache
-    fname = vim.fs.joinpath(fdir, top, string.format('%s-index.txt', topic))
-    return vim.fs.normalize(fname)
-  end
-
-  -- it's an ietf document
-  if type(cfg.data) == 'table' then
-    -- find root dir based on markers in cfg.data
-    fdir = vim.fs.root(0, cfg.data)
-  end
-
-  fdir = fdir or cfg.data or vim.fn.stdpath('data')
-  id = tonumber(id)
-  fname = vim.fs.joinpath(fdir, top, topic, string.format('%s%d.txt', topic, id))
-
-  return vim.fs.normalize(fname)
-end
-
--- function H.to_url(topic, id)
---   -- return url for an item or index
---   local base = 'https://www.rfc-editor.org'
---   topic = string.lower(topic)
---
---   if not H.valid[topic] then
---     error('topic must one of: rfc, bcp, std, fyi or ien')
---   end
---
---   if id == 'index' then
---     return string.format('%s/%s/%s-%s.txt', base, topic, topic, id)
---   end
---
---   id = tonumber(id)
---   if id ~= nil then
---     -- removes leading zero's, so 0009 -> 9
---     return string.format('%s/%s/%s%d.txt', base, topic, topic, id)
---   end
---
---   error('id must be one of: "index" or a number')
--- end
-
---[[ H mod new]]
--- helper functions for small tasks
--- note that caller is assumed to check validity of args and values
--- so here we `assert` and possibly fail hard
-
-H.valid = { rfc = true, bcp = true, std = true, fyi = true, ien = true }
-H.top = 'ietf.org'
-H.sep = '│'
+local H = {
+  valid = { rfc = true, bcp = true, std = true, fyi = true, ien = true },
+  top = 'ietf.org',
+  sep = '│',
+}
 
 function H.curl(url)
   -- return a, possibly empty, list of lines
@@ -208,15 +61,15 @@ function H.curl(url)
 end
 
 --- fetch an ietf document, returns (possibly empty) list of lines
-function H.fetch(topic, id)
+function H.fetch(stream, id)
   -- return a, possibly empty, list of lines
-  local url = H.url(topic, id)
+  local url = H.url(stream, id)
   local rv = plenary.curl.get({ url = url, accept = 'plain/text' })
 
   if rv and rv.status == 200 then
     -- no newline's for buf set lines, no formfeed for snacks preview
     local lines = vim.split(rv.body, '[\r\n\f]')
-    vim.notify('downloaded ' .. topic .. ' (' .. #lines .. 'lines)')
+    vim.notify('downloaded ' .. stream .. ' (' .. #lines .. 'lines)')
     return lines
   else
     vim.notify('[failed] status: ' .. rv.status .. ' for ' .. url, vim.log.levels.WARN)
@@ -275,8 +128,33 @@ function H.fname(stream, id, ext)
   return vim.fs.normalize(fname)
 end
 
+-- returns modeline string if possible, nil otherwise
+function H.modeline(spec)
+  if type(spec) == 'string' then
+    -- use verbatim
+    return spec
+  end
+
+  if type(spec) == 'table' then
+    -- build modeline, ignore unknown options
+    local opts = ''
+    for k, v in pairs(spec) do
+      if vim.fn.exists(string.format('&%s', k)) == 1 then
+        opts = string.format('%s %s=%s', opts, k, v)
+      else
+        vim.notify('modeline: ignoring unknown option ' .. vim.inspect(k), vim.log.levels.WARN)
+      end
+    end
+    if #opts > 0 then
+      return string.format('/* vim: set%s: */', opts)
+    end
+  end
+
+  return nil -- do not add modeline
+end
+
+-- save to disk, creating directory as needed
 function H.save(stream, id, lines)
-  -- save to disk, creating directory as needed
   local fname = H.fname(stream, id)
 
   if fname == nil then
@@ -482,8 +360,8 @@ read(fname) -> lines -> ok, lines
 --]]
 
 --[[ ITEMs ]]
-
 --- state and functions that work with picker items
+
 local Itm = { list = {} }
 
 --- returns title, ft, lines for use in a preview
@@ -638,6 +516,8 @@ end
 
 --[[ Module ]]
 
+local M = {}
+
 M.config = {
   cache = vim.fn.stdpath('cache'), -- store indices only once
   data = vim.fn.stdpath('data'), -- path or markers
@@ -780,6 +660,8 @@ function M.search(streams)
       return ret
     end,
     confirm = function(picker, item)
+      -- TODO: retrieve txt items, use vim.ui.open for (remote) formats other
+      -- than txt.  Can we curl pdf's ?
       vim.notify(picker:count() .. ' items in selection')
       picker:close()
       if vim.fn.filereadable(item.file) == 0 then
