@@ -334,10 +334,9 @@ function H.save(stream, id, lines)
   return fname
 end
 
-function H.symbol(topic, id)
+function H.symbol(exists)
   -- local symbol = { '', '', ☻ , ☹ ,  🗎🗋}
-  local fname = H.fname(topic, id)
-  if fname and vim.fn.filereadable(fname) == 1 then
+  if exists then
     return '🗎'
   else
     return '🗋'
@@ -530,37 +529,67 @@ function Itm:from(streams)
 
   self.list = {}
   for idx, entry in ipairs(index) do
-    local stream, id, text = unpack(entry)
-    if stream and id and text then
-      local fname = H.fname(stream, id)
-      local title, tags = self.tags(text)
-      -- TODO: delete this or use it to skip to next entry
-      if #title < 1 then
-        vim.print(vim.inspect({ 'title', title, tags }))
-      end
-
-      table.insert(self.list, {
-        -- insert an Item
-        idx = idx,
-        score = idx,
-        text = title,
-        name = string.format('%s%d', stream, id),
-        file = fname, -- used for preview
-        title = string.format('%s%s', stream, id), -- preview
-
-        -- extra
-        tags = tags,
-        exists = fname and vim.fn.filereadable(fname) == 1,
-        stream = stream,
-        id = id,
-        symbol = H.symbol(stream, id),
-      })
-    else
-      vim.notify('ill formed index entry ' .. vim.inspect(entry), vim.log.levels.WARN)
-    end
+    table.insert(self.list, Itm.new(idx, entry))
   end
+  -- local stream, id, text = unpack(entry)
+  -- if stream and id and text then
+  --   local fname = H.fname(stream, id)
+  --   local title, tags = self.tags(text)
+  --   -- TODO: delete this or use it to skip to next entry
+  --   if #title < 1 then
+  --     vim.print(vim.inspect({ 'title', title, tags }))
+  --   end
 
-  return #self.list
+  -- table.insert(self.list, {
+  --   -- insert an Item
+  --   idx = idx,
+  --   score = idx,
+  --   text = title,
+  --   name = string.format('%s%d', stream, id),
+  --   file = fname, -- used for preview
+  --   title = string.format('%s%s', stream, id), -- preview
+  --
+  --   -- extra
+  --   tags = tags,
+  --   exists = fname and vim.fn.filereadable(fname) == 1,
+  --   stream = stream,
+  --   id = id,
+  --   symbol = H.symbol(stream, id),
+  -- })
+  -- else
+  --   vim.notify('ill formed index entry ' .. vim.inspect(entry), vim.log.levels.WARN)
+  -- end
+  -- end
+  return #self.list -- num of entries in self.list
+end
+
+--- create a new item table for given idx, entry: {stream, id, text}
+function Itm.new(idx, entry)
+  local item = nil -- returned if entry is malformed
+  local stream, id, text = unpack(entry)
+  if stream and id and text then
+    local title, tags = Itm.tags(text)
+    local fname = H.fname(stream, id)
+    local exists = fname and vim.fn.filereadable(fname) == 1
+
+    item = {
+      idx = idx,
+      score = idx,
+      text = title,
+      name = string.format('%s%d', stream, id),
+      file = fname, -- used for previewing file if present
+      title = string.format('%s%s', stream, id), -- used by previewer
+
+      -- extra, used by our picker preview to construct viewable content
+      -- in case the file does not exist on disk.
+      exists = exists,
+      tags = tags,
+      stream = stream,
+      id = id,
+      symbol = H.symbol(exists),
+    }
+  end
+  return item -- if nil, won't get added to the list
 end
 
 --- extracs known (_tags_) from document title
@@ -603,6 +632,7 @@ function Itm.tags(text)
   tags['format'] = nil
   tags['formats'] = seen
 
+  -- TODO: switch to vim.re/vim.regex or vim.lpeg
   -- extract dates like: Month<ws>YEAR (4 digits) (covers rfc,bcp and std)
   local date = text:match('%s%u%l+%s-%d%d%d%d%.?')
   if date then
@@ -681,14 +711,23 @@ function M.search(streams)
       if ctx.item.exists then
         -- lines = vim.split(vim.inspect(snacks.picker.preview), '\n')
         snacks.picker.preview.file(ctx)
-      else
+      elseif ctx.item.preview then
         -- snacks.picker.preview.preview(ctx) -- generic, show preview={text=.., etc..}
         -- see snacks.picker.core.preview for funcs below ..
-        local lines = vim.split(vim.inspect(ctx.item), '\n')
+        local text = 'preview: \n\n\n' .. ctx.item.preview.text
+        local lines = vim.split(text, '\n')
         ctx.preview:reset()
         ctx.preview:set_lines(lines)
         ctx.preview:set_title(ctx.item.title)
-        ctx.preview:highlight({ ft = 'json' })
+        ctx.preview:highlight({ ft = ctx.item.preview.ft })
+      else
+        local text = vim.inspect(ctx.item)
+        local lines = vim.split(text, '\n')
+        ctx.preview:reset()
+        ctx.preview:set_lines(lines)
+        ctx.preview:set_title(ctx.item.title)
+        ctx.preview:highlight({ ft = 'lua' })
+        ctx.item.preview = { ft = 'lua', text = text }
       end
     end,
     -- see `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/config/defaults.lua`
