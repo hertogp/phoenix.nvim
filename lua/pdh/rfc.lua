@@ -22,6 +22,9 @@ TODO: these need some TLC
 
 --]]
 
+local M = {} -- TODO: review how/why H.methods require M access
+-- if not needed anymore, it can move to the [[ MODULE ]] section
+
 --[[ DEPENDENCIES ]]
 
 local ok, plenary, snacks
@@ -220,9 +223,9 @@ end
 
 local Idx = {}
 
---- retrieve an index from the ietf
+--- retrieve an index from the ietf for given `stream`
+-- returns, possibly empty, list: { {stream, id, text}, .. }
 function Idx.curl(stream)
-  -- returns, possibly empty, list: { {stream, nr, text}, .. }
   if not H.valid[stream] then
     vim.notify('[warn] stream ' .. vim.inspect(stream) .. 'not supported', vim.log.levels.WARN)
     return {}
@@ -237,6 +240,7 @@ function Idx.curl(stream)
   end
 
   -- parse assembled line into {stream, id, text}
+  ---@param line string
   local parse = function(line)
     -- return a parsed accumulated entry line (if any) or nil upon failure
     local nr, title = string.match(line, '^(%d+)%s+(.*)')
@@ -249,25 +253,24 @@ function Idx.curl(stream)
 
   -- assemble and parse lines
   local idx = {} -- parsed content { {s, n, t}, ... }
-  local acc = '' -- start of accumulated line
-  local max = stream == 'ien' and 3 or 1
+  local acc = '' -- accumulated sofar
+  local max = stream == 'ien' and 3 or 1 -- allow for leading ws in ien index
   for _, line in ipairs(rv.lines) do
     local start = string.match(line, '^(%s*)%d+%s+%S')
     if start and #start < max then
       -- starter line: parse current, start new
-      vim.print(vim.inspect({ #start, max, line }))
       idx[#idx + 1] = parse(acc)
       acc = vim.trim(line) -- trim leading ws(!) for parse()
     elseif #acc > 0 and string.match(line, '^%s+%S') then
       -- continuation line: accumulate
       acc = acc .. ' ' .. vim.trim(line)
-    else
+    elseif #acc > 0 then
       -- neither a starter, nor continuation: parse current, restart
       idx[#idx + 1] = parse(acc)
       acc = ''
     end
   end
-  -- don't forget the last entry (if any)
+  -- don't forget the last entry
   idx[#idx + 1] = parse(acc)
 
   return idx -- { {stream, nr, title }, .. }
@@ -306,8 +309,9 @@ function Idx.index(streams)
   return idx
 end
 
+-- read an index from disk, don't mind the ttl at this point
+--- @param stream string
 function Idx.read(stream)
-  -- read an index from disk, don't mind the ttl at this point
   assert(H.valid[stream])
 
   local fname = H.fname(stream, 'index')
@@ -364,15 +368,15 @@ read(fname) -> lines -> ok, lines
 
 local Itm = { list = {} }
 
---- returns title, ft, lines for use in a preview
+--- returns `title`, `ft`, `lines` for use in a preview
 --- (in case no text file is present to be previewd)
 function Itm.preview(item)
-  -- will be viewed with filetype `markdown`
   local title = tostring(item.title)
   local ft = 'markdown'
-  local ext = item.tags.formats and item.tags.formats[1] or 'txt'
   local fmt2cols = '   %-15s%s'
   local f = string.format
+  -- REVIEW: tags are not consistent: plurals should always be lists of strings?
+  local ext = item.tags.formats and item.tags.formats[1] or 'txt'
   local authors = #item.tags.authors > 0 and table.concat(item.tags.authors, ', ')
   local formats = #item.tags.formats > 0 and table.concat(item.tags.formats, ', ')
   local obsoletes = item.tags.obsoletes
@@ -384,13 +388,14 @@ function Itm.preview(item)
     '',
     f('## %s', item.text),
     '',
-    f(fmt2cols, 'AUTHORS', authors or 'n/a'),
-    f(fmt2cols, 'STATUS', item.tags.status or 'n/a'),
-    f(fmt2cols, 'DATE', item.tags.date or 'n/a'),
+    f(fmt2cols, 'AUTHORS', authors or '-'),
+    f(fmt2cols, 'STATUS', item.tags.status or '-'),
+    f(fmt2cols, 'DATE', item.tags.date or '-'),
     '',
     f(fmt2cols, 'STREAM', item.stream),
-    f(fmt2cols, 'FORMATS', formats or 'n/a'),
-    f(fmt2cols, 'DOI', item.tags.doi or 'n/a'),
+    f(fmt2cols, 'FORMATS', formats or '-'),
+    f(fmt2cols, 'DOI', item.tags.doi or '-'),
+    '',
     '',
     '### TAGS',
     '',
@@ -399,6 +404,7 @@ function Itm.preview(item)
     f(fmt2cols, 'OBSOLETED by', item.tags.obsoleted_by or '-'),
     f(fmt2cols, 'UPDATES', item.tags.updates or '-'),
     f(fmt2cols, 'UPDATED by', item.tags.updated_by or '-'),
+    '',
     '',
     '### URI',
     '',
@@ -455,9 +461,11 @@ function Itm.new(idx, entry)
   return item -- if nil, won't get added to the list
 end
 
---- extracs known (_tags_) from document title
+--- extracs known `tags` from document title `text`
+---@param text string
+---@return table
 function Itm.parse(text)
-  -- take out all (tag: stuff) and (word word words) parts
+  -- take out all (word <stuff>) for known words
   -- (Status: _) (Format: _) (DOI: _) (Obsoletes _) (Obsoleted by _) (Updates _) (Updated by _)
   local tags = { format = '' }
   local wanted = {
@@ -495,11 +503,11 @@ function Itm.parse(text)
   tags['format'] = nil
   tags['formats'] = seen
 
-  -- TODO: switch to vim.re/vim.regex or vim.lpeg
-  -- extract dates like: Month<ws>YEAR (4 digits) (covers rfc,bcp and std)
-  local date = text:match('%s%u%l+%s-%d%d%d%d%.?')
+  -- extract dates
+  -- TODO: switch to vim.re/vim.regex or vim.lpeg? ien/fyi not consistent
+  local date = text:match('%s%u%l+%s-%d%d%d%d%.?') -- Month\sYEAR
   if date then
-    tags['date'] = vim.trim(date):gsub('%.$', '', 1) -- TODO: keep the trailing dot?
+    tags['date'] = vim.trim(date):gsub('%.$', '', 1)
     text = string.gsub(text, date, '', 1)
   end
 
@@ -515,8 +523,6 @@ function Itm.parse(text)
 end
 
 --[[ Module ]]
-
-local M = {}
 
 M.config = {
   cache = vim.fn.stdpath('cache'), -- store indices only once
