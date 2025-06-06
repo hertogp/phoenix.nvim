@@ -386,7 +386,6 @@ function Itms.preview(item)
   local ext = item.tags.formats and item.tags.formats[1] or 'txt'
   local authors = #item.tags.authors > 0 and table.concat(item.tags.authors, ', ')
   local formats = #item.tags.formats > 0 and table.concat(item.tags.formats, ', ')
-  local obsoletes = item.tags.obsoletes
 
   local lines = {
     '',
@@ -649,8 +648,9 @@ function M.search(streams)
     },
 
     actions = {
-      download = function(picker, item)
+      download = function(picker, item) -- don't use picker for now
         vim.print({ 'download item', vim.inspect(item) })
+        vim.print(vim.inspect({ 'download selected is', picker.list.selected }))
       end,
 
       download_selection = function(picker, item)
