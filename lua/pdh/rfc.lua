@@ -437,7 +437,7 @@ end
 function Itms.parse(text)
   -- take out all (word <stuff>) for known words
   -- (Status: _), ..., (Obsoletes _) (Obsoleted by _), ...
-  local tags = { format = '' }
+  local tags = { formats = { '-' } }
   local wanted = {
     obsoletes = true,
     obsoleted_by = true,
@@ -453,10 +453,13 @@ function Itms.parse(text)
   for part in string.gmatch(text, '%(([^)]+)%)') do
     local prepped = string.gsub(part, '%s+by', '_by', 1):gsub(':', '', 1)
     local k, v = string.match(prepped, '^([^%s]+)%s+(.*)$')
-    if k and v and wanted[k:lower()] then
-      tags[k:lower()] = v:gsub('%s+', ''):lower()
-      -- remove matched ()-text, including a ws prefix if possible
-      text = string.gsub(text, '%s?%(' .. part .. '%)', '', 1)
+    if k and v then
+      k = k:lower()
+      if wanted[k] then
+        tags[k] = v:gsub('%s+', ''):lower()
+        -- remove matched ()-text, including a ws prefix if possible
+        text = string.gsub(text, '%s?%(' .. part .. '%)', '', 1)
+      end
     end
   end
 
