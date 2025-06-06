@@ -22,6 +22,12 @@ TODO: these need some TLC
 
 --]]
 
+--[[ TYPES ]]
+
+---@alias stream "rfc" | "bcp" | "std" | "fyi" | "ien"
+---@alias entry { [1]: stream, [2]: integer, [3]: string}
+---@alias index entry[]
+
 local M = {} -- TODO: review how/why H.methods require M access
 -- if not needed anymore, it can move to the [[ MODULE ]] section
 
@@ -64,6 +70,7 @@ function H.curl(url)
 end
 
 --- fetch an ietf document, returns (possibly empty) list of lines
+---@param stream stream
 function H.fetch(stream, id)
   -- return a, possibly empty, list of lines
   local url = H.url(stream, id)
@@ -221,17 +228,24 @@ end
 --[[ INDEX ]]
 -- functions that work with the indices of streams of ietf documents
 
+---@class Index
+---@field index fun(self: Index, streams: stream[]): Index
+---@field curl fun(stream: stream): entry[]
+---@field _get fun(self: Index, streams: stream[]): Index
+---@field _read fun(stream: stream): Index
+---@field _save fun(self: Index): Index
 local Idx = {}
 
---- retrieve an index from the ietf for given `stream`
--- returns, possibly empty, list: { {stream, id, text}, .. }
+-- retrieves (and caches) an index for the given `stream` from the ietf
+-- returns, a possibly empty, list: { {stream, id, text}, .. }
+---@return index
 function Idx.curl(stream)
   if not H.valid[stream] then
     vim.notify('[warn] stream ' .. vim.inspect(stream) .. 'not supported', vim.log.levels.WARN)
     return {}
   end
 
-  -- retrieve raw content
+  -- retrieve raw content from the ietf
   local url = H.url(stream, 'index')
   local rv = H.curl(url)
   if rv.status ~= 200 then
@@ -241,6 +255,7 @@ function Idx.curl(stream)
 
   -- parse assembled line into {stream, id, text}
   ---@param line string
+  ---@return entry | nil
   local parse = function(line)
     -- return a parsed accumulated entry line (if any) or nil upon failure
     local nr, title = string.match(line, '^(%d+)%s+(.*)')
@@ -273,99 +288,135 @@ function Idx.curl(stream)
   -- don't forget the last entry
   idx[#idx + 1] = parse(acc)
 
+  -- cache the parsed result
+  local lines = {}
+  for _, entry in ipairs(idx) do
+    lines[#lines + 1] = table.concat(entry, H.sep)
+  end
+  H.save(stream, 'index', lines)
+
   return idx -- { {stream, nr, title }, .. }
 end
 
---- retrieve a stream's index from disk or ietf
-function Idx.get(stream)
+--- build an index for 1 or more types of streams
+---@param self Index
+---@param streams stream[]
+---@return entry[]
+function Idx:index(streams)
+  vim.print(vim.inspect(streams))
+  streams = streams or { 'rfc' }
+  streams = type(streams) == 'string' and { streams } or streams
+  -- local idx = {} ---@type index
+  for _, stream in ipairs(streams) do
+    vim.print(vim.inspect(stream))
+    assert(H.valid[stream])
+    Idx:get(stream)
+    -- for _, entry in ipairs(Idx:get(stream)) do
+    --   table.insert(self, entry)
+    -- end
+  end
+  return self
+end
+
+-- -- read an index from disk, don't mind the ttl at this point
+-- ---@param stream stream
+-- ---@return index
+-- function Idx.read(stream)
+--   local idx = {} ---@type index
+--
+--   assert(H.valid[stream])
+--   local fname = H.fname(stream, 'index')
+--   local lines = vim.fn.readfile(fname) -- failure to read returns empty list
+--
+--   for _, line in ipairs(lines) do
+--     idx[#idx + 1] = vim.split(line, H.sep) -- Itm.parse
+--   end
+--   return idx
+-- end
+
+-- -- retrieve a stream's index from disk or rfc-editor.org (and save it)
+-- ---@param self Index
+-- ---@param stream stream
+-- ---@return index
+-- function Idx:get_org(stream)
+--   -- get a single stream, either from disk or from ietf
+--   assert(H.valid[stream])
+--
+--   local idx = {} ---@type index
+--
+--   if H.ttl(stream) < 1 then
+--     -- idx on disk either too old or doesn't exist
+--     idx = Idx.curl(stream)
+--     Idx.save(idx)
+--   else
+--     -- idx = Idx.read(stream)
+--     local fname = H.fname(stream, 'index')
+--     local lines = vim.fn.readfile(fname) -- failure to read returns empty list
+--
+--     for _, line in ipairs(lines) do
+--       idx[#idx + 1] = vim.split(line, H.sep) -- Itm.parse
+--     end
+--   end
+--
+--   return idx
+-- end
+
+-- retrieve a stream's index from disk or rfc-editor.org (and save it)
+---@param self Index
+---@param stream stream
+---@return index
+function Idx:get(stream)
   -- get a single stream, either from disk or from ietf
   assert(H.valid[stream])
 
-  local idx = {}
+  local idx = {} ---@type index
 
   if H.ttl(stream) < 1 then
     -- idx on disk either too old or doesn't exist
-    idx = Idx.curl(stream)
-    Idx.save(idx)
+    idx = Idx.curl(stream) -- get it from ietf and cache any (positive) results
   else
-    idx = Idx.read(stream)
-  end
+    -- read entries from disk
+    local fname = H.fname(stream, 'index')
+    local lines = vim.fn.readfile(fname) -- failure to read returns empty list
 
-  return idx
-end
-
---- build an index for 1 or more types of streams
-function Idx.index(streams)
-  -- returns { {stream<1>, nr, title}, ... {stream<n>, nr, title} }
-  streams = streams or { 'rfc' }
-  streams = type(streams) == 'string' and { streams } or streams
-  local idx = {}
-  for _, stream in ipairs(streams) do
-    assert(H.valid[stream])
-    for _, entry in ipairs(Idx.get(stream)) do
-      idx[#idx + 1] = entry
+    for _, line in ipairs(lines) do
+      idx[#idx + 1] = vim.split(line, H.sep)
     end
   end
-  return idx
-end
 
--- read an index from disk, don't mind the ttl at this point
---- @param stream string
-function Idx.read(stream)
-  assert(H.valid[stream])
-
-  local fname = H.fname(stream, 'index')
-  local idx = {}
-
-  local lines = vim.fn.readfile(fname) -- failure to read returns empty list
-  for _, line in ipairs(lines) do
-    idx[#idx + 1] = vim.split(line, H.sep) -- Itm.parse
-  end
-  return idx
-end
-
-function Idx.save(idx)
-  -- save index entries to their respective <stream>-index files on disk
-  local streams = {}
   for _, entry in ipairs(idx) do
-    local stream, nr, title = unpack(entry)
-    local sep = H.sep
-    local line = string.format('%s%s%d%s%s', stream, sep, nr, sep, title)
-
-    if streams[stream] == nil then
-      streams[stream] = {} -- add table for new stream
-    end
-
-    table.insert(streams[stream], line)
+    table.insert(self, entry)
   end
 
-  for stream, lines in pairs(streams) do
-    H.save(stream, 'index', lines)
-  end
+  return self
 end
 
---[[
-idx_curl(stream)      : raw -> idx = { {s,n,t}, ..}
-idx_save(idx)         : idx = { {s,n,t}, ..} -> disk by <s>-index.txt
-idx_read(stream)      : disk -> idx = { {s,n,t} .. }
-idx_items(idx}        : { {s,n,t}, .. } -> { items } (t is parsed, fields added)
+-- ---@param idx index
+-- ---@return nil
+-- function Idx.save(idx)
+--   -- save index entries to their respective <stream>-index files on disk
+--   local streams = {}
+--   for _, entry in ipairs(idx) do
+--     local stream, nr, title = unpack(entry)
+--     local sep = H.sep
+--     local line = string.format('%s%s%d%s%s', stream, sep, nr, sep, title)
+--
+--     if streams[stream] == nil then
+--       streams[stream] = {} -- add table for new stream
+--     end
+--
+--     table.insert(streams[stream], line)
+--   end
+--
+--   for stream, lines in pairs(streams) do
+--     H.save(stream, 'index', lines)
+--   end
+-- end
 
-itm_curl
-itm_save
-itm_read
-itm_item
-
-ttl(fname, max_age) -> remaining seconds
-curl(url) -> rv {status=.., content=lines}
-save(fname, lines) -> ok, #lines
-read(fname) -> lines -> ok, lines
-
-
---]]
-
---[[ ITEMs ]]
+--[[ ITEM ]]
 --- state and functions that work with picker items
 
+---@class Item
 local Itm = { list = {} }
 
 --- returns `title`, `ft`, `lines` for use in a preview
@@ -416,8 +467,10 @@ function Itm.preview(item)
 end
 
 --- Builds self.list of picker items, from 1 or more streams; returns #items
+---@param self Item
+---@param streams stream[]
 function Itm:from(streams)
-  local index = Idx.index(streams) -- { {stream, nr, text}, .. }
+  local index = Idx:index(streams) -- { {stream, nr, text}, .. }
 
   if #index == 0 then
     vim.notify('[warn] found 0 items for streams: ' .. table.concat(streams, ', '), vim.log.levels.WARN)
@@ -463,7 +516,7 @@ end
 
 --- extracs known `tags` from document title `text`
 ---@param text string
----@return table
+---@return string, table
 function Itm.parse(text)
   -- take out all (word <stuff>) for known words
   -- (Status: _) (Format: _) (DOI: _) (Obsoletes _) (Obsoleted by _) (Updates _) (Updated by _)
@@ -529,7 +582,7 @@ M.config = {
   data = vim.fn.stdpath('data'), -- path or markers
   -- data = { '.git', '.gitignore' },
   top = 'ietf.org',
-  ttl = 7 * 24 * 3600, -- time-to-live [second], before downloading again
+  ttl = 24 * 3600, -- time-to-live [second], before downloading again
   edit = 'tabedit ',
   modeline = {
     ft = 'rfc',
