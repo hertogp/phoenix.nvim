@@ -460,7 +460,7 @@ end
 ---@return string, table
 function Itm.parse(text)
   -- take out all (word <stuff>) for known words
-  -- (Status: _) (Format: _) (DOI: _) (Obsoletes _) (Obsoleted by _) (Updates _) (Updated by _)
+  -- (Status: _), ..., (Obsoletes _) (Obsoleted by _), ...
   local tags = { format = '' }
   local wanted = {
     obsoletes = true,
