@@ -357,12 +357,18 @@ end
 --[[ ITEM ]]
 --- state and functions that work with picker items
 
----@class Item
-local Itm = { list = {} }
+---@class Items
+---@field preview fun(table): string, string, string[]
+---@field from fun(self: Items, streams: stream[]): Items
+---@field new fun(integer, entry: entry): table
+---@field parse fun(string): table
+local Itms = { list = {} }
 
 --- returns `title`, `ft`, `lines` for use in a preview
 --- (in case no text file is present to be previewd)
-function Itm.preview(item)
+---@param item table An item of the picker result list
+---@return string, string, table # A title, filetype and lines
+function Itms.preview(item)
   local title = tostring(item.title)
   local ft = 'markdown'
   local fmt2cols = '   %-15s%s'
@@ -408,29 +414,33 @@ function Itm.preview(item)
 end
 
 --- Builds self.list of picker items, from 1 or more streams; returns #items
----@param self Item
+---@param self Items
 ---@param streams stream[]
-function Itm:from(streams)
-  local index = Idx:index(streams) -- { {stream, nr, text}, .. }
+---@return Items | nil
+function Itms:from(streams)
+  Idx:index(streams) -- { {stream, nr, text}, .. }
 
-  if #index == 0 then
+  if #Idx == 0 then
     vim.notify('[warn] found 0 items for streams: ' .. table.concat(streams, ', '), vim.log.levels.WARN)
-    return 0 -- zero entries
+    return nil
   end
 
   self.list = {}
-  for idx, entry in ipairs(index) do
-    table.insert(self.list, Itm.new(idx, entry))
+  for idx, entry in ipairs(Idx) do
+    table.insert(self.list, Itms.new(idx, entry))
   end
-  return #self.list -- num of entries in self.list
+  return self
 end
 
 --- create a new picker item for given (idx, {stream, id, text})
-function Itm.new(idx, entry)
+---@param idx integer
+---@param entry entry
+---@return table | nil
+function Itms.new(idx, entry)
   local item = nil -- returned if entry is malformed
   local stream, id, text = unpack(entry)
   if stream and id and text then
-    local title, tags = Itm.parse(text)
+    local title, tags = Itms.parse(text)
     local ext = tags.formats and tags.formats[1] or 'txt'
     local fname = H.fname(stream, id, ext)
     local exists = fname and vim.fn.filereadable(fname) == 1
@@ -455,10 +465,10 @@ function Itm.new(idx, entry)
   return item -- if nil, won't get added to the list
 end
 
---- extracs known `tags` from document title `text`
----@param text string
----@return string, table
-function Itm.parse(text)
+--- extracts known `tags` from document title `text`
+---@param text string # A full, assembled line out of the index
+---@return string, string, table # remaining line and tags that were removed
+function Itms.parse(text)
   -- take out all (word <stuff>) for known words
   -- (Status: _), ..., (Obsoletes _) (Obsoleted by _), ...
   local tags = { format = '' }
@@ -562,12 +572,12 @@ function M.search(streams)
   -- *  ``:!open https://github.com/folke/todo-comments.nvim/blob/main/lua/todo-comments/search.lua`
   -- * `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/preview.lua`
 
-  Itm:from(streams)
-  local name_fmt = '%-' .. (3 + #(tostring(#Itm.list))) .. 's'
-  vim.print(vim.inspect({ #Itm.list, name_fmt }))
+  Itms:from(streams)
+  local name_fmt = '%-' .. (3 + #(tostring(#Itms.list))) .. 's'
+  vim.print(vim.inspect({ #Itms.list, name_fmt }))
 
   return snacks.picker({
-    items = Itm.list,
+    items = Itms.list,
     -- gets called as preview function, perhaps see snacks.picker.prewiew for
     -- example code?
     preview = function(ctx)
@@ -586,7 +596,7 @@ function M.search(streams)
         ctx.preview:highlight({ ft = ctx.item.missing.ft })
       else
         -- create table `missing` to use for previewing
-        local title, ft, lines = Itm.preview(ctx.item)
+        local title, ft, lines = Itms.preview(ctx.item)
         ctx.preview:reset()
         ctx.preview:set_lines(lines)
         ctx.preview:set_title(title)
@@ -683,9 +693,9 @@ function M.test(streams)
   streams = streams or { 'rfc' }
   streams = type(streams) == 'string' and { streams } or streams
 
-  local count = Itm:from(streams)
+  local count = Itms:from(streams)
   vim.print('Got ' .. count .. 'entries for stream(s): ' .. table.concat(streams, ','))
-  for idx, item in ipairs(Itm.list) do
+  for idx, item in ipairs(Itms.list) do
     vim.print({ idx, vim.inspect(item) })
   end
 end
