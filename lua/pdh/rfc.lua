@@ -345,6 +345,13 @@ end
 ---@param streams stream[]
 ---@return entry[]
 function Idx:from(streams)
+  -- clear index
+  local cnt = #Idx
+  for i = 0, cnt do
+    Idx[i] = nil
+  end
+
+  -- refill
   streams = streams or { 'rfc' }
   streams = type(streams) == 'string' and { streams } or streams
   for _, stream in ipairs(streams) do
@@ -420,6 +427,15 @@ end
 ---@param streams stream[]
 ---@return Items | nil
 function Itms:from(streams)
+  -- clear self first
+  -- TODO: may check if clear/refill is needed, if not use as-is?
+  -- that prevents reading from disk: e.g. ttl is ok
+  local cnt = #Itms
+  for i = 0, cnt do
+    Itms[i] = nil
+  end
+
+  -- refill
   Idx:from(streams) -- { {stream, nr, text}, .. }
 
   if #Idx == 0 then
