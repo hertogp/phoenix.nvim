@@ -371,56 +371,6 @@ end
 ---@field parse fun(text: string): text: string, tags:table
 local Itms = { list = {} }
 
---- returns `title`, `ft`, `lines` for use in a preview
---- (used when no local file is present to be previewd)
----@param item table An item of the picker result list
----@return string title The title for an item
----@return string ft The filetype to use when previewing
----@return table lines The lines to display when previewing
-function Itms.preview(item)
-  local title = tostring(item.title)
-  local ft = 'markdown'
-  local fmt2cols = '   %-15s%s'
-  local f = string.format
-  -- REVIEW: tags are not consistent: plurals should always be lists of strings?
-  local ext = item.tags.formats and item.tags.formats[1] or 'txt'
-  local authors = #item.tags.authors > 0 and table.concat(item.tags.authors, ', ')
-  local formats = #item.tags.formats > 0 and table.concat(item.tags.formats, ', ')
-
-  local lines = {
-    '',
-    f('# %s', string.upper(item.name)),
-    '',
-    '',
-    f('## %s', item.text),
-    '',
-    f(fmt2cols, 'AUTHORS', authors or '-'),
-    f(fmt2cols, 'STATUS', item.tags.status or '-'),
-    f(fmt2cols, 'DATE', item.tags.date or '-'),
-    '',
-    f(fmt2cols, 'STREAM', item.stream),
-    f(fmt2cols, 'FORMATS', formats or '-'),
-    f(fmt2cols, 'DOI', item.tags.doi or '-'),
-    '',
-    '',
-    '### TAGS',
-    '',
-    f(fmt2cols, 'ALSO', item.tags.also or '-'),
-    f(fmt2cols, 'OBSOLETES', item.tags.obsoletes or '-'),
-    f(fmt2cols, 'OBSOLETED by', item.tags.obsoleted_by or '-'),
-    f(fmt2cols, 'UPDATES', item.tags.updates or '-'),
-    f(fmt2cols, 'UPDATED by', item.tags.updated_by or '-'),
-    '',
-    '',
-    '### URI',
-    '',
-    f(fmt2cols, 'PATH', vim.fn.fnamemodify(item.file, ':p:~:.')),
-    f(fmt2cols, 'URL', H.url(item.stream, item.id, ext)),
-  }
-
-  return title, ft, lines
-end
-
 --- Builds self.list of picker items, from 1 or more streams; returns #items
 ---@param self Items
 ---@param streams stream[]
@@ -542,6 +492,55 @@ function Itms.parse(text)
   return text, tags
 end
 
+--- returns `title`, `ft`, `lines` for use in a preview
+--- (used when no local file is present to be previewd)
+---@param item table An item of the picker result list
+---@return string title The title for an item
+---@return string ft The filetype to use when previewing
+---@return table lines The lines to display when previewing
+function Itms.preview(item)
+  local title = tostring(item.title)
+  local ft = 'markdown'
+  local fmt2cols = '   %-15s%s'
+  local f = string.format
+  -- REVIEW: tags are not consistent: plurals should always be lists of strings?
+  local ext = item.tags.formats and item.tags.formats[1] or 'txt'
+  local authors = #item.tags.authors > 0 and table.concat(item.tags.authors, ', ')
+  local formats = #item.tags.formats > 0 and table.concat(item.tags.formats, ', ')
+
+  local lines = {
+    '',
+    f('# %s', string.upper(item.name)),
+    '',
+    '',
+    f('## %s', item.text),
+    '',
+    f(fmt2cols, 'AUTHORS', authors or '-'),
+    f(fmt2cols, 'STATUS', item.tags.status or '-'),
+    f(fmt2cols, 'DATE', item.tags.date or '-'),
+    '',
+    f(fmt2cols, 'STREAM', item.stream),
+    f(fmt2cols, 'FORMATS', formats or '-'),
+    f(fmt2cols, 'DOI', item.tags.doi or '-'),
+    '',
+    '',
+    '### TAGS',
+    '',
+    f(fmt2cols, 'ALSO', item.tags.also or '-'),
+    f(fmt2cols, 'OBSOLETES', item.tags.obsoletes or '-'),
+    f(fmt2cols, 'OBSOLETED by', item.tags.obsoleted_by or '-'),
+    f(fmt2cols, 'UPDATES', item.tags.updates or '-'),
+    f(fmt2cols, 'UPDATED by', item.tags.updated_by or '-'),
+    '',
+    '',
+    '### URI',
+    '',
+    f(fmt2cols, 'PATH', vim.fn.fnamemodify(item.file, ':p:~:.')),
+    f(fmt2cols, 'URL', H.url(item.stream, item.id, ext)),
+  }
+
+  return title, ft, lines
+end
 --[[ Module ]]
 
 M.config = {
