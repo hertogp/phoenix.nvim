@@ -437,44 +437,49 @@ end
 function Itms.parse(text)
   -- take out all (word <stuff>) for known words
   -- (Status: _), ..., (Obsoletes _) (Obsoleted by _), ...
-  local tags = { formats = { '-' } }
-  local wanted = {
-    obsoletes = true,
-    obsoleted_by = true,
-    updates = true,
-    updated_by = true,
-    also = true,
-    status = true,
-    format = true,
-    doi = true,
+  local tags = {
+    -- ensure these tags are present with a default value
+    obsoletes = { '-' },
+    obsoleted_by = { '-' },
+    updates = { '-' },
+    updated_by = { '-' },
+    also = { '-' },
+    status = '-',
+    format = { '-' },
+    doi = '-',
+    -- these two are not `()`-constructs
+    authors = { '-' },
+    date = '-',
   }
 
-  -- extract (<wanted> ... )-parts
+  -- extract (<wanted> ... )-constructs
   for part in string.gmatch(text, '%(([^)]+)%)') do
-    local prepped = string.gsub(part, '%s+by', '_by', 1):gsub(':', '', 1)
+    -- make sure we can match first word to our keys in tags
+    local prepped = part:lower():gsub('%s+by', '_by', 1):gsub(':', '', 1)
     local k, v = string.match(prepped, '^([^%s]+)%s+(.*)$')
-    if k and v then
-      k = k:lower()
-      if wanted[k] then
-        tags[k] = v:gsub('%s+', ''):lower()
-        -- remove matched ()-text, including a ws prefix if possible
-        text = string.gsub(text, '%s?%(' .. part .. '%)', '', 1)
+    if k and v and tags[k] then
+      v = v:gsub('%s+', ''):lower()
+      if type(tags[k]) == 'string' then
+        tags[k] = v
+      else
+        tags[k] = vim.split(v, ',')
       end
+      -- remove matched ()-text, including a ws prefix if possible
+      text = string.gsub(text, '%s?%(' .. part .. '%)', '', 1)
     end
   end
 
-  -- fix format tags
+  -- fix format tags, it's a bit of a mess.
   -- order is important: first item in the list will be used to open it
   local known = { 'txt', 'html', 'pdf', 'xml' } -- json is not a pub format
-  local formats = tags['format'] or ''
+  local formats = table.concat(tags.format, ',')
   local seen = {}
   for _, fmt in ipairs(known) do
     if string.match(formats, fmt) then
       seen[#seen + 1] = fmt
     end
   end
-  tags['format'] = nil
-  tags['formats'] = seen
+  tags['format'] = seen
 
   -- extract dates
   -- TODO: switch to vim.re/vim.regex or vim.lpeg? ien/fyi not consistent
@@ -489,8 +494,8 @@ function Itms.parse(text)
   if authors and #authors > 0 then
     text = text:gsub(authors, '', 1)
     authors = vim.split(authors:gsub('^%s', '', 1):gsub('%.+$', '', 1), ', *')
+    tags['authors'] = authors -- or { '-' }
   end
-  tags['authors'] = authors or {}
 
   return text, tags
 end
@@ -507,9 +512,7 @@ function Itms.preview(item)
   local fmt2cols = '   %-15s%s'
   local f = string.format
   -- REVIEW: tags are not consistent: plurals should always be lists of strings?
-  local ext = item.tags.formats and item.tags.formats[1] or 'txt'
-  local authors = #item.tags.authors > 0 and table.concat(item.tags.authors, ', ')
-  local formats = #item.tags.formats > 0 and table.concat(item.tags.formats, ', ')
+  local ext = item.tags.format[1] or 'txt'
 
   local lines = {
     '',
@@ -518,22 +521,22 @@ function Itms.preview(item)
     '',
     f('## %s', item.text),
     '',
-    f(fmt2cols, 'AUTHORS', authors or '-'),
-    f(fmt2cols, 'STATUS', item.tags.status or '-'),
+    f(fmt2cols, 'AUTHORS', table.concat(item.tags.authors, ', ')),
+    f(fmt2cols, 'STATUS', item.tags.status:upper()),
     f(fmt2cols, 'DATE', item.tags.date or '-'),
     '',
     f(fmt2cols, 'STREAM', item.stream),
-    f(fmt2cols, 'FORMATS', formats or '-'),
-    f(fmt2cols, 'DOI', item.tags.doi or '-'),
+    f(fmt2cols, 'FORMAT', table.concat(item.tags.format, ', ')),
+    f(fmt2cols, 'DOI', item.tags.doi),
     '',
     '',
     '### TAGS',
     '',
-    f(fmt2cols, 'ALSO', item.tags.also or '-'),
-    f(fmt2cols, 'OBSOLETES', item.tags.obsoletes or '-'),
-    f(fmt2cols, 'OBSOLETED by', item.tags.obsoleted_by or '-'),
-    f(fmt2cols, 'UPDATES', item.tags.updates or '-'),
-    f(fmt2cols, 'UPDATED by', item.tags.updated_by or '-'),
+    f(fmt2cols, 'ALSO', table.concat(item.tags.also, ','):upper()),
+    f(fmt2cols, 'OBSOLETES', table.concat(item.tags.obsoletes, ','):upper()),
+    f(fmt2cols, 'OBSOLETED by', table.concat(item.tags.obsoleted_by, ','):upper()),
+    f(fmt2cols, 'UPDATES', table.concat(item.tags.updates, ','):upper()),
+    f(fmt2cols, 'UPDATED by', table.concat(item.tags.updated_by, ','):upper()),
     '',
     '',
     '### URI',
