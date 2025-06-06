@@ -201,12 +201,11 @@ function H.symbol(exists)
 end
 
 --- returns a file's ttl, exists?
----@param stream stream
-function H.ttl(stream)
+---@param fname string
+function H.ttl(fname)
   -- remaining TTL [seconds], stream-file age [seconds]
   local ttl = M.config.ttl or 0
-  local fname = H.fname(stream)
-  local ftime = vim.fn.getftime(fname) -- if no file, then ftime = -1
+  local ftime = vim.fn.getftime(fname) -- if file unreadable, then ftime = -1
   return ttl + ftime - vim.fn.localtime(), ftime ~= -1
 end
 
@@ -238,20 +237,15 @@ end
 local Idx = {}
 
 -- retrieves (and caches) an index for the given `stream` from the ietf
--- returns, a possibly empty, list: { {stream, id, text}, .. }
----@return index
+-- returns a list: { {stream, id, text}, .. } or nil on failure
+---@return index | nil
 function Idx.curl(stream)
-  if not H.valid[stream] then
-    vim.notify('[warn] stream ' .. vim.inspect(stream) .. 'not supported', vim.log.levels.WARN)
-    return {}
-  end
-
   -- retrieve raw content from the ietf
   local url = H.url(stream, 'index')
   local rv = H.curl(url)
   if rv.status ~= 200 then
     vim.notify('[warn] download failed: [' .. rv.status .. '] ' .. url, vim.log.levels.ERROR)
-    return {}
+    return nil
   end
 
   -- parse assembled line into {stream, id, text}
@@ -289,14 +283,61 @@ function Idx.curl(stream)
   -- don't forget the last entry
   idx[#idx + 1] = parse(acc)
 
-  -- cache the parsed result
-  local lines = {}
-  for _, entry in ipairs(idx) do
-    lines[#lines + 1] = table.concat(entry, H.sep)
+  if #idx > 0 then
+    -- cache the parsed result
+    local lines = {}
+    for _, entry in ipairs(idx) do
+      lines[#lines + 1] = table.concat(entry, H.sep)
+    end
+    H.save(stream, 'index', lines)
+  else
+    return nil -- fail
   end
-  H.save(stream, 'index', lines)
 
   return idx -- { {stream, nr, title }, .. }
+end
+
+-- adds an index (local/remote) for a stream (possibly update cache)
+---@param self Index
+---@param stream stream
+---@return Index
+function Idx:get(stream)
+  -- get a single stream, either from disk or from ietf
+  -- NOTE: we do not check if stream is already present in self
+  local idx = {} ---@type index
+  local fname = H.fname(stream, 'index')
+  local ttl = H.ttl(fname)
+
+  ---@return index | nil
+  local readfile = function()
+    -- try to read index from local file
+    local rv
+    ok, rv = pcall(vim.fn.readfile, fname)
+    if ok and #rv > 0 then
+      for _, line in ipairs(rv) do
+        idx[#idx + 1] = vim.split(line, H.sep)
+      end
+    else
+      return nil
+    end
+    return idx
+  end
+
+  if ttl < 1 then
+    idx = Idx.curl(stream) or readfile()
+  else
+    idx = readfile() or Idx.curl(stream)
+  end
+
+  if #idx < 1 then
+    vim.notify('[warn] no index available for ' .. stream, vim.log.levels.WARN)
+  end
+
+  for _, entry in ipairs(idx) do
+    table.insert(self, entry)
+  end
+
+  return self
 end
 
 --- build an index for 1 or more types of streams
@@ -310,34 +351,6 @@ function Idx:index(streams)
     assert(H.valid[stream])
     Idx:get(stream)
   end
-  return self
-end
-
--- retrieve a stream's index from disk or rfc-editor.org (and save it)
----@param self Index
----@param stream stream
----@return Index
-function Idx:get(stream)
-  -- get a single stream, either from disk or from ietf
-  local idx = {} ---@type index
-
-  if H.ttl(stream) < 1 then
-    -- idx on disk either too old or doesn't exist
-    idx = Idx.curl(stream) -- get it from ietf and cache any (positive) results
-  else
-    -- read entries from disk
-    local fname = H.fname(stream, 'index')
-    local lines = vim.fn.readfile(fname) -- failure to read returns empty list
-
-    for _, line in ipairs(lines) do
-      idx[#idx + 1] = vim.split(line, H.sep)
-    end
-  end
-
-  for _, entry in ipairs(idx) do
-    table.insert(self, entry)
-  end
-
   return self
 end
 
@@ -510,7 +523,7 @@ M.config = {
   data = vim.fn.stdpath('data'), -- path or markers
   -- data = { '.git', '.gitignore' },
   top = 'ietf.org',
-  ttl = 24 * 3600, -- time-to-live [second], before downloading again
+  ttl = 60, -- time-to-live [second], before downloading again
   edit = 'tabedit ',
   modeline = {
     ft = 'rfc',
