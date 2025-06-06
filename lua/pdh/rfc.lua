@@ -200,11 +200,14 @@ function H.symbol(exists)
   end
 end
 
+--- returns a file's ttl, exists?
+---@param stream stream
 function H.ttl(stream)
-  -- remaining TTL [seconds], fname not found, getftime will be -1
-  local fname = H.fname(stream)
+  -- remaining TTL [seconds], stream-file age [seconds]
   local ttl = M.config.ttl or 0
-  return ttl + vim.fn.getftime(fname) - vim.fn.localtime()
+  local fname = H.fname(stream)
+  local ftime = vim.fn.getftime(fname) -- if no file, then ftime = -1
+  return ttl + ftime - vim.fn.localtime(), ftime ~= -1
 end
 
 function H.url(stream, id, ext)
