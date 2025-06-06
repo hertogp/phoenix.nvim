@@ -358,16 +358,18 @@ end
 --- state and functions that work with picker items
 
 ---@class Items
----@field preview fun(table): string, string, string[]
+---@field preview fun(item: table): title: string, ft: string, lines: string[]
 ---@field from fun(self: Items, streams: stream[]): Items
----@field new fun(integer, entry: entry): table
----@field parse fun(string): table
+---@field new fun(idx: integer, entry: entry): item: table
+---@field parse fun(text: string): text: string, tags:table
 local Itms = { list = {} }
 
 --- returns `title`, `ft`, `lines` for use in a preview
---- (in case no text file is present to be previewd)
+--- (used when no local file is present to be previewd)
 ---@param item table An item of the picker result list
----@return string, string, table # A title, filetype and lines
+---@return string title The title for an item
+---@return string ft The filetype to use when previewing
+---@return table lines The lines to display when previewing
 function Itms.preview(item)
   local title = tostring(item.title)
   local ft = 'markdown'
@@ -421,11 +423,9 @@ function Itms:from(streams)
   Idx:index(streams) -- { {stream, nr, text}, .. }
 
   if #Idx == 0 then
-    vim.notify('[warn] found 0 items for streams: ' .. table.concat(streams, ', '), vim.log.levels.WARN)
     return nil
   end
 
-  self.list = {}
   for idx, entry in ipairs(Idx) do
     table.insert(self.list, Itms.new(idx, entry))
   end
@@ -465,9 +465,10 @@ function Itms.new(idx, entry)
   return item -- if nil, won't get added to the list
 end
 
---- extracts known `tags` from document title `text`
----@param text string # A full, assembled line out of the index
----@return string, string, table # remaining line and tags that were removed
+--- extracts known `tags` from an entry's `text`
+---@param text string -- A full, assembled, index line
+---@return string text Remaining text after removings tags
+---@return table tags Known tags removed from text
 function Itms.parse(text)
   -- take out all (word <stuff>) for known words
   -- (Status: _), ..., (Obsoletes _) (Obsoleted by _), ...
