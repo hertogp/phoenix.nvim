@@ -229,11 +229,9 @@ end
 -- functions that work with the indices of streams of ietf documents
 
 ---@class Index
+---@field curl fun(stream: stream): index
+---@field get fun(self: Index, stream: stream): Index
 ---@field index fun(self: Index, streams: stream[]): Index
----@field curl fun(stream: stream): entry[]
----@field _get fun(self: Index, streams: stream[]): Index
----@field _read fun(stream: stream): Index
----@field _save fun(self: Index): Index
 local Idx = {}
 
 -- retrieves (and caches) an index for the given `stream` from the ietf
@@ -303,72 +301,21 @@ end
 ---@param streams stream[]
 ---@return entry[]
 function Idx:index(streams)
-  vim.print(vim.inspect(streams))
   streams = streams or { 'rfc' }
   streams = type(streams) == 'string' and { streams } or streams
-  -- local idx = {} ---@type index
   for _, stream in ipairs(streams) do
-    vim.print(vim.inspect(stream))
     assert(H.valid[stream])
     Idx:get(stream)
-    -- for _, entry in ipairs(Idx:get(stream)) do
-    --   table.insert(self, entry)
-    -- end
   end
   return self
 end
 
--- -- read an index from disk, don't mind the ttl at this point
--- ---@param stream stream
--- ---@return index
--- function Idx.read(stream)
---   local idx = {} ---@type index
---
---   assert(H.valid[stream])
---   local fname = H.fname(stream, 'index')
---   local lines = vim.fn.readfile(fname) -- failure to read returns empty list
---
---   for _, line in ipairs(lines) do
---     idx[#idx + 1] = vim.split(line, H.sep) -- Itm.parse
---   end
---   return idx
--- end
-
--- -- retrieve a stream's index from disk or rfc-editor.org (and save it)
--- ---@param self Index
--- ---@param stream stream
--- ---@return index
--- function Idx:get_org(stream)
---   -- get a single stream, either from disk or from ietf
---   assert(H.valid[stream])
---
---   local idx = {} ---@type index
---
---   if H.ttl(stream) < 1 then
---     -- idx on disk either too old or doesn't exist
---     idx = Idx.curl(stream)
---     Idx.save(idx)
---   else
---     -- idx = Idx.read(stream)
---     local fname = H.fname(stream, 'index')
---     local lines = vim.fn.readfile(fname) -- failure to read returns empty list
---
---     for _, line in ipairs(lines) do
---       idx[#idx + 1] = vim.split(line, H.sep) -- Itm.parse
---     end
---   end
---
---   return idx
--- end
-
 -- retrieve a stream's index from disk or rfc-editor.org (and save it)
 ---@param self Index
 ---@param stream stream
----@return index
+---@return Index
 function Idx:get(stream)
   -- get a single stream, either from disk or from ietf
-  assert(H.valid[stream])
-
   local idx = {} ---@type index
 
   if H.ttl(stream) < 1 then
@@ -390,28 +337,6 @@ function Idx:get(stream)
 
   return self
 end
-
--- ---@param idx index
--- ---@return nil
--- function Idx.save(idx)
---   -- save index entries to their respective <stream>-index files on disk
---   local streams = {}
---   for _, entry in ipairs(idx) do
---     local stream, nr, title = unpack(entry)
---     local sep = H.sep
---     local line = string.format('%s%s%d%s%s', stream, sep, nr, sep, title)
---
---     if streams[stream] == nil then
---       streams[stream] = {} -- add table for new stream
---     end
---
---     table.insert(streams[stream], line)
---   end
---
---   for stream, lines in pairs(streams) do
---     H.save(stream, 'index', lines)
---   end
--- end
 
 --[[ ITEM ]]
 --- state and functions that work with picker items
