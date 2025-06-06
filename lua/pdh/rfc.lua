@@ -458,7 +458,7 @@ function Itms.parse(text)
     local prepped = part:lower():gsub('%s+by', '_by', 1):gsub(':', '', 1)
     local k, v = string.match(prepped, '^([^%s]+)%s+(.*)$')
     if k and v and tags[k] then
-      v = v:gsub('%s+', ''):lower()
+      v = v:gsub('%s+', ''):lower() -- hmm proposedstandard ?
       if type(tags[k]) == 'string' then
         tags[k] = v
       else
@@ -482,8 +482,11 @@ function Itms.parse(text)
   tags['format'] = seen
 
   -- extract dates
-  -- TODO: switch to vim.re/vim.regex or vim.lpeg? ien/fyi not consistent
-  local date = text:match('%s%u%l+%s-%d%d%d%d%.?') -- Month\sYEAR
+  -- TODO:
+  -- [ ] switch to vim.re/vim.regex or vim.lpeg? ien/fyi not consistent
+  -- [x] Date for rfc9295 not extracted properly ...? -> require 3 or more
+  --     lowercase letters for the Month
+  local date = text:match('%s%u%l%l%l%l*%s-%d%d%d%d%.?') -- Month\sYEAR
   if date then
     tags['date'] = vim.trim(date):gsub('%.$', '', 1)
     text = string.gsub(text, date, '', 1)
@@ -584,19 +587,13 @@ end
 
 function M.search(streams)
   -- search the stream(s) index/indices
-  -- TODO:
-  -- [x] arg maybe streams, e.g. {'rfc', 'bcp', 'std'} and concat the index lists of named topics
-  -- [x] use H.sep instead of magical '|' char
-  -- [x] idx_entry_build(topic, line)  & idx_entry_parse(entry) -> topic, id
   -- Use the source Luke!
   -- * `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/preview.lua`
-  -- *  ``:!open https://github.com/folke/todo-comments.nvim/blob/main/lua/todo-comments/search.lua`
+  -- * `:!open https://github.com/folke/todo-comments.nvim/blob/main/lua/todo-comments/search.lua`
   -- * `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/preview.lua`
 
-  vim.print(vim.inspect({ 'streams', streams, '#Idx', #Idx, '#Itms', #Itms }))
   Itms:from(streams)
   local name_fmt = '%-' .. (3 + #(tostring(#Itms.list))) .. 's'
-  vim.print(vim.inspect({ 'streams', streams, '#Idx', #Idx, '#Itms', #Itms }))
 
   return snacks.picker({
     items = Itms,
