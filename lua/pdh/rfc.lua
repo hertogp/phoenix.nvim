@@ -344,7 +344,7 @@ end
 ---@param self Index
 ---@param streams stream[]
 ---@return entry[]
-function Idx:index(streams)
+function Idx:from(streams)
   streams = streams or { 'rfc' }
   streams = type(streams) == 'string' and { streams } or streams
   for _, stream in ipairs(streams) do
@@ -420,14 +420,14 @@ end
 ---@param streams stream[]
 ---@return Items | nil
 function Itms:from(streams)
-  Idx:index(streams) -- { {stream, nr, text}, .. }
+  Idx:from(streams) -- { {stream, nr, text}, .. }
 
   if #Idx == 0 then
     return nil
   end
 
   for idx, entry in ipairs(Idx) do
-    table.insert(self.list, Itms.new(idx, entry))
+    table.insert(self, Itms.new(idx, entry))
   end
   return self
 end
@@ -573,12 +573,13 @@ function M.search(streams)
   -- *  ``:!open https://github.com/folke/todo-comments.nvim/blob/main/lua/todo-comments/search.lua`
   -- * `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/preview.lua`
 
+  vim.print(vim.inspect({ 'streams', streams, '#Idx', #Idx, '#Itms', #Itms }))
   Itms:from(streams)
   local name_fmt = '%-' .. (3 + #(tostring(#Itms.list))) .. 's'
-  vim.print(vim.inspect({ #Itms.list, name_fmt }))
+  vim.print(vim.inspect({ 'streams', streams, '#Idx', #Idx, '#Itms', #Itms }))
 
   return snacks.picker({
-    items = Itms.list,
+    items = Itms,
     -- gets called as preview function, perhaps see snacks.picker.prewiew for
     -- example code?
     preview = function(ctx)
