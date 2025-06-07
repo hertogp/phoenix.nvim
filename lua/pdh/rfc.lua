@@ -550,8 +550,8 @@ end
 
 --[[ Actions ]]
 
-local A = {
-  -- A.actions.func defined later on, as per reference by win.list/input.keys
+local Act = {
+  -- Act.actions.func defined later on, as per reference by win.list/input.keys
   actions = {},
   -- see `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/config/defaults.lua`
   -- around Line 200, win = { input = { keys = {..}}, list = { keys = {..}}}
@@ -572,13 +572,13 @@ local A = {
   },
 }
 
-function A.actions.download(picker, item)
+function Act.actions.download(picker, item)
   -- func names are tied to those mentioned in win.list/input key settings
   vim.print({ 'download item', vim.inspect(item) })
   vim.print(vim.inspect({ 'download selected is', picker.list.selected }))
 end
 
-function A.actions.download_selection(picker, item)
+function Act.actions.download_selection(picker, item)
   -- item is current item in the list
   -- picker.list.selected is list of selected items
   local x = picker.list.selected
@@ -591,11 +591,11 @@ function A.actions.download_selection(picker, item)
   })
 end
 
-function A.actions.echo(picker)
+function Act.actions.echo(picker)
   vim.print({ 'echo', vim.inspect(picker) })
 end
 
-function A.confirm(picker, item)
+function Act.confirm(picker, item)
   -- TODO: retrieve txt items, use vim.ui.open for (remote) formats other
   -- than txt.  Can we curl pdf's ?
   picker:close()
@@ -610,7 +610,7 @@ function A.confirm(picker, item)
   end
 end
 
-function A.format(item)
+function Act.format(item)
   -- format an item for display in picker list
   -- must return a list: { { str1, hl_name1 }, { str2, hl_nameN }, .. }
   -- `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/format.lua`
@@ -626,7 +626,7 @@ function A.format(item)
   return ret
 end
 
-function A.preview(ctx)
+function Act.preview(ctx)
   -- gets called to fill the preview window (if defined by user)
   -- see snacks.picker.core.preview for the preview funcs used below
   if ctx.item.exists then
@@ -701,11 +701,11 @@ function M.search(streams)
 
   return snacks.picker({
     items = Itms,
-    preview = A.preview,
-    actions = A.actions,
-    format = A.format,
-    confirm = A.confirm,
-    win = A.win,
+    preview = Act.preview,
+    actions = Act.actions,
+    format = Act.format,
+    confirm = Act.confirm,
+    win = Act.win,
 
     layout = {
       fullscreen = true,
