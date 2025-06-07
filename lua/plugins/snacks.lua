@@ -98,7 +98,10 @@ return {
       function()
         Snacks.picker.lines({
           -- start with exact 'cWORD under cursor
-          pattern = "'" .. vim.fn.expand('<cWORD>'):match('[%w_%.:]+'),
+          pattern = "'" .. (vim.fn.expand('<cWORD>'):match('[%w_%.:]+') or ''),
+          layout = {
+            preset = 'sidebar',
+          },
         })
       end,
       desc = 'Buffer Lines for cWORD',
@@ -115,7 +118,7 @@ return {
       function()
         Snacks.picker.grep({
           search = function(_)
-            return vim.fn.expand('<cWORD>'):match('[%w_%.:]+')
+            return vim.fn.expand('<cWORD>'):match('[%w_%.:]+') or ''
           end,
         })
       end,
