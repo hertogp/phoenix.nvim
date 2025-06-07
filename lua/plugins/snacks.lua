@@ -96,19 +96,19 @@ return {
     {
       '<space>l',
       function()
-        Snacks.picker.lines()
-      end,
-      desc = 'Buffer Lines',
-    },
-    {
-      '<space>L',
-      function()
         Snacks.picker.lines({
           -- start with exact 'cWORD under cursor
           pattern = "'" .. vim.fn.expand('<cWORD>'):match('[%w_%.:]+'),
         })
       end,
       desc = 'Buffer Lines for cWORD',
+    },
+    {
+      '<space>L',
+      function()
+        Snacks.picker.lines()
+      end,
+      desc = 'Buffer Lines',
     },
     {
       '<space>g',
