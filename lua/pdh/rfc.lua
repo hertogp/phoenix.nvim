@@ -193,15 +193,6 @@ function H.save(stream, id, lines)
   return fname
 end
 
---- returns a file's ttl, exists?
----@param fname string
-function H.ttl(fname)
-  -- remaining TTL [seconds], stream-file age [seconds]
-  local ttl = M.config.ttl or 0
-  local ftime = vim.fn.getftime(fname) -- if file unreadable, then ftime = -1
-  return ttl + ftime - vim.fn.localtime(), ftime ~= -1
-end
-
 function H.url(stream, id, ext)
   -- returns url for stream document or its index
 
@@ -298,7 +289,8 @@ function Idx:get(stream)
   -- NOTE: we do not check if stream is already present in self
   local idx = {} ---@type index
   local fname = H.fname(stream, 'index')
-  local ttl = H.ttl(fname)
+  local ftime = vim.fn.getftime(fname) -- if file unreadable, then ftime = -1
+  local ttl = (M.config.ttl or 0) + ftime - vim.fn.localtime()
 
   ---@return index | nil
   local readfile = function()
