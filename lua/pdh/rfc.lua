@@ -696,11 +696,16 @@ function M.search(streams)
   -- * `:!open https://github.com/folke/todo-comments.nvim/blob/main/lua/todo-comments/search.lua`
   -- * `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/preview.lua`
 
-  -- TODO: if streams have not changed, donot load Itms again
+  -- TODO:
+  -- [ ] if streams have not changed, donot load Itms again
+  -- [ ] when resuming, check file status exists or not? Otherwise you download
+  -- something, resume but it still shows as missing and marked for download.
+  --
   Itms:from(streams)
 
   return snacks.picker({
     items = Itms,
+
     preview = Act.preview,
     actions = Act.actions,
     format = Act.format,
