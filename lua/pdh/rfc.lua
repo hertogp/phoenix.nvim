@@ -595,6 +595,37 @@ function A.actions.echo(picker)
   vim.print({ 'echo', vim.inspect(picker) })
 end
 
+function A.confirm(picker, item)
+  -- TODO: retrieve txt items, use vim.ui.open for (remote) formats other
+  -- than txt.  Can we curl pdf's ?
+  picker:close()
+  if vim.fn.filereadable(item.file) == 0 then
+    local lines = H.fetch(item.stream, item.id)
+    if #lines > 0 then
+      H.save(item.stream, item.id, lines)
+      vim.cmd('edit ' .. item.file)
+    end
+  else
+    vim.cmd('edit ' .. item.file)
+  end
+end
+
+function A.format(item)
+  -- format an item for display in picker list
+  -- must return a list: { { str1, hl_name1 }, { str2, hl_nameN }, .. }
+  -- `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/format.lua`
+  local hl_item = (item.exists and 'SnacksPickerGitStatusAdded') or 'SnacksPickerGitStatusUntracked'
+  local name_fmt = '%-' .. (3 + #(tostring(#Itms))) .. 's'
+  local ret = {
+    { item.symbol, hl_item },
+    { ' ' .. H.sep, 'SnacksWinKeySep' },
+    { name_fmt:format(item.name), hl_item },
+    { H.sep, 'SnacksWinKeySep' },
+    { item.text, '' },
+  }
+  return ret
+end
+
 function A.preview(ctx)
   -- gets called to fill the preview window (if defined by user)
   -- see snacks.picker.core.preview for the preview funcs used below
@@ -667,48 +698,18 @@ function M.search(streams)
 
   -- TODO: if streams have not changed, donot load Itms again
   Itms:from(streams)
-  local name_fmt = '%-' .. (3 + #(tostring(#Itms))) .. 's'
 
   return snacks.picker({
     items = Itms,
-
     preview = A.preview,
     actions = A.actions,
+    format = A.format,
+    confirm = A.confirm,
     win = A.win,
 
     layout = {
       fullscreen = true,
     },
-
-    format = function(item)
-      -- format an item for display in picker list
-      -- must return a list: { { str1, hl_name1 }, { str2, hl_nameN }, .. }
-      -- `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/format.lua`
-      local hl_item = (item.exists and 'SnacksPickerGitStatusAdded') or 'SnacksPickerGitStatusUntracked'
-      local ret = {
-        { item.symbol, hl_item },
-        { ' ' .. H.sep, 'SnacksWinKeySep' },
-        { name_fmt:format(item.name), hl_item },
-        { H.sep, 'SnacksWinKeySep' },
-        { item.text, '' },
-      }
-      return ret
-    end,
-
-    confirm = function(picker, item)
-      -- TODO: retrieve txt items, use vim.ui.open for (remote) formats other
-      -- than txt.  Can we curl pdf's ?
-      picker:close()
-      if vim.fn.filereadable(item.file) == 0 then
-        local lines = H.fetch(item.stream, item.id)
-        if #lines > 0 then
-          H.save(item.stream, item.id, lines)
-          vim.cmd('edit ' .. item.file)
-        end
-      else
-        vim.cmd('edit ' .. item.file)
-      end
-    end,
   })
 end
 
