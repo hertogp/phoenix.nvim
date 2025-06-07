@@ -669,15 +669,16 @@ function M.search(streams)
     },
     format = function(item)
       -- format an item for display in picker list
-      -- return list: { { str1, hl_name1 }, { str2, hl_nameN }, .. }
+      -- must return a list: { { str1, hl_name1 }, { str2, hl_nameN }, .. }
       -- `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/format.lua`
       local hl_item = (item.exists and 'SnacksPickerGitStatusAdded') or 'SnacksPickerGitStatusUntracked'
-      local ret = {}
-      ret[#ret + 1] = { item.symbol, hl_item }
-      ret[#ret + 1] = { ' ' .. H.sep, 'SnacksWinKeySep' }
-      ret[#ret + 1] = { name_fmt:format(item.name), hl_item }
-      ret[#ret + 1] = { H.sep, 'SnacksWinKeySep' }
-      ret[#ret + 1] = { item.text, '' }
+      local ret = {
+        { item.symbol, hl_item },
+        { ' ' .. H.sep, 'SnacksWinKeySep' },
+        { name_fmt:format(item.name), hl_item },
+        { H.sep, 'SnacksWinKeySep' },
+        { item.text, '' },
+      }
       return ret
     end,
     confirm = function(picker, item)
