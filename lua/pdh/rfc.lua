@@ -603,7 +603,11 @@ function Act.confirm(picker, item)
     local lines = H.fetch(item.stream, item.id)
     if #lines > 0 then
       H.save(item.stream, item.id, lines)
+      vim.print(vim.inspect({ Itms[item.idx].name, item.name }))
       vim.cmd('edit ' .. item.file)
+      -- mark as downloaded and available
+      Itms[item.idx].exists = true
+      Itms[item.idx].symbol = Itms.icon[true]
     end
   else
     vim.cmd('edit ' .. item.file)
