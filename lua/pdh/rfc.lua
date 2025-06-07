@@ -547,6 +547,52 @@ function Itms.preview(item)
 
   return title, ft, lines
 end
+
+local A = {
+  -- A.actions.func defined later on, as per reference by win.list/input.keys
+  actions = {},
+  -- see `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/config/defaults.lua`
+  -- around Line 200, win = { input = { keys = {..}}, list = { keys = {..}}}
+  win = {
+    list = { -- the results list window
+      keys = {
+        ['<c-x>'] = { 'download', mode = { 'n', 'i' } },
+        ['<c-m-x>'] = { 'download_selection', mode = { 'n', 'i' } },
+      },
+    },
+    input = { -- the input window where search is typed
+      keys = {
+        ['<c-x>'] = { 'download', mode = { 'n', 'i' } },
+        ['<c-m-x>'] = { 'download_selection', mode = { 'n', 'i' } },
+        ['<c-y>'] = { 'echo', mode = { 'n', 'i' } },
+      },
+    },
+  },
+}
+
+function A.actions.download(picker, item)
+  -- func names are tied to those mentioned in win.list/input key settings
+  vim.print({ 'download item', vim.inspect(item) })
+  vim.print(vim.inspect({ 'download selected is', picker.list.selected }))
+end
+
+function A.actions.download_selection(picker, item)
+  -- item is current item in the list
+  -- picker.list.selected is list of selected items
+  local x = picker.list.selected
+  vim.print({
+    'download selection (' .. #x .. 'items)',
+    'item is',
+    vim.inspect(item),
+    'selection is',
+    vim.inspect(x),
+  })
+end
+
+function A.actions.echo(picker)
+  vim.print({ 'echo', vim.inspect(picker) })
+end
+
 --[[ Module ]]
 
 M.config = {
@@ -622,52 +668,14 @@ function M.search(streams)
         ctx.item.missing = { title = title, ft = ft, lines = lines }
       end
     end,
-    -- see `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/config/defaults.lua`
-    -- around Line 200, win = { input = { keys = {..}}, list = { keys = {..}}}
-    win = {
-      list = { -- the results list window
-        keys = {
-          ['<c-x>'] = { 'download', mode = { 'n', 'i' } },
-          ['<c-m-x>'] = { 'download_selection', mode = { 'n', 'i' } },
-        },
-      },
-      input = { -- the input window where search is typed
-        keys = {
-          ['<c-x>'] = { 'download', mode = { 'n', 'i' } },
-          ['<c-m-x>'] = { 'download_selection', mode = { 'n', 'i' } },
-          ['<c-y>'] = { 'echo', mode = { 'n', 'i' } },
-        },
-      },
-    },
 
-    actions = {
-      -- func names are tied to those mentioned in win.list/input key settings
-      download = function(picker, item) -- don't use picker for now
-        vim.print({ 'download item', vim.inspect(item) })
-        vim.print(vim.inspect({ 'download selected is', picker.list.selected }))
-      end,
-
-      download_selection = function(picker, item)
-        -- item is current item in the list
-        -- picker.list.selected is list of selected items
-        local x = picker.list.selected
-        vim.print({
-          'download selection (' .. #x .. 'items)',
-          'item is',
-          vim.inspect(item),
-          'selection is',
-          vim.inspect(x),
-        })
-      end,
-
-      echo = function(picker)
-        vim.print({ 'echo', vim.inspect(picker) })
-      end,
-    },
+    actions = A.actions,
+    win = A.win,
 
     layout = {
       fullscreen = true,
     },
+
     format = function(item)
       -- format an item for display in picker list
       -- must return a list: { { str1, hl_name1 }, { str2, hl_nameN }, .. }
@@ -682,6 +690,7 @@ function M.search(streams)
       }
       return ret
     end,
+
     confirm = function(picker, item)
       -- TODO: retrieve txt items, use vim.ui.open for (remote) formats other
       -- than txt.  Can we curl pdf's ?
