@@ -113,7 +113,11 @@ return {
     {
       '<space>g',
       function()
-        Snacks.picker.grep()
+        Snacks.picker.grep({
+          search = function(_)
+            return vim.fn.expand('<cWORD>'):match('[%w_%.:]+')
+          end,
+        })
       end,
       desc = 'Grep',
     },
