@@ -231,9 +231,9 @@ end
 -- functions that work with the indices of streams of ietf documents
 
 ---@class Index
----@field curl fun(stream: stream): index
----@field get fun(self: Index, stream: stream): Index
----@field index fun(self: Index, streams: stream[]): Index
+---@field curl fun(stream: stream): index Retrieve (and cache) an index from the ietf
+---@field get fun(self: Index, stream: stream): Index Add an index to Idx
+---@field index fun(self: Index, streams: stream[]): Index Add one or more indices to Idx
 local Idx = {}
 
 -- retrieves (and caches) an index for the given `stream` from the ietf
@@ -405,7 +405,7 @@ function Itms.new(idx, entry)
   local item = nil -- returned if entry is malformed
   local stream, id, text = unpack(entry)
   if stream and id and text then
-    local title, tags = Itms.parse(text)
+    local title, tags = Itms.tags(text)
     local ext = tags.formats and tags.formats[1] or 'txt'
     local fname = H.fname(stream, id, ext)
     local exists = fname and vim.fn.filereadable(fname) == 1
@@ -414,15 +414,15 @@ function Itms.new(idx, entry)
       idx = idx,
       score = idx,
       text = title,
-      name = string.format('%s%d', stream, id),
+      name = string.format('%s%d', stream, id):upper(),
       file = fname, -- used for previewing file if present
-      title = string.format('%s%s', stream, id), -- used by previewer
+      title = string.format('%s%s', stream, id):upper(), -- used by previewer
 
       -- extra, used by our picker preview to construct viewable content
       -- in case the file does not exist on disk.
       exists = exists,
       tags = tags,
-      stream = stream,
+      stream = stream:upper(),
       id = id,
       symbol = H.symbol(exists),
     }
@@ -434,7 +434,7 @@ end
 ---@param text string -- A full, assembled, index line
 ---@return string text Remaining text after removings tags
 ---@return table tags Known tags removed from text
-function Itms.parse(text)
+function Itms.tags(text)
   -- take out all (word <stuff>) for known words
   -- (Status: _), ..., (Obsoletes _) (Obsoleted by _), ...
   local tags = {
@@ -458,7 +458,8 @@ function Itms.parse(text)
     local prepped = part:lower():gsub('%s+by', '_by', 1):gsub(':', '', 1)
     local k, v = string.match(prepped, '^([^%s]+)%s+(.*)$')
     if k and v and tags[k] then
-      v = v:gsub('%s+', ''):lower() -- hmm proposedstandard ?
+      -- v = v:gsub('%s+', ''):upper() -- hmm PROPOSEDSTANDARD ?
+      v = v:upper() -- hmm PROPOSEDSTANDARD ?
       if type(tags[k]) == 'string' then
         tags[k] = v
       else
@@ -469,9 +470,9 @@ function Itms.parse(text)
     end
   end
 
-  -- fix format tags, it's a bit of a mess.
+  -- fix format tags, assumes the above did lowercase every table item
   -- order is important: first item in the list will be used to open it
-  local known = { 'txt', 'html', 'pdf', 'xml' } -- json is not a pub format
+  local known = { 'TXT', 'HTML', 'PDF', 'XML' } -- json is not a pub format
   local formats = table.concat(tags.format, ',')
   local seen = {}
   for _, fmt in ipairs(known) do
@@ -519,27 +520,27 @@ function Itms.preview(item)
 
   local lines = {
     '',
-    f('# %s', string.upper(item.name)),
+    f('# %s', item.name),
     '',
     '',
     f('## %s', item.text),
     '',
     f(fmt2cols, 'AUTHORS', table.concat(item.tags.authors, ', ')),
-    f(fmt2cols, 'STATUS', item.tags.status:upper()),
+    f(fmt2cols, 'STATUS', item.tags.status),
     f(fmt2cols, 'DATE', item.tags.date or '-'),
     '',
-    f(fmt2cols, 'STREAM', item.stream:upper()),
-    f(fmt2cols, 'FORMAT', table.concat(item.tags.format, ', '):upper()),
+    f(fmt2cols, 'STREAM', item.stream),
+    f(fmt2cols, 'FORMAT', table.concat(item.tags.format, ', ')),
     f(fmt2cols, 'DOI', item.tags.doi),
     '',
     '',
     '### TAGS',
     '',
-    f(fmt2cols, 'ALSO', table.concat(item.tags.also, ','):upper()),
-    f(fmt2cols, 'OBSOLETES', table.concat(item.tags.obsoletes, ','):upper()),
-    f(fmt2cols, 'OBSOLETED by', table.concat(item.tags.obsoleted_by, ','):upper()),
-    f(fmt2cols, 'UPDATES', table.concat(item.tags.updates, ','):upper()),
-    f(fmt2cols, 'UPDATED by', table.concat(item.tags.updated_by, ','):upper()),
+    f(fmt2cols, 'ALSO', table.concat(item.tags.also, ',')),
+    f(fmt2cols, 'OBSOLETES', table.concat(item.tags.obsoletes, ',')),
+    f(fmt2cols, 'OBSOLETED by', table.concat(item.tags.obsoleted_by, ',')),
+    f(fmt2cols, 'UPDATES', table.concat(item.tags.updates, ',')),
+    f(fmt2cols, 'UPDATED by', table.concat(item.tags.updated_by, ',')),
     '',
     '',
     '### URI',
