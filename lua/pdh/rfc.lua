@@ -596,24 +596,23 @@ function M.search(streams)
 
   return snacks.picker({
     items = Itms,
-    -- gets called as preview function, perhaps see snacks.picker.prewiew for
-    -- example code?
     preview = function(ctx)
+      -- gets called to fill the preview window (if defined by user)
+      -- see snacks.picker.core.preview for the preview funcs used below
       if ctx.item.exists then
-        -- defer to regular previewing in nvim
-        -- TODO: what if it's a pdf-file?
+        -- defer to regular previewing in nvim for now
+        -- TODO: what about 'binary' files (old rfc's or a pdf?)
         snacks.picker.preview.file(ctx)
       elseif ctx.item.missing then
         -- we've seen it before, use previously assembled info
-        -- we donot use ctx.item.preview={ft=.., text=".."} since text must be split
-        -- each time its the current item in the list
-        -- see snacks.picker.core.preview for funcs below ..
         ctx.preview:reset()
         ctx.preview:set_lines(ctx.item.missing.lines)
         ctx.preview:set_title(ctx.item.missing.title)
         ctx.preview:highlight({ ft = ctx.item.missing.ft })
       else
         -- create table `missing` to use for previewing
+        -- we do not set ctx.item.preview={ft=.., text=".."} since text must be split
+        -- each time its the current item in the list
         local title, ft, lines = Itms.preview(ctx.item)
         ctx.preview:reset()
         ctx.preview:set_lines(lines)
@@ -626,20 +625,13 @@ function M.search(streams)
     -- see `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/config/defaults.lua`
     -- around Line 200, win = { input = { keys = {..}}, list = { keys = {..}}}
     win = {
-      list = {
-        -- this is the window where list being search/filtered is displayed
-        -- ('/' toggle focus between list/input window)
-        -- <c-g/G> originally toggles live_grep which is not supported in
-        -- search anyway.  Hmm. can't override it here.
+      list = { -- the results list window
         keys = {
-          -- <enter> is confirm & act on selection
-          -- [<TAB>] is select_and_next, will select an item (input/list win)
-          -- <c-a> will (de)select all
           ['<c-x>'] = { 'download', mode = { 'n', 'i' } },
           ['<c-m-x>'] = { 'download_selection', mode = { 'n', 'i' } },
         },
       },
-      input = {
+      input = { -- the input window where search is typed
         keys = {
           ['<c-x>'] = { 'download', mode = { 'n', 'i' } },
           ['<c-m-x>'] = { 'download_selection', mode = { 'n', 'i' } },
