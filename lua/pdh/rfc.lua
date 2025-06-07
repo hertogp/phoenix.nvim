@@ -137,7 +137,7 @@ function H.fname(stream, id, ext)
   return vim.fs.normalize(fname)
 end
 
--- returns modeline string if possible, nil otherwise
+-- returns a modeline string if possible, nil otherwise
 function H.modeline(spec)
   if type(spec) == 'string' then
     -- use verbatim
@@ -368,7 +368,7 @@ end
 ---@field from fun(self: Items, streams: stream[]): Items
 ---@field new fun(idx: integer, entry: entry): item: table
 ---@field parse fun(text: string): text: string, tags:table
-local Itms = { list = {} }
+local Itms = {}
 
 --- Builds self.list of picker items, from 1 or more streams; returns #items
 ---@param self Items

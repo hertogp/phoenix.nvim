@@ -104,7 +104,8 @@ return {
       '<space>L',
       function()
         Snacks.picker.lines({
-          pattern = vim.fn.expand('<cWORD>'):match('[%w_%.:]+'),
+          -- start with exact 'cWORD under cursor
+          pattern = "'" .. vim.fn.expand('<cWORD>'):match('[%w_%.:]+'),
         })
       end,
       desc = 'Buffer Lines for cWORD',
