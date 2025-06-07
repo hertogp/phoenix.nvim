@@ -52,9 +52,10 @@ end
 -- so they simply `assert` and possibly fail hard
 
 local H = {
+  -- valid values for stream
   valid = { rfc = true, bcp = true, std = true, fyi = true, ien = true },
-  top = 'ietf.org',
-  sep = '│',
+  top = 'ietf.org', -- subdir under topdir for ietf documents
+  sep = '│', -- separator for local index lines: stream|id|text
 }
 
 function H.curl(url)
@@ -107,8 +108,6 @@ function H.dir(spec)
   return vim.fs.joinpath(path, top)
 end
 function H.fname(stream, id, ext)
-  assert(H.valid[stream])
-
   -- return full file path for (stream, id) or nil
   id = id or 'index'
   ext = ext or 'txt'
@@ -211,7 +210,6 @@ end
 
 function H.url(stream, id, ext)
   -- returns url for stream document or its index
-  assert(H.valid[stream]) -- would be internal error
 
   ext = ext or 'txt'
   local base = 'https://www.rfc-editor.org'
@@ -354,6 +352,7 @@ function Idx:from(streams)
   -- refill
   streams = streams or { 'rfc' }
   streams = type(streams) == 'string' and { streams } or streams
+  streams = vim.tbl_map(string.lower, streams) -- stream names always lowercase
   for _, stream in ipairs(streams) do
     assert(H.valid[stream])
     Idx:get(stream)
@@ -422,7 +421,7 @@ function Itms.new(idx, entry)
       -- in case the file does not exist on disk.
       exists = exists,
       tags = tags,
-      stream = stream:upper(),
+      stream = stream:lower(),
       id = id,
       symbol = H.symbol(exists),
     }
@@ -470,13 +469,14 @@ function Itms.tags(text)
     end
   end
 
-  -- fix format tags, assumes the above did lowercase every table item
-  -- order is important: first item in the list will be used to open it
+  -- fix format tags
+  -- `known` order is important: first item is used to download/open it
   local known = { 'TXT', 'HTML', 'PDF', 'XML' } -- json is not a pub format
   local formats = table.concat(tags.format, ',')
   local seen = {}
   for _, fmt in ipairs(known) do
-    if string.match(formats, fmt) then
+    -- if string.match(formats, fmt) then
+    if formats:match(fmt) then
       seen[#seen + 1] = fmt
     end
   end
@@ -529,7 +529,7 @@ function Itms.preview(item)
     f(fmt2cols, 'STATUS', item.tags.status),
     f(fmt2cols, 'DATE', item.tags.date or '-'),
     '',
-    f(fmt2cols, 'STREAM', item.stream),
+    f(fmt2cols, 'STREAM', item.stream:upper()),
     f(fmt2cols, 'FORMAT', table.concat(item.tags.format, ', ')),
     f(fmt2cols, 'DOI', item.tags.doi),
     '',
@@ -593,8 +593,9 @@ function M.search(streams)
   -- * `:!open https://github.com/folke/todo-comments.nvim/blob/main/lua/todo-comments/search.lua`
   -- * `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/preview.lua`
 
+  -- TODO: if streams have not changed, donot load Itms again
   Itms:from(streams)
-  local name_fmt = '%-' .. (3 + #(tostring(#Itms.list))) .. 's'
+  local name_fmt = '%-' .. (3 + #(tostring(#Itms))) .. 's'
 
   return snacks.picker({
     items = Itms,
@@ -716,7 +717,7 @@ function M.test(streams)
 
   local count = Itms:from(streams)
   vim.print('Got ' .. count .. 'entries for stream(s): ' .. table.concat(streams, ','))
-  for idx, item in ipairs(Itms.list) do
+  for idx, item in ipairs(Itms) do
     vim.print({ idx, vim.inspect(item) })
   end
 end
