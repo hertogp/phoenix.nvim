@@ -350,19 +350,21 @@ end
 ---@field parse fun(text: string): text: string, tags:table
 local Itms = {
   icon = {
-    -- trying out different icons
-    -- [false] = '☹ ',
-    -- [false] = '',
-    -- [false] = '}',
-    [false] = '',
-    -- [false] = 'l',
-    -- [false] = '🗋',
-    -- [true] = '☻ ',
-    -- [true] = ' ',
-    [true] = '',
-    -- [true] = '',
-    -- [true] = '🗎',
-    -- [true] = '󰈚',
+    -- NOTE: add a space after the icon (it is used as-is here)
+    -- uncomment 1x false and 1x true
+    -- [false] = ' ',
+    -- [false] = '☹  ',
+    -- [false] = ' ',
+    -- [false] = '} ',
+    [false] = ' ',
+    -- [false] = 'l ',
+    -- [false] = '🗋 ',
+    -- [true] = '☻  ',
+    -- [true] = '  ',
+    [true] = ' ',
+    -- [true] = ' ',
+    -- [true] = '🗎 ',
+    -- [true] = '󰈚 ',
   },
 }
 
@@ -507,6 +509,7 @@ end
 ---@return string ft The filetype to use when previewing
 ---@return table lines The lines to display when previewing
 function Itms.preview(item)
+  -- called when item not locally available
   local title = tostring(item.title)
   local ft = 'markdown'
   local fmt2cols = '   %-15s%s'
@@ -596,8 +599,17 @@ function Act.actions.echo(picker)
 end
 
 function Act.confirm(picker, item)
-  -- TODO: retrieve txt items, use vim.ui.open for (remote) formats other
-  -- than txt.  Can we curl pdf's ?
+  -- TODO:
+  -- [ ] retrieve txt items, use vim.ui.open for (remote) formats other than txt.
+  -- [ ] retrieve other formats through curl with --output <filename> option
+  -- [ ] if fetching fails maybe put up selection to try another format?  Some
+  --     ien files are only in pdf format (some are listed in the dir, but not
+  --     downloadable for some reason, see ien7.pdf) IEN-index.txt has no info
+  --     on the available formats .. so try as best as we can ..
+  --     1. ien/ien<x>.txt | html | pdf
+  --     2. ien/scanned/ien<x>.pdf or ien/scanned/ien<x>_reduced.pdf
+  -- [ ] Apparently, in FORMATS HTML= bytes (w/o number) means 0 bytes, i.e.
+  --     not available.
   picker:close()
   if vim.fn.filereadable(item.file) == 0 then
     local lines = H.fetch(item.stream, item.id)
@@ -606,8 +618,11 @@ function Act.confirm(picker, item)
       vim.print(vim.inspect({ Itms[item.idx].name, item.name }))
       vim.cmd('edit ' .. item.file)
       -- mark as downloaded and available
-      Itms[item.idx].exists = true
-      Itms[item.idx].symbol = Itms.icon[true]
+      -- TODO:
+      -- [c] this should be Itms.update(items), here called as Itms.update({item}).
+      -- This could also be used when downloading a bunch of documents.
+      -- Itms[item.idx].exists = true
+      -- Itms[item.idx].symbol = Itms.icon[true]
     end
   else
     vim.cmd('edit ' .. item.file)
@@ -618,12 +633,17 @@ function Act.format(item)
   -- format an item for display in picker list
   -- must return a list: { { str1, hl_name1 }, { str2, hl_nameN }, .. }
   -- `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/format.lua`
-  local hl_item = (item.exists and 'SnacksPickerGitStatusAdded') or 'SnacksPickerGitStatusUntracked'
-  local name_fmt = '%-' .. (3 + #(tostring(#Itms))) .. 's'
+  -- TODO:
+  -- [x] check filesystem directly, do not depend on item.exists which may be
+  -- out of sync with status of item on disk
+  local exists = (vim.fn.filereadable(item.file) == 1)
+  local icon = Itms.icon[exists]
+  local hl_item = (exists and 'SnacksPickerGitStatusAdded') or 'SnacksPickerGitStatusUntracked'
+  local name = '%-' .. (3 + #(tostring(#Itms))) .. 's'
   local ret = {
-    { item.symbol, hl_item },
-    { ' ' .. H.sep, 'SnacksWinKeySep' },
-    { name_fmt:format(item.name), hl_item },
+    { icon, hl_item },
+    { H.sep, 'SnacksWinKeySep' },
+    { name:format(item.name), hl_item },
     { H.sep, 'SnacksWinKeySep' },
     { item.text, '' },
   }
@@ -723,15 +743,17 @@ function M.search(streams)
 end
 
 function M.test(streams)
-  -- sanitize input
-  streams = streams or { 'rfc' }
-  streams = type(streams) == 'string' and { streams } or streams
-
-  local count = Itms:from(streams)
-  vim.print('Got ' .. count .. 'entries for stream(s): ' .. table.concat(streams, ','))
-  for idx, item in ipairs(Itms) do
-    vim.print({ idx, vim.inspect(item) })
-  end
+  -- make simple chooser for extension
+  local items = { 'txt', 'html', 'xml', 'pdf' }
+  vim.ui.select(items, {
+    prompt = 'Please select an option:', -- Prompt displayed above the list
+  }, function(choice)
+    if choice then
+      print('You selected: ' .. choice) -- Action to perform after selection
+    else
+      print('No selection made.')
+    end
+  end)
 end
 
 return M
