@@ -16,7 +16,14 @@ return {
     explorer = { enabled = true },
     indent = { enabled = true },
     input = { enabled = true },
-    picker = { enabled = true },
+    picker = {
+      enabled = true,
+
+      -- makes all pickers start in normal mode!
+      -- on_show = function()
+      --   vim.cmd.stopinsert()
+      -- end,
+    },
     notifier = { enabled = true },
     quickfile = { enabled = true },
     scope = { enabled = true },
@@ -44,6 +51,10 @@ return {
         Snacks.picker.buffers({
           hidden = true,
           nofile = false,
+          prompt = ' > ',
+          on_show = function()
+            vim.cmd.stopinsert()
+          end,
           win = {
             list = {
               keys = {
@@ -75,7 +86,11 @@ return {
     {
       '<space>N',
       function()
-        Snacks.picker.notifications()
+        Snacks.picker.notifications({
+          on_show = function()
+            vim.cmd.stopinsert()
+          end,
+        })
       end,
       desc = 'Notifications',
     },
@@ -97,10 +112,14 @@ return {
       '<space>l',
       function()
         Snacks.picker.lines({
-          -- start with exact 'cWORD under cursor
+          -- search for 'cWORD under cursor (' means literal match for cWORD)
           pattern = "'" .. (vim.fn.expand('<cWORD>'):match('[%w_%.:]+') or ''),
+          prompt = ' > ',
+          on_show = function()
+            vim.cmd.stopinsert()
+          end,
           layout = {
-            preset = 'sidebar',
+            relative = 'editor',
           },
         })
       end,
@@ -117,6 +136,10 @@ return {
       '<space>g',
       function()
         Snacks.picker.grep({
+          prompt = ' > ',
+          on_show = function()
+            vim.cmd.stopinsert()
+          end,
           search = function(_)
             return vim.fn.expand('<cWORD>'):match('[%w_%.:]+') or ''
           end,
@@ -134,7 +157,12 @@ return {
     {
       '<space>n',
       function()
-        Snacks.picker.notifications()
+        Snacks.picker.notifications({
+          prompt = ' > ',
+          on_show = function()
+            vim.cmd.stopinsert()
+          end,
+        })
       end,
       desc = 'Notification History',
     },
@@ -164,7 +192,7 @@ return {
       '<space>H',
       function()
         Snacks.picker.help({
-          pattern = vim.fn.expand('<cword>'),
+          pattern = vim.fn.expand('<cWORD>'):match('[%w_%.:]+') or '',
           win = {
             input = {
               keys = {

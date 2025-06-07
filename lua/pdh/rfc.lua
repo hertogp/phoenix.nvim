@@ -641,6 +641,7 @@ function M.search(streams)
     },
 
     actions = {
+      -- func names are tied to those mentioned in win.list/input key settings
       download = function(picker, item) -- don't use picker for now
         vim.print({ 'download item', vim.inspect(item) })
         vim.print(vim.inspect({ 'download selected is', picker.list.selected }))
@@ -684,10 +685,8 @@ function M.search(streams)
     confirm = function(picker, item)
       -- TODO: retrieve txt items, use vim.ui.open for (remote) formats other
       -- than txt.  Can we curl pdf's ?
-      vim.notify(picker:count() .. ' items in selection')
       picker:close()
       if vim.fn.filereadable(item.file) == 0 then
-        vim.notify('downloading ' .. item.name)
         local lines = H.fetch(item.stream, item.id)
         if #lines > 0 then
           H.save(item.stream, item.id, lines)
