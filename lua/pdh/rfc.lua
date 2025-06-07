@@ -61,18 +61,6 @@ local H = {
   sep = '│', -- separator for local index lines: stream|id|text
 }
 
-function H.curl(url)
-  -- return a, possibly empty, list of lines
-  local rv = plenary.curl.get({ url = url, accept = 'plain/text' })
-  local lines = {}
-
-  if rv and rv.status == 200 then
-    -- no newline's for buf set lines, no formfeed for snacks preview
-    lines = vim.split(rv.body, '[\r\n\f]')
-  end
-  return { status = rv.status, lines = lines }
-end
-
 --- fetch an ietf document, returns (possibly empty) list of lines
 ---@param stream stream
 function H.fetch(stream, id)
@@ -225,8 +213,14 @@ local Idx = {}
 function Idx.curl(stream)
   -- retrieve raw content from the ietf
   local url = H.url(stream, 'index')
-  local rv = H.curl(url)
-  if rv.status ~= 200 then
+
+  -- retrieve index from the ietf
+  local lines = {}
+  local rv = plenary.curl.get({ url = url, accept = 'plain/text' })
+  if rv and rv.status == 200 then
+    -- no newline's for buf set lines, no formfeed for snacks preview
+    lines = vim.split(rv.body, '[\r\n\f]')
+  else
     vim.notify('[warn] download failed: [' .. rv.status .. '] ' .. url, vim.log.levels.ERROR)
     return nil
   end
@@ -248,7 +242,7 @@ function Idx.curl(stream)
   local idx = {} -- parsed content { {s, n, t}, ... }
   local acc = '' -- accumulated sofar
   local max = stream == 'ien' and 3 or 1 -- allow for leading ws in ien index
-  for _, line in ipairs(rv.lines) do
+  for _, line in ipairs(lines) do
     local start = string.match(line, '^(%s*)%d+%s+%S')
     if start and #start < max then
       -- starter line: parse current, start new
