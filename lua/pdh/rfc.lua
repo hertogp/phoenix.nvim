@@ -20,6 +20,9 @@ TODO: these need some TLC
 - [ ] when download fails, flash a warning and do not create a local file with just a modeline.
 - [ ] how to handle icons properly?
 
+NOTE:
+- :Show lua =require'snacks'.picker.lines() -> new tab with picker return value printed for inspection
+-
 --]]
 
 --[[ TYPES ]]
@@ -188,15 +191,6 @@ function H.save(stream, id, lines)
   end
 
   return fname
-end
-
-function H.symbol(exists)
-  -- local symbol = { '', '', ☻ , ☹ ,  🗎🗋}
-  if exists then
-    return '🗎'
-  else
-    return '🗋'
-  end
 end
 
 --- returns a file's ttl, exists?
@@ -368,7 +362,23 @@ end
 ---@field from fun(self: Items, streams: stream[]): Items
 ---@field new fun(idx: integer, entry: entry): item: table
 ---@field parse fun(text: string): text: string, tags:table
-local Itms = {}
+local Itms = {
+  icon = {
+    -- trying out different icons
+    -- [false] = '☹ ',
+    -- [false] = '',
+    -- [false] = '}',
+    [false] = '',
+    -- [false] = 'l',
+    -- [false] = '🗋',
+    -- [true] = '☻ ',
+    -- [true] = ' ',
+    [true] = '',
+    -- [true] = '',
+    -- [true] = '🗎',
+    -- [true] = '󰈚',
+  },
+}
 
 --- Builds self.list of picker items, from 1 or more streams; returns #items
 ---@param self Items
@@ -423,7 +433,7 @@ function Itms.new(idx, entry)
       tags = tags,
       stream = stream:lower(),
       id = id,
-      symbol = H.symbol(exists),
+      symbol = Itms.icon[exists] or '?',
     }
   end
   return item -- if nil, won't get added to the list
@@ -560,6 +570,7 @@ M.config = {
   top = 'ietf.org',
   ttl = 60, -- time-to-live [second], before downloading again
   edit = 'tabedit ',
+  symbol = 'smiley', -- others are document, whatever
   modeline = {
     ft = 'rfc',
   },
