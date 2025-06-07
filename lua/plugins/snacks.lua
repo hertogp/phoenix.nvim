@@ -101,6 +101,15 @@ return {
       desc = 'Buffer Lines',
     },
     {
+      '<space>L',
+      function()
+        Snacks.picker.lines({
+          pattern = vim.fn.expand('<cWORD>'):match('[^][}{)(=]+'),
+        })
+      end,
+      desc = 'Buffer Lines for cWORD',
+    },
+    {
       '<space>g',
       function()
         Snacks.picker.grep()
