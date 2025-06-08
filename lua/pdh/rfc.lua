@@ -353,6 +353,13 @@ end
 
 --[[ ITEM ]]
 --- state and functions that work with picker items
+--- TODO:
+--- [ ] Itms.fname() -> fname (first existing or possible), exists
+---     to be used for preferred download/open and exists for Icon in result list
+--- [ ] confirm ext if multiple are possible before download
+--- [ ] preview should not defer to picker, do it ourself
+---     that way we can curl to output file & preview older rfc's with a
+---     formfeed character (picker would warn of a binary file)
 
 ---@class Items
 ---@field preview fun(item: table): title: string, ft: string, lines: string[]
@@ -575,6 +582,10 @@ function Itms.preview(item)
 end
 
 --[[ Actions ]]
+-- TODO:
+-- [ ] configurable: select before download or default to 1st in line
+-- [ ] configurable open action: select or edit, tabnew, !open as appropiate
+--     sometimes you want to see the html/xml in neovim itself
 
 local Act = {
   -- Act.actions.func defined later on, as per reference by win.list/input.keys
