@@ -22,6 +22,11 @@ TODO: these need some TLC
 
 NOTE:
 - :Show lua =require'snacks'.picker.lines() -> new tab with picker return value printed for inspection
+- finder:
+- matcher:
+  * with field:pattern, this matches against item.field=..., so item.author=concat(tags.authors)
+    - a nested field (like tags.date won't be used as such a match)
+A picker normally searches only in item.text for a match, not in the results display list lines!
 -
 --]]
 
@@ -161,7 +166,7 @@ end
 
 -- save to disk, creating directory as needed
 function H.save(stream, id, lines)
-  local fname = H.fname(stream, id)
+  local fname = H.fname(stream, id, 'txt')
 
   if fname == nil then
     return fname
@@ -268,7 +273,7 @@ function Idx.curl(stream)
 
   if #idx > 0 then
     -- cache the parsed result
-    local lines = {}
+    lines = {}
     for _, entry in ipairs(idx) do
       lines[#lines + 1] = table.concat(entry, H.sep)
     end
@@ -288,7 +293,7 @@ function Idx:get(stream)
   -- get a single stream, either from disk or from ietf
   -- NOTE: we do not check if stream is already present in self
   local idx = {} ---@type index
-  local fname = H.fname(stream, 'index')
+  local fname = H.fname(stream, 'index', 'txt')
   local ftime = vim.fn.getftime(fname) -- if file unreadable, then ftime = -1
   local ttl = (M.config.ttl or 0) + ftime - vim.fn.localtime()
 
@@ -420,7 +425,9 @@ function Itms.format(item)
     { name, hl_item },
     { H.sep, 'SnacksWinKeySep' },
     { item.text, '' },
+    { ' ' .. item.date, 'SnacksWinKeySep' },
   }
+
   return ret
 end
 
@@ -432,104 +439,96 @@ function Itms.new(idx, entry)
   local item = nil -- returned if entry is malformed
   local stream, id, text = unpack(entry)
   if stream and id and text then
-    local title, tags = Itms.tags(text)
-    local ext = tags.format and tags.format[1] or 'txt'
-    local fname = H.fname(stream, id, ext)
+    local fname = H.fname(stream, id, 'txt') -- TODO: must become dynamic Itms.fname(item)
     local exists = fname and vim.fn.filereadable(fname) == 1
 
     item = {
       idx = idx,
       score = idx,
-      text = title,
-      name = string.format('%s%d', stream, id):upper(),
       file = fname, -- used for previewing file if present
-      title = string.format('%s%s', stream, id):upper(), -- used by previewer
+      text = text,
+      title = string.format('%s%s', stream, id):upper(), -- title of preview window
 
-      -- extra, used by our picker preview to construct viewable content
-      -- in case the file does not exist on disk.
+      -- extra fields to search on
+      name = string.format('%s%d', stream, id):upper(),
       exists = exists,
-      tags = tags,
       stream = stream:lower(),
       id = id,
-      symbol = Itms.icon[exists] or '?',
+      symbol = Itms.icon[exists] or '? ',
     }
+
+    item = Itms.tags(item)
   end
   return item -- if nil, won't get added to the list
 end
 
---- extracts known `tags` from an entry's `text`
----@param text string -- A full, assembled, index line
----@return string text Remaining text after removings tags
----@return table tags Known tags removed from text
-function Itms.tags(text)
+--- extracts known `tags` from an entry's `text` and add as named fields
+---@param item table
+---@return table The item with tags added (if any) which are removed from its `text`
+function Itms.tags(item)
   -- take out all (word <stuff>) for known words
   -- (Status: _), ..., (Obsoletes _) (Obsoleted by _), ...
   local tags = {
     -- ensure these tags are present with a default value
-    obsoletes = { '-' },
-    obsoleted_by = { '-' },
-    updates = { '-' },
-    updated_by = { '-' },
-    also = { '-' },
+    obsoletes = '-',
+    obsoleted_by = '-',
+    updates = '-',
+    updated_by = '-',
+    also = '-',
     status = '-',
-    format = { '-' },
+    format = '-',
     doi = '-',
     -- these two are not `()`-constructs
-    authors = { '-' },
+    authors = '-',
     date = '-',
   }
 
-  -- extract (<wanted> ... )-constructs
-  for part in string.gmatch(text, '%(([^)]+)%)') do
-    -- make sure we can match first word to our keys in tags
+  -- ensure all known tags, with their defaults, are present in item
+  for k, v in pairs(tags) do
+    item[k] = v
+  end
+
+  -- extract (<tag> ... )-constructs
+  for part in string.gmatch(item.text, '%(([^)]+)%)') do
+    -- lowercase so we can match on keys in tags
     local prepped = part:lower():gsub('%s+by', '_by', 1):gsub(':', '', 1)
     local k, v = string.match(prepped, '^([^%s]+)%s+(.*)$')
     if k and v and tags[k] then
-      -- v = v:gsub('%s+', ''):upper() -- hmm PROPOSEDSTANDARD ?
-      v = v:upper() -- hmm PROPOSEDSTANDARD ?
-      if type(tags[k]) == 'string' then
-        tags[k] = v
-      else
-        tags[k] = vim.split(v, ',')
-      end
-      -- remove matched ()-text, including a ws prefix if possible
-      text = string.gsub(text, '%s?%(' .. part .. '%)', '', 1)
+      item[k] = v -- v = v:gsub('%s+', '')
+      -- `part` yielded a tagged value, so remove its first occurrence
+      item.text = string.gsub(item.text, '%s?%(' .. part .. '%)', '', 1)
     end
   end
 
-  -- fix format tags
+  -- fix item.format value
   -- `known` order is important: first item is used to download/open it
-  local known = { 'TXT', 'HTML', 'PDF', 'XML' } -- json is not a pub format
-  local formats = table.concat(tags.format, ',')
+  local known = { 'txt', 'html', 'pdf', 'xml' } -- TODO: make this an Itms.FORMAT constant list
   local seen = {}
   for _, fmt in ipairs(known) do
-    -- if string.match(formats, fmt) then
-    if formats:match(fmt) then
+    if item.format:match(fmt) then
       seen[#seen + 1] = fmt
     end
   end
-  tags['format'] = seen
+  item.format = table.concat(seen, ', ')
 
-  -- extract dates
+  -- extract date
   -- TODO:
   -- [ ] switch to vim.re/vim.regex or vim.lpeg? ien/fyi not consistent
-  -- [x] Date for rfc9295 not extracted properly ...? -> require 3 or more
-  --     lowercase letters for the Month
-  local date = text:match('%s%u%l%l%l%l*%s-%d%d%d%d%.?') -- Month\sYEAR
+  -- [x] Date is <ws>Mon<ws>YYYY<dot>, e.g. May 1986.
+  local date = item.text:match('%s%u%l%l%l-%s-%d%d%d%d%.?')
   if date then
-    tags['date'] = vim.trim(date):gsub('%.$', '', 1)
-    text = string.gsub(text, date, '', 1)
+    item.date = vim.trim(date):gsub('%.$', '')
+    item.text = string.gsub(item.text, date, '', 1)
   end
 
   -- extract authors
-  local authors = text:match('%s%u%.%u?%.?%s.*%.')
+  local authors = item.text:match('%s%u%.%u?%.?%s.*%.')
   if authors and #authors > 0 then
-    text = text:gsub(authors, '', 1)
-    authors = vim.split(authors:gsub('^%s', '', 1):gsub('%.+$', '', 1), ', *')
-    tags['authors'] = authors -- or { '-' }
+    item.text = item.text:gsub(authors, '', 1)
+    item.authors = authors:gsub('^%s', ''):gsub('%.+$', ''):gsub('%s%s+', ' ')
   end
 
-  return text, tags
+  return item
 end
 
 --- returns `title`, `ft`, `lines` for use in a preview
@@ -545,7 +544,7 @@ function Itms.preview(item)
   local fmt2cols = '   %-15s%s'
   local f = string.format
   -- REVIEW: tags are not consistent: plurals should always be lists of strings?
-  local ext = item.tags.format[1] or 'txt'
+  local ext = vim.split(item.format, ', *')[1] or 'txt'
 
   local lines = {
     '',
@@ -554,22 +553,22 @@ function Itms.preview(item)
     '',
     f('## %s', item.text),
     '',
-    f(fmt2cols, 'AUTHORS', table.concat(item.tags.authors, ', ')),
-    f(fmt2cols, 'STATUS', item.tags.status),
-    f(fmt2cols, 'DATE', item.tags.date or '-'),
+    f(fmt2cols, 'AUTHORS', item.authors),
+    f(fmt2cols, 'STATUS', item.status:upper()),
+    f(fmt2cols, 'DATE', item.date or '-'),
     '',
     f(fmt2cols, 'STREAM', item.stream:upper()),
-    f(fmt2cols, 'FORMAT', table.concat(item.tags.format, ', ')),
-    f(fmt2cols, 'DOI', item.tags.doi),
+    f(fmt2cols, 'FORMAT', item.format:upper()),
+    f(fmt2cols, 'DOI', item.doi:upper()),
     '',
     '',
     '### TAGS',
     '',
-    f(fmt2cols, 'ALSO', table.concat(item.tags.also, ',')),
-    f(fmt2cols, 'OBSOLETES', table.concat(item.tags.obsoletes, ',')),
-    f(fmt2cols, 'OBSOLETED by', table.concat(item.tags.obsoleted_by, ',')),
-    f(fmt2cols, 'UPDATES', table.concat(item.tags.updates, ',')),
-    f(fmt2cols, 'UPDATED by', table.concat(item.tags.updated_by, ',')),
+    f(fmt2cols, 'ALSO', item.also),
+    f(fmt2cols, 'OBSOLETES', item.obsoletes),
+    f(fmt2cols, 'OBSOLETED by', item.obsoleted_by),
+    f(fmt2cols, 'UPDATES', item.updates),
+    f(fmt2cols, 'UPDATED by', item.updated_by),
     '',
     '',
     '### URI',
@@ -751,49 +750,15 @@ function M.search(streams)
   })
 end
 
-function M.test(streams)
-  -- make simple chooser for extension
-  local items = { 'txt', 'html', 'xml', 'pdf' }
-  local on_choice = function(choice)
-    if choice then
-      print('You selected: ' .. choice) -- Action to perform after selection
-    else
-      print('No selection made.')
-    end
-  end
-
-  -- vim.ui.select(items, {
-  --   prompt = 'Please select an option:', -- Prompt displayed above the list
-  -- }, function(choice) end)
-
-  -- same as require 'snacks'.picker.select(items, {}, on_choice)
-  local opts = {
-    prompt = 'choose extension to download',
-    on_show = function()
-      vim.print('start in normal mode')
-      vim.cmd.stopinsert()
-    end,
-    layout = {
-      hidden = { 'input' },
-    },
-  }
-  -- require 'snacks'.picker.select(items, opts, on_choice)
-
-  vim.cmd [[highlight PopupColor ctermbg=black ctermfg=blue guifg=blue guibg=green]]
-  local function create_highlight_popup()
-    local win_id = require 'plenary'.popup.create({ 'item 1', 'item 2', 'item 3' }, {
-      line = 15,
-      col = 45,
-      minwidth = 20,
-      border = true,
-      highlight = 'PopupColor',
-    })
-    print(win_id)
-  end
-  create_highlight_popup()
-end
+function M.test() end
 
 function M.test_bit(stream, id)
+  -- status could also be either nil or 1st ext found (txt, html etc..)
+  -- or even nil vs { ext's }
+  -- then there would be no need for bit op shenanigans
+  -- snacks.input overrides vim.ui.input
+  -- check out snacks.picker.select, snacks.util.spinner, plenary popup,
+  -- plenary has a plenary.select
   stream = stream and stream:lower() or 'rfc'
   id = id or 1
   bit = require 'bit'
