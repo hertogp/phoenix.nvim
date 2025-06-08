@@ -631,19 +631,17 @@ end
 
 function Act.format(item)
   -- format an item for display in picker list
+  -- called each time the list is displayed, so check doc existence here
   -- must return a list: { { str1, hl_name1 }, { str2, hl_nameN }, .. }
   -- `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/format.lua`
-  -- TODO:
-  -- [x] check filesystem directly, do not depend on item.exists which may be
-  -- out of sync with status of item on disk
   local exists = (vim.fn.filereadable(item.file) == 1)
   local icon = Itms.icon[exists]
   local hl_item = (exists and 'SnacksPickerGitStatusAdded') or 'SnacksPickerGitStatusUntracked'
-  local name = '%-' .. (3 + #(tostring(#Itms))) .. 's'
+  local name = ('%-' .. (3 + #(tostring(#Itms))) .. 's'):format(item.name)
   local ret = {
     { icon, hl_item },
     { H.sep, 'SnacksWinKeySep' },
-    { name:format(item.name), hl_item },
+    { name, hl_item },
     { H.sep, 'SnacksWinKeySep' },
     { item.text, '' },
   }
@@ -745,15 +743,30 @@ end
 function M.test(streams)
   -- make simple chooser for extension
   local items = { 'txt', 'html', 'xml', 'pdf' }
-  vim.ui.select(items, {
-    prompt = 'Please select an option:', -- Prompt displayed above the list
-  }, function(choice)
+  local on_choice = function(choice)
     if choice then
       print('You selected: ' .. choice) -- Action to perform after selection
     else
       print('No selection made.')
     end
-  end)
+  end
+
+  -- vim.ui.select(items, {
+  --   prompt = 'Please select an option:', -- Prompt displayed above the list
+  -- }, function(choice) end)
+
+  -- same as require 'snacks'.picker.select(items, {}, on_choice)
+  local opts = {
+    prompt = 'choose extension to download',
+    on_show = function()
+      vim.print('start in normal mode')
+      vim.cmd.stopinsert()
+    end,
+    layout = {
+      hidden = { 'input' },
+    },
+  }
+  require 'snacks'.picker.select(items, opts, on_choice)
 end
 
 return M

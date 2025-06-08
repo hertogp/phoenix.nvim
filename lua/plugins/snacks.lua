@@ -8,7 +8,7 @@ return {
 
   ---@type snacks.Config
   opts = {
-    -- your configuration comes here
+    -- enable all snacks, except for dashboard
     -- or leave it empty to use the default settings
     -- refer to the configuration section below
     bigfile = { enabled = true },
@@ -18,11 +18,12 @@ return {
     input = { enabled = true },
     picker = {
       enabled = true,
+      matcher = {
+        frecency = true,
+      },
 
       -- makes all pickers start in normal mode!
-      -- on_show = function()
-      --   vim.cmd.stopinsert()
-      -- end,
+      -- on_show = function() vim.cmd.stopinsert() end,
     },
     notifier = { enabled = true },
     quickfile = { enabled = true },
