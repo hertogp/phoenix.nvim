@@ -98,18 +98,24 @@ function H.dir(spec)
   -- path = (path and vim.fn.filereadable(path)) or vim.fn.stdpath('data')
   return vim.fs.joinpath(path, top)
 end
+
+---@param stream stream
+---@param id string|number|nil
+---@param ext string
 function H.fname(stream, id, ext)
   -- return full file path for (stream, id) or nil
+  -- keep stream and ext lower case at all times
   id = id or 'index'
-  ext = ext or 'txt'
+  ext = ext and ext:lower() or 'txt'
+  stream = stream and stream:lower()
   local fdir, fname
   local cfg = M.config
   local top = M.config.top or H.top
 
   if id == 'index' then
-    -- it's an document index
+    -- it's an document index, ext is always txt
     fdir = cfg.cache
-    fname = vim.fs.joinpath(fdir, top, string.format('%s-index.%s', stream, ext))
+    fname = vim.fs.joinpath(fdir, top, string.format('%s-index.%s', stream, 'txt'))
     return vim.fs.normalize(fname)
   end
 
@@ -359,12 +365,19 @@ local Itms = {
     [false] = ' ',
     -- [false] = 'l ',
     -- [false] = '🗋 ',
+
     -- [true] = '☻  ',
     -- [true] = '  ',
     [true] = ' ',
     -- [true] = ' ',
     -- [true] = '🗎 ',
     -- [true] = '󰈚 ',
+    format = {
+      txt = ' ', --  text
+      xml = '󰗀 ',
+      html = ' ',
+      pdf = ' ',
+    },
   },
 }
 
@@ -394,6 +407,23 @@ function Itms:from(streams)
   return self
 end
 
+function Itms.format(item)
+  -- format an item to display in picker list
+  -- `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/format.lua`
+  local exists = (vim.fn.filereadable(item.file) == 1)
+  local icon = Itms.icon[exists]
+  local hl_item = (exists and 'SnacksPickerGitStatusAdded') or 'SnacksPickerGitStatusUntracked'
+  local name = ('%-' .. (3 + #(tostring(#Itms))) .. 's'):format(item.name)
+  local ret = {
+    { icon, hl_item },
+    { H.sep, 'SnacksWinKeySep' },
+    { name, hl_item },
+    { H.sep, 'SnacksWinKeySep' },
+    { item.text, '' },
+  }
+  return ret
+end
+
 --- create a new picker item for given (idx, {stream, id, text})
 ---@param idx integer
 ---@param entry entry
@@ -403,7 +433,7 @@ function Itms.new(idx, entry)
   local stream, id, text = unpack(entry)
   if stream and id and text then
     local title, tags = Itms.tags(text)
-    local ext = tags.formats and tags.formats[1] or 'txt'
+    local ext = tags.format and tags.format[1] or 'txt'
     local fname = H.fname(stream, id, ext)
     local exists = fname and vim.fn.filereadable(fname) == 1
 
@@ -629,25 +659,6 @@ function Act.confirm(picker, item)
   end
 end
 
-function Act.format(item)
-  -- format an item for display in picker list
-  -- called each time the list is displayed, so check doc existence here
-  -- must return a list: { { str1, hl_name1 }, { str2, hl_nameN }, .. }
-  -- `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/format.lua`
-  local exists = (vim.fn.filereadable(item.file) == 1)
-  local icon = Itms.icon[exists]
-  local hl_item = (exists and 'SnacksPickerGitStatusAdded') or 'SnacksPickerGitStatusUntracked'
-  local name = ('%-' .. (3 + #(tostring(#Itms))) .. 's'):format(item.name)
-  local ret = {
-    { icon, hl_item },
-    { H.sep, 'SnacksWinKeySep' },
-    { name, hl_item },
-    { H.sep, 'SnacksWinKeySep' },
-    { item.text, '' },
-  }
-  return ret
-end
-
 function Act.preview(ctx)
   -- gets called to fill the preview window (if defined by user)
   -- see snacks.picker.core.preview for the preview funcs used below
@@ -730,7 +741,7 @@ function M.search(streams)
 
     preview = Act.preview,
     actions = Act.actions,
-    format = Act.format,
+    format = Itms.format,
     confirm = Act.confirm,
     win = Act.win,
 
@@ -766,7 +777,50 @@ function M.test(streams)
       hidden = { 'input' },
     },
   }
-  require 'snacks'.picker.select(items, opts, on_choice)
+  -- require 'snacks'.picker.select(items, opts, on_choice)
+
+  vim.cmd [[highlight PopupColor ctermbg=black ctermfg=blue guifg=blue guibg=green]]
+  local function create_highlight_popup()
+    local win_id = require 'plenary'.popup.create({ 'item 1', 'item 2', 'item 3' }, {
+      line = 15,
+      col = 45,
+      minwidth = 20,
+      border = true,
+      highlight = 'PopupColor',
+    })
+    print(win_id)
+  end
+  create_highlight_popup()
+end
+
+function M.test_bit(stream, id)
+  stream = stream and stream:lower() or 'rfc'
+  id = id or 1
+  bit = require 'bit'
+
+  local masks = {
+    txt = 0x01,
+    html = 0x02,
+    pdf = 0x04,
+    xml = 0x08,
+  }
+
+  local status = 0x00
+  for ext, mask in pairs(masks) do
+    local fname = H.fname(stream, id, ext)
+    if vim.fn.filereadable(fname) == 1 then
+      status = bit.bor(status, mask)
+    end
+  end
+
+  local fext = {}
+  for ext, mask in pairs(masks) do
+    if bit.band(status, mask) ~= 0 then
+      fext[#fext + 1] = ext
+    end
+  end
+
+  vim.print(stream .. id .. ' available formats are: ' .. vim.inspect(fext))
 end
 
 return M
