@@ -369,7 +369,7 @@ local Itms = {
     txt = ' ', -- text
   },
 
-  FORMAT = { -- publication formats, order is to check for presence or download
+  FORMATS = { -- publication formats, order is to check for presence or download
     'txt',
     'html',
     'xml',
@@ -491,16 +491,19 @@ function Itms.tags(item)
     end
   end
 
-  -- fix item.format value
+  -- fix item.formats value
   -- `known` order is important: first item is used to download/open it
   -- local known = { 'txt', 'html', 'pdf', 'xml' } -- TODO: make this an Itms.FORMAT constant list
   local seen = {}
-  for _, fmt in ipairs(Itms.FORMAT) do
+  for _, fmt in ipairs(Itms.FORMATS) do
     if item.format:match(fmt) then
       seen[#seen + 1] = fmt
     end
   end
-  item.format = table.concat(seen, ', ')
+  if #seen > 0 then
+    -- keep the default '-' if no formats were found
+    item.format = table.concat(seen, ', ')
+  end
 
   -- extract date
   -- TODO:
@@ -549,7 +552,7 @@ function Itms.preview(item)
     f(fmt2cols, 'DATE', item.date or '-'),
     '',
     f(fmt2cols, 'STREAM', item.stream:upper()),
-    f(fmt2cols, 'FORMAT', item.format:upper()),
+    f(fmt2cols, 'FORMATS', item.format:upper()),
     f(fmt2cols, 'DOI', item.doi:upper()),
     '',
     '',
@@ -637,12 +640,9 @@ function Act.confirm(picker, item)
       H.save(item.stream, item.id, lines)
       vim.print(vim.inspect({ Itms[item.idx].name, item.name }))
       vim.cmd('edit ' .. item.file)
-      -- mark as downloaded and available
-      -- TODO:
-      -- [c] this should be Itms.update(items), here called as Itms.update({item}).
-      -- This could also be used when downloading a bunch of documents.
-      -- Itms[item.idx].exists = true
-      -- Itms[item.idx].symbol = Itms.icon[true]
+      vim.cmd('set ft=rfc')
+      -- TODO: mark as downloaded and available here?
+      -- [ ] this should be Itms.update(items), here called as Itms.update({item}).
     end
   else
     vim.cmd('edit ' .. item.file)
@@ -686,8 +686,10 @@ M.config = {
   ttl = 60, -- time-to-live [second], before downloading again
   edit = 'tabedit ',
   symbol = 'smiley', -- others are document, whatever
-  modeline = {
-    ft = 'rfc',
+  -- either set ft by vim.cmd after opening it, or add a modeline
+  -- at the end of the file after downloading.
+  filetype = {
+    txt = 'rfc',
   },
 }
 
@@ -707,6 +709,7 @@ function M.grep()
 end
 
 function M.setup(opts)
+  -- TODO: expand stdpath for cache and data here once, reuse everywhere else
   M.config = vim.tbl_extend('force', M.config, opts)
 
   return M
@@ -742,6 +745,8 @@ function M.search(streams)
 end
 
 function M.test() end
+
+function M.select() end
 
 function M.test_bit(stream, id)
   -- status could also be either nil or 1st ext found (txt, html etc..)
