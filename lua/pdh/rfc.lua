@@ -377,12 +377,16 @@ local Itms = {
     -- [true] = ' ',
     -- [true] = '🗎 ',
     -- [true] = '󰈚 ',
-    FORMAT = {
-      txt = ' ', --  text
-      xml = '󰗀 ',
-      html = ' ',
-      pdf = ' ',
-    },
+
+    -- REVIEW: add icons for publication formats here? Not used (yet)
+    txt = ' ', -- text
+  },
+
+  FORMAT = { -- publication formats
+    'txt',
+    'xml',
+    'html',
+    'pdf',
   },
 }
 
@@ -502,9 +506,9 @@ function Itms.tags(item)
 
   -- fix item.format value
   -- `known` order is important: first item is used to download/open it
-  local known = { 'txt', 'html', 'pdf', 'xml' } -- TODO: make this an Itms.FORMAT constant list
+  -- local known = { 'txt', 'html', 'pdf', 'xml' } -- TODO: make this an Itms.FORMAT constant list
   local seen = {}
-  for _, fmt in ipairs(known) do
+  for _, fmt in ipairs(Itms.FORMAT) do
     if item.format:match(fmt) then
       seen[#seen + 1] = fmt
     end
