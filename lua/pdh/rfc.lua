@@ -369,10 +369,10 @@ local Itms = {
     txt = ' ', -- text
   },
 
-  FORMAT = { -- publication formats
+  FORMAT = { -- publication formats, order is to check for presence or download
     'txt',
-    'xml',
     'html',
+    'xml',
     'pdf',
   },
 }
@@ -555,11 +555,11 @@ function Itms.preview(item)
     '',
     '### TAGS',
     '',
-    f(fmt2cols, 'ALSO', item.also),
-    f(fmt2cols, 'OBSOLETES', item.obsoletes),
-    f(fmt2cols, 'OBSOLETED by', item.obsoleted_by),
-    f(fmt2cols, 'UPDATES', item.updates),
-    f(fmt2cols, 'UPDATED by', item.updated_by),
+    f(fmt2cols, 'ALSO', item.also:upper()),
+    f(fmt2cols, 'OBSOLETES', item.obsoletes:upper()),
+    f(fmt2cols, 'OBSOLETED by', item.obsoleted_by:upper()),
+    f(fmt2cols, 'UPDATES', item.updates:upper()),
+    f(fmt2cols, 'UPDATED by', item.updated_by:upper()),
     '',
     '',
     '### URI',
