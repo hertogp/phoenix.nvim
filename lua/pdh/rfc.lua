@@ -360,23 +360,10 @@ end
 ---@field new fun(idx: integer, entry: entry): item: table
 ---@field parse fun(text: string): text: string, tags:table
 local Itms = {
-  ICON = {
+  ICONS = {
     -- NOTE: add a space after the icon (it is used as-is here)
-    -- uncomment 1x false and 1x true
-    -- [false] = ' ',
-    -- [false] = '☹  ',
-    -- [false] = ' ',
-    -- [false] = '} ',
     [false] = ' ',
-    -- [false] = 'l ',
-    -- [false] = '🗋 ',
-
-    -- [true] = '☻  ',
-    -- [true] = '  ',
     [true] = ' ',
-    -- [true] = ' ',
-    -- [true] = '🗎 ',
-    -- [true] = '󰈚 ',
 
     -- REVIEW: add icons for publication formats here? Not used (yet)
     txt = ' ', -- text
@@ -420,7 +407,7 @@ function Itms.format(item)
   -- format an item to display in picker list
   -- `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/format.lua`
   local exists = (vim.fn.filereadable(item.file) == 1)
-  local icon = Itms.ICON[exists]
+  local icon = Itms.ICONS[exists]
   local hl_item = (exists and 'SnacksPickerGitStatusAdded') or 'SnacksPickerGitStatusUntracked'
   local name = ('%-' .. (3 + #(tostring(#Itms))) .. 's'):format(item.name)
   local ret = {
@@ -458,7 +445,7 @@ function Itms.new(idx, entry)
       exists = exists,
       stream = stream:lower(),
       id = id,
-      symbol = Itms.ICON[exists] or '? ',
+      symbol = Itms.ICONS[exists] or '? ',
     }
 
     item = Itms.tags(item)
