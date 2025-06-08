@@ -757,7 +757,21 @@ end
 
 function M.test() end
 
-function M.select() end
+function M.select()
+  local choices = Itms.FORMATS
+  for idx, v in ipairs(choices) do
+    v = v .. '|' .. ' ' .. H.fname('rfc', 123, v)
+    choices[idx] = v
+  end
+  vim.ui.select(choices, {
+    prompt = 'Select extension to download',
+  }, function(choice)
+    if choice == nil then
+      choice = 'cancelled'
+    end
+    vim.print('your choice: ' .. choice)
+  end)
+end
 
 function M.test_bit(stream, id)
   -- status could also be either nil or 1st ext found (txt, html etc..)
