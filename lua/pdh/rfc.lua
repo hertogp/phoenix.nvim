@@ -697,7 +697,7 @@ end
 function Act.preview(ctx)
   -- gets called to fill the preview window (if defined by user)
   -- see snacks.picker.core.preview for the preview funcs used below
-  if ctx.item.exists then
+  if ctx.item.file then
     -- defer to regular previewing in nvim for now
     -- TODO: what about 'binary' files (old rfc's or a pdf?)
     snacks.picker.preview.file(ctx)
