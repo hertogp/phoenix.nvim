@@ -591,7 +591,7 @@ end
 ---@return string title The title for an item
 ---@return string ft The filetype to use when previewing
 ---@return table lines The lines to display when previewing
-function Itms.preview(item)
+function Itms.details(item)
   -- called when item not locally available
   local title = tostring(item.title)
   local ft = 'markdown'
@@ -646,6 +646,33 @@ function Itms.preview(item)
   }
 
   return title, ft, lines
+end
+
+function Itms.preview(ctx)
+  -- gets called to fill the preview window (if defined by user)
+  -- see snacks.picker.core.preview for the preview funcs used below
+  if ctx.item.file then
+    -- defer to regular previewing in nvim for now
+    -- TODO: what about 'binary' files (old rfc's or a pdf?)
+    snacks.picker.preview.file(ctx)
+  elseif ctx.item.missing then
+    -- we've seen it before, use previously assembled info
+    ctx.preview:reset()
+    ctx.preview:set_lines(ctx.item.missing.lines)
+    ctx.preview:set_title(ctx.item.missing.title)
+    ctx.preview:highlight({ ft = ctx.item.missing.ft })
+  else
+    -- create table `missing` to use for previewing
+    -- we do not set ctx.item.preview={ft=.., text=".."} since text must be split
+    -- each time its the current item in the list
+    local title, ft, lines = Itms.details(ctx.item)
+    ctx.preview:reset()
+    ctx.preview:set_lines(lines)
+    ctx.preview:set_title(title)
+    ctx.preview:highlight({ ft = ft })
+    -- create table for next time this item needs to be previewed
+    ctx.item.missing = { title = title, ft = ft, lines = lines }
+  end
 end
 
 --[[ Actions ]]
@@ -720,33 +747,6 @@ function Act.confirm(picker, item)
   -- end
 end
 
-function Act.preview(ctx)
-  -- gets called to fill the preview window (if defined by user)
-  -- see snacks.picker.core.preview for the preview funcs used below
-  if ctx.item.file then
-    -- defer to regular previewing in nvim for now
-    -- TODO: what about 'binary' files (old rfc's or a pdf?)
-    snacks.picker.preview.file(ctx)
-  elseif ctx.item.missing then
-    -- we've seen it before, use previously assembled info
-    ctx.preview:reset()
-    ctx.preview:set_lines(ctx.item.missing.lines)
-    ctx.preview:set_title(ctx.item.missing.title)
-    ctx.preview:highlight({ ft = ctx.item.missing.ft })
-  else
-    -- create table `missing` to use for previewing
-    -- we do not set ctx.item.preview={ft=.., text=".."} since text must be split
-    -- each time its the current item in the list
-    local title, ft, lines = Itms.preview(ctx.item)
-    ctx.preview:reset()
-    ctx.preview:set_lines(lines)
-    ctx.preview:set_title(title)
-    ctx.preview:highlight({ ft = ft })
-    -- create table for next time this item needs to be previewed
-    ctx.item.missing = { title = title, ft = ft, lines = lines }
-  end
-end
-
 --[[ Module ]]
 
 M.config = {
@@ -802,15 +802,13 @@ function M.search(streams)
   return snacks.picker({
     items = Itms,
 
-    preview = Act.preview,
-    actions = Act.actions,
     format = Itms.format,
+    preview = Itms.preview,
+    actions = Act.actions,
     confirm = Act.confirm,
     win = Act.win,
 
-    layout = {
-      fullscreen = true,
-    },
+    layout = { fullscreen = true },
   })
 end
 
