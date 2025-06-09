@@ -75,6 +75,7 @@ local H = {
 ---@param stream stream
 function H.fetch(stream, id)
   -- return a, possibly empty, list of lines
+  -- TODO: use pcall so we do not error out needlessly
   local url = H.url(stream, id)
   local rv = plenary.curl.get({ url = url, accept = 'plain/text' })
 
@@ -232,8 +233,9 @@ function Idx.curl(stream)
 
   -- retrieve index from the ietf
   local lines = {}
-  local rv = plenary.curl.get({ url = url, accept = 'plain/text' })
-  if rv and rv.status == 200 then
+  local ok, rv = pcall(plenary.curl.get, { url = url, accept = 'plain/text' })
+
+  if ok and rv and rv.status == 200 then
     -- no newline's for buf set lines, no formfeed for snacks preview
     lines = vim.split(rv.body, '[\r\n\f]')
   else
@@ -394,9 +396,7 @@ local Itms = {
 ---@param streams stream[]
 ---@return Items | nil
 function Itms:from(streams)
-  -- clear self first
-  -- TODO: may check if clear/refill is needed, if not use as-is?
-  -- that prevents reading from disk: e.g. ttl is ok
+  -- clear self first, TODO: only needed if streams altered or TTL's expired
   local cnt = #Itms
   for i = 0, cnt do
     Itms[i] = nil
@@ -420,7 +420,7 @@ end
 function Itms.format(item)
   -- format an item to display in picker list
   -- `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/format.lua`
-  local exists = (vim.fn.filereadable(item.file) == 1)
+  local exists = item.file and true or false -- (vim.fn.filereadable(item.file) == 1)
   local icon = Itms.ICONS[exists]
   local hl_item = (exists and 'SnacksPickerGitStatusAdded') or 'SnacksPickerGitStatusUntracked'
   local name = ('%-' .. (3 + #(tostring(#Itms))) .. 's'):format(item.name)
@@ -444,9 +444,6 @@ function Itms.new(idx, entry)
   local item = nil -- returned if entry is malformed
   local stream, id, text = unpack(entry)
   if stream and id and text then
-    local fname = H.fname(stream, id, 'txt') -- TODO: must become dynamic Itms.fname(item)
-    local exists = fname and vim.fn.filereadable(fname) == 1
-
     item = {
       idx = idx,
       score = idx,
@@ -456,16 +453,15 @@ function Itms.new(idx, entry)
 
       -- extra fields to search on
       name = string.format('%s%d', stream, id):upper(),
-      exists = exists,
       stream = stream:lower(),
       id = id,
-      symbol = Itms.ICONS[exists] or '? ',
     }
 
     -- update fields in item
     Itms.set_tags(item)
     Itms.set_file(item)
   end
+
   return item -- if nil, won't get added to the list
 end
 
@@ -473,16 +469,14 @@ end
 ---@param item table
 ---@return table item sets item.file is either the first filename found or nil (missing)
 function Itms.set_file(item)
-  local name = nil -- used as-is if nothing found
+  item.file = nil -- nothing found yet
   for _, ext in ipairs(Itms.FORMATS) do
     local fname = H.fname(item.stream, item.id, ext)
-    vim.print(vim.inspect({ item.stream, item.id, ext, fname }))
-    if fname and vim.fn.filereadable(fname) then
-      name = fname
+    if fname and vim.fn.filereadable(fname) == 1 then
+      item.file = fname
       break
     end
   end
-  item.file = name -- also removes any item.file if nothing was found
   return item
 end
 
@@ -500,7 +494,7 @@ function Itms.set_tags(item)
     updated_by = '-',
     also = '-',
     status = '-',
-    format = '-',
+    format = '', -- empty string means no format(s) listed/found
     doi = '-',
     -- these two are not `()`-constructs
     authors = '-',
@@ -568,13 +562,21 @@ function Itms.preview(item)
   -- called when item not locally available
   local title = tostring(item.title)
   local ft = 'markdown'
-  local cache = vim.fs.joinpath(vim.fn.fnamemodify(M.config.cache, ':p:~:.'), M.config.top, '/')
-  local data = vim.fs.joinpath(vim.fn.fnamemodify(M.config.data, ':p:~:.'), M.config.top, '/')
+  -- local cache = vim.fs.joinpath(vim.fn.fnamemodify(M.config.cache, ':p:~:.'), M.config.top, '/')
+  -- local data = vim.fs.joinpath(vim.fn.fnamemodify(M.config.data, ':p:~:.'), M.config.top, '/')
+  local cache = vim.fs.joinpath(M.config.cache, M.config.top, '/')
+  local data = vim.fs.joinpath(M.config.data, M.config.top, '/')
+  local file = item.file or '*n/a*'
   local fmt2cols = '   %-15s%s'
-  local fmt2path = '   %-15s`%s`' -- prevent strikethrough's
+  local fmt2path = '   %-15s%s' -- prevent strikethrough's use `%s` (if using ~ in path)
   local f = string.format
-  -- REVIEW: tags are not consistent: plurals should always be lists of strings?
-  local ext = vim.split(item.format, ', *')[1] or 'txt'
+  local url
+  local ext = vim.split(item.format, ',%s*')[1] -- for (possible) url
+  if #ext == 0 then
+    url = H.url(item.stream, item.id, 'txt') .. ' (*maybe*)'
+  else
+    url = H.url(item.stream, item.id, ext)
+  end
 
   local lines = {
     '',
@@ -605,7 +607,9 @@ function Itms.preview(item)
     '',
     f(fmt2path, 'CACHE', cache),
     f(fmt2path, 'DATA', data),
-    f(fmt2path, 'URL', H.url(item.stream, item.id, ext)),
+    f(fmt2path, 'FILE', file),
+    '',
+    f(fmt2path, 'URL', url),
   }
 
   return title, ft, lines
