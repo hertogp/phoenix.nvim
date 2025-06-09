@@ -375,7 +375,7 @@ end
 ---     formfeed character (picker would warn of a binary file)
 
 ---@class Items
----@field preview fun(item: table): title: string, ft: string, lines: string[]
+---@field details fun(item: table): title: string, ft: string, lines: string[]
 ---@field from fun(self: Items, streams: stream[]): Items
 ---@field new fun(idx: integer, entry: entry): item: table
 ---@field parse fun(text: string): text: string, tags:table
@@ -451,6 +451,7 @@ end
 ---@return table item on success, item.file is set to the local filename; nil otherwise
 function Itms.fetch(item)
   -- get an item from the ietf and save it on disk (if possible)
+  -- TODO: for txt-files, remove the formfeeds, or preview won't work
   for _, ext in ipairs(Itms.FORMATS) do
     -- ignore item.format, that is not always accurate; just take 1st available format
     local url = H.url(item.docid, ext)
@@ -650,11 +651,25 @@ end
 
 function Itms.preview(ctx)
   -- gets called to fill the preview window (if defined by user)
+  -- each time the ctx.item is the current one in the results list
   -- see snacks.picker.core.preview for the preview funcs used below
-  if ctx.item.file then
-    -- defer to regular previewing in nvim for now
-    -- TODO: what about 'binary' files (old rfc's or a pdf?)
-    snacks.picker.preview.file(ctx)
+  if ctx.item.file and ctx.item.file:match('%.txt$') then
+    -- preview ourselves, since snacks trips over any formfeeds in the txt-file
+    local ok, lines = pcall(vim.fn.readfile, ctx.item.file)
+    local title, ft
+
+    if not ok then
+      -- fallback to preview item itself (ft will be markdown)
+      title, ft, lines = Itms.details(ctx.item)
+    else
+      title = ctx.item.docid:upper()
+      ft = 'rfc' -- since we're looking at the text itself
+    end
+
+    ctx.preview:reset()
+    ctx.preview:set_lines(lines)
+    ctx.preview:set_title(title)
+    ctx.preview:highlight({ ft = ft })
   elseif ctx.item.missing then
     -- we've seen it before, use previously assembled info
     ctx.preview:reset()
