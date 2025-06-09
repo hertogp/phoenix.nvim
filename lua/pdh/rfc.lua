@@ -45,6 +45,8 @@ local M = {} -- TODO: review how/why H.methods require M access
 -- if not needed anymore, it can move to the [[ MODULE ]] section
 
 --[[ DEPENDENCIES ]]
+
+---@param name string
 local function dependency(name)
   -- so we avoid introducing ok as a script wide variable
   local ok, var = pcall(require, name)
@@ -74,7 +76,7 @@ local H = {
 }
 
 --- fetch an ietf document, returns it as a list of lines (possibly empty)
----@param docid string Unique document name of <stream><nr>, e.g. bcp11
+---@param docid string Unique ietf document name, e.g. bcp11 or bcp-index
 function H.fetch(docid)
   -- return a, possibly empty, list of lines
   -- TODO: use pcall so we do not error out needlessly
@@ -110,7 +112,7 @@ function H.dir(spec)
   return vim.fs.joinpath(path, top)
 end
 
----@param docid string Unique document name <stream><nr>, e.g. bcp11
+---@param docid string Unique ietf document name, e.g. bcp11 or bcp-index
 ---@param ext string
 function H.fname(docid, ext)
   -- return full file path for docid with extension or nil
@@ -183,8 +185,7 @@ function H.save(docid, lines)
   return fname
 end
 
---- return a url for given `docid` and `ext` (defaults to txt)
----@param docid string
+---@param docid string Unique ietf document name, e.g. bcp11 or bcp-index
 ---@param ext string
 ---@return string url the url for given `docid` and `ext`
 function H.url(docid, ext)
@@ -210,7 +211,7 @@ local Idx = {}
 
 -- retrieves (and caches) an index for the given `stream` from the ietf
 -- returns a list: { {stream, id, text}, .. } or nil on failure
----@param docid string Unique document name for an index <stream>-index, e.g. bcp-index
+---@param docid string Unique ietf document name, e.g. bcp11 or bcp-index
 ---@return index index A (possibly empty) list of partly parsed index entries, { {stream, nr, text}, ..}
 function Idx.curl(docid)
   -- retrieve raw content from the ietf
