@@ -751,7 +751,7 @@ function Act.confirm(picker, item)
   if item.file and item.file:match('%.txt$') then
     -- edit in nvim
     vim.cmd('edit ' .. item.file)
-  else
+  elseif item.file then
     -- TODO: Brave browser can't access .local/data files ..
     vim.cmd('!open ' .. item.file)
   end
