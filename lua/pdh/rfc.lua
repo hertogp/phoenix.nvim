@@ -653,6 +653,10 @@ function Itms.preview(ctx)
   -- gets called to fill the preview window (if defined by user)
   -- each time the ctx.item is the current one in the results list
   -- see snacks.picker.core.preview for the preview funcs used below
+  if ctx.item.docid == 'rfc8' then
+    vim.print('Itms.preview called for ' .. ctx.item.docid) --
+  end
+
   if ctx.item.file and ctx.item.file:match('%.txt$') then
     -- preview ourselves, since snacks trips over any formfeeds in the txt-file
     local ok, lines = pcall(vim.fn.readfile, ctx.item.file)
@@ -720,13 +724,10 @@ function Act.actions.download(picker, item)
   Itms.fetch(item) -- upon success, sets item.file
 
   if item.file then
-    local ok, lines = pcall(vim.fn.readfile, item.file)
+    item.missing = nil
     picker.list:update({ force = true })
-    picker.preview:set_lines(lines)
-    picker.preview:set_title(item.title)
-    picker.preview:highlight({ ft = 'rfc' })
+    picker.preview:show(picker, { force = true })
   end
-  -- picker.preview:update(picker)
 end
 
 function Act.actions.download_selection(picker, item)
