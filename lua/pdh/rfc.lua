@@ -126,7 +126,7 @@ function H.fname(docid, ext)
   end
 
   -- find fdir based on markers
-  local stream = docid:match('^[^%d-]+')
+  local stream = vim.split(docid, '[%d-]')[1]:lower()
   if type(cfg.data) == 'table' then fdir = vim.fs.root(0, cfg.data) end
   fdir = fdir or cfg.data or vim.fn.stdpath('data')
   fname = vim.fs.joinpath(fdir, top, stream, docid:lower() .. '.' .. ext)
@@ -187,7 +187,7 @@ function H.url(docid, ext)
   -- returns url for stream document or its index
   -- docid is either <stream>-index or <stream><nr>
   -- <stream> should be one of rfc, std, bcp, fyi or ien (review: enforce?)
-  local stream = string.match(docid, '^[^%d-]+'):lower()
+  local stream = vim.split(docid, '[%d-]')[1]:lower()
   vim.print(vim.inspect({ 'H.url', docid, stream }))
   ext = ext or 'txt'
   local base = 'https://www.rfc-editor.org'
@@ -212,7 +212,7 @@ function Idx.curl(docid)
   -- retrieve raw content from the ietf
   docid = docid:lower() -- just to be sure
   local url = H.url(docid, 'txt')
-  local stream = vim.split(docid, '-')[1]
+  local stream = vim.split(docid, '[%d-]')[1]:lower()
   local idx = {} -- parsed content { {s, n, t}, ... }
 
   -- retrieve index from the ietf
