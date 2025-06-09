@@ -462,13 +462,16 @@ function Itms.fetch(item)
       item.file = fname
       return item
     else
-      vim.notify(string.format('document %s.%s not found (http: %s)', item.docid))
+      if vim.fn.delete(fname) ~= 0 then
+        vim.notify('could not delete artifact: ' .. fname) -- remove artifact
+      end
     end
   end
   vim.notify(string.format('download %s failed', item.docid))
   item.file = nil
   return item
 end
+
 --- create a new picker item for given (idx, {stream, id, text})
 ---@param idx integer
 ---@param entry entry
@@ -690,31 +693,31 @@ function Act.actions.echo(picker)
 end
 
 function Act.confirm(picker, item)
-  -- TODO:
-  -- [ ] retrieve txt items, use vim.ui.open for (remote) formats other than txt.
-  -- [ ] retrieve other formats through curl with --output <filename> option
-  -- [ ] if fetching fails maybe put up selection to try another format?  Some
-  --     ien files are only in pdf format (some are listed in the dir, but not
-  --     downloadable for some reason, see ien7.pdf) IEN-index.txt has no info
-  --     on the available formats .. so try as best as we can ..
-  --     1. ien/ien<x>.txt | html | pdf
-  --     2. ien/scanned/ien<x>.pdf or ien/scanned/ien<x>_reduced.pdf
-  -- [ ] Apparently, in FORMATS HTML= bytes (w/o number) means 0 bytes, i.e.
-  --     not available.
   picker:close()
-  if vim.fn.filereadable(item.file) == 0 then
-    local lines = H.fetch(item.docid)
-    if #lines > 0 then
-      H.save(item.docid, lines)
-      -- vim.print(vim.inspect({ Itms[item.idx].name, item.name }))
-      vim.cmd('edit ' .. item.file)
-      vim.cmd('set ft=rfc')
-      -- TODO: mark as downloaded and available here?
-      -- [ ] this should be Itms.update(items), here called as Itms.update({item}).
-    end
-  else
-    vim.cmd('edit ' .. item.file)
+  if not item.file then
+    Itms.fetch(item) -- upon success, sets item.file
   end
+
+  if item.file and item.file:match('%.txt$') then
+    -- edit in nvim
+    vim.cmd('edit ' .. item.file)
+  else
+    vim.cmd('!open ' .. item.file)
+  end
+
+  -- if vim.fn.filereadable(item.file) == 0 then
+  --   local lines = H.fetch(item.docid)
+  --   if #lines > 0 then
+  --     H.save(item.docid, lines)
+  --     -- vim.print(vim.inspect({ Itms[item.idx].name, item.name }))
+  --     vim.cmd('edit ' .. item.file)
+  --     -- vim.cmd('set ft=rfc')
+  --     -- TODO: mark as downloaded and available here?
+  --     -- [ ] this should be Itms.update(items), here called as Itms.update({item}).
+  --   end
+  -- else
+  --   vim.cmd('edit ' .. item.file)
+  -- end
 end
 
 function Act.preview(ctx)
