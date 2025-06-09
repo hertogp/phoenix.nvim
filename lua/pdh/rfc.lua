@@ -40,6 +40,7 @@ A picker normally searches only in item.text for a match, not in the results dis
 ---@alias stream "rfc" | "bcp" | "std" | "fyi" | "ien"
 ---@alias entry { [1]: stream, [2]: integer, [3]: string}
 ---@alias index entry[]
+---@alias docid string Unique name for an ietf document
 
 local M = {} -- TODO: review how/why H.methods require M access
 -- if not needed anymore, it can move to the [[ MODULE ]] section
@@ -47,6 +48,7 @@ local M = {} -- TODO: review how/why H.methods require M access
 --[[ DEPENDENCIES ]]
 
 ---@param name string
+---@return any dependency the required dependency or nil
 local function dependency(name)
   -- so we avoid introducing ok as a script wide variable
   local ok, var = pcall(require, name)
@@ -75,23 +77,46 @@ local H = {
   sep = '│', -- separator for local index lines: stream|id|text
 }
 
---- fetch an ietf document, returns it as a list of lines (possibly empty)
----@param docid string Unique ietf document name, e.g. bcp11 or bcp-index
-function H.fetch(docid)
+--- fetch an ietf document, save to disk, returns its filename upon success, nil otherwise
+---@param url string Url for document to retrieve
+---@return string|nil filename when successful, nil upon failure
+---@return table? return value
+function H.fetch(url, fname)
   -- return a, possibly empty, list of lines
   -- TODO: use pcall so we do not error out needlessly
-  local url = H.url(docid:lower())
-  local rv = plenary.curl.get({ url = url, accept = 'plain/text' })
+  -- accept:
+  -- txt: headers = {  "content-type: text/plain;          charset=utf-8", "content-length: 12136", },
+  -- html: headers = { "content-type: text/html;           charset=UTF-8", }
+  -- xml: headers = {  "content-type: application/rfc+xml; charset=utf-8", "content-length: 19055", }
+  -- pdf: headers = { , "content-type: application/pdf",   "content-length: 5010729", }
+  local ext = fname:match('%.[^.]+$')
+  local accept = {
+    txt = 'text/plain',
+    html = 'text/html',
+    xml = 'application/xml',
+    pdf = 'applicaiton/pdf',
+  }
+  local ok, rv = pcall(plenary.curl.get, {
+    url = url,
+    accept = accept[ext],
+    output = fname,
+  })
 
-  if rv and rv.status == 200 then
-    -- no newline's for buf set lines, no formfeed for snacks preview
-    local lines = vim.split(rv.body, '[\r\n\f]')
-    vim.notify('downloaded ' .. docid .. ' (' .. #lines .. 'lines)')
-    return lines
+  if ok then
+    return fname, rv
   else
-    vim.notify('[failed] status: ' .. rv.status .. ' for ' .. url, vim.log.levels.WARN)
-    return {}
+    vim.print(vim.inspect({ 'fetch error', rv }))
+    return nil, rv
   end
+  -- if and rv and rv.status == 200 then
+  --   -- no newline's for buf set lines, no formfeed for snacks preview
+  --   local lines = vim.split(rv.body, '[\r\n\f]')
+  --   vim.notify('downloaded ' .. docid .. ' (' .. #lines .. 'lines)')
+  --   return lines
+  -- else
+  --   vim.notify('[failed] status: ' .. rv.status .. ' for ' .. url, vim.log.levels.WARN)
+  --   return {}
+  -- end
 end
 
 --- find root dir or use cfg.top, fallback to stdpath data dir
@@ -193,7 +218,6 @@ function H.url(docid, ext)
   -- docid is either <stream>-index or <stream><nr>
   -- <stream> should be one of rfc, std, bcp, fyi or ien (review: enforce?)
   local stream = vim.split(docid, '[%d-]')[1]:lower()
-  vim.print(vim.inspect({ 'H.url', docid, stream }))
   ext = ext or 'txt'
   local base = 'https://www.rfc-editor.org'
 
@@ -213,7 +237,7 @@ local Idx = {}
 -- returns a list: { {stream, id, text}, .. } or nil on failure
 ---@param docid string Unique ietf document name, e.g. bcp11 or bcp-index
 ---@return index index A (possibly empty) list of partly parsed index entries, { {stream, nr, text}, ..}
-function Idx.curl(docid)
+function Idx.fetch(docid)
   -- retrieve raw content from the ietf
   docid = docid:lower() -- just to be sure
   local url = H.url(docid, 'txt')
@@ -304,9 +328,9 @@ function Idx:get(stream)
   end
 
   if ttl < 1 then
-    idx = Idx.curl(docid) or readfile()
+    idx = Idx.fetch(docid) or readfile()
   else
-    idx = readfile() or Idx.curl(docid)
+    idx = readfile() or Idx.fetch(docid)
   end
 
   if #idx < 1 then vim.notify('[warn] no index available for ' .. stream, vim.log.levels.WARN) end
@@ -371,6 +395,13 @@ local Itms = {
     'xml',
     'pdf',
   },
+
+  ACCEPT = { -- accept headers for fetching
+    txt = 'text/plain',
+    html = 'text/html',
+    xml = 'application/xml',
+    pdf = 'applicaiton/pdf',
+  },
 }
 
 --- Builds self.list of picker items, from 1 or more streams; returns #items
@@ -416,6 +447,27 @@ function Itms.format(item)
   return ret
 end
 
+---@param item table the item to retrieve from the rfc editor
+---@return table item on success, item.file is set to the local filename; nil otherwise
+function Itms.fetch(item)
+  -- get an item from the ietf and save it on disk (if possible)
+  local formats = item.format:lower()
+  for _, ext in Itms.FORMATS do
+    -- ignore item.format, that is not always accurate; just take 1st available format
+    local url = H.url(item.docid, ext)
+    local fname = H.fname(item.docid, ext)
+    local opts = { url = url, accept = Itms.ACCEPT[ext] or 'text/plain', output = fname }
+    local ok, rv = pcall(plenary.curl.get, opts)
+    if ok then
+      vim.notify(string.format('download %s.%s succeeded', item.docid, ext))
+      item.file = fname
+      return item
+    end
+  end
+  vim.notify(string.format('download %s failed', item.docid))
+  item.file = nil
+  return item
+end
 --- create a new picker item for given (idx, {stream, id, text})
 ---@param idx integer
 ---@param entry entry
@@ -451,7 +503,6 @@ function Itms.set_file(item)
   item.file = nil -- nothing found yet
   for _, ext in ipairs(Itms.FORMATS) do
     local fname = H.fname(item.docid, ext)
-    vim.print(vim.inspect({ 'set_file', item.docid, fname }))
     if fname and vim.fn.filereadable(fname) == 1 then
       item.file = fname
       break
@@ -600,10 +651,8 @@ end
 --     sometimes you want to see the html/xml in neovim itself
 
 local Act = {
-  -- Act.actions.func defined later on, as per reference by win.list/input.keys
-  actions = {},
+  actions = {}, -- functions to be defined later on, as referenced by win.list/input.keys
   -- see `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/config/defaults.lua`
-  -- around Line 200, win = { input = { keys = {..}}, list = { keys = {..}}}
   win = {
     list = { -- the results list window
       keys = {
@@ -761,7 +810,12 @@ function M.search(streams)
   })
 end
 
-function M.test() end
+function M.test(docid, ext)
+  local fname = H.fname(docid, ext)
+  local url = H.url(docid, ext)
+  local dname, rv = H.fetch(url, fname)
+  vim.print(vim.inspect({ 'test', docid, url, rv, dname }))
+end
 
 function M.select()
   local choices = Itms.FORMATS
