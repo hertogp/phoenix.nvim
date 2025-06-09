@@ -299,8 +299,7 @@ function Idx:get(stream)
   ---@return index | nil
   local readfile = function()
     -- try to read index from local file
-    local rv
-    ok, rv = pcall(vim.fn.readfile, fname)
+    local ok, rv = pcall(vim.fn.readfile, fname)
     if ok and #rv > 0 then
       for _, line in ipairs(rv) do
         idx[#idx + 1] = vim.split(line, H.sep)
@@ -631,25 +630,20 @@ local Act = {
 
 function Act.actions.download(picker, item)
   -- func names are tied to those mentioned in win.list/input key settings
-  vim.print({ 'download item', vim.inspect(item) })
-  vim.print(vim.inspect({ 'download selected is', picker.list.selected }))
+  -- vim.print(vim.inspect({ 'download item', vim.inspect(item) }))
+  -- vim.print(vim.inspect({ 'download selected is', picker.list.selected }))
 end
 
 function Act.actions.download_selection(picker, item)
   -- item is current item in the list
   -- picker.list.selected is list of selected items
   local x = picker.list.selected
-  vim.print({
-    'download selection (' .. #x .. 'items)',
-    'item is',
-    vim.inspect(item),
-    'selection is',
-    vim.inspect(x),
-  })
+  -- vim.print('selected ' .. #x .. ' items')
 end
 
 function Act.actions.echo(picker)
-  vim.print({ 'echo', vim.inspect(picker) })
+  -- vim.print('echo called')
+  -- vim.print(vim.inspect({ 'echo', vim.inspect(picker) }))
 end
 
 function Act.confirm(picker, item)
@@ -669,7 +663,7 @@ function Act.confirm(picker, item)
     local lines = H.fetch(item.stream, item.id)
     if #lines > 0 then
       H.save(item.stream, item.id, lines)
-      vim.print(vim.inspect({ Itms[item.idx].name, item.name }))
+      -- vim.print(vim.inspect({ Itms[item.idx].name, item.name }))
       vim.cmd('edit ' .. item.file)
       vim.cmd('set ft=rfc')
       -- TODO: mark as downloaded and available here?
@@ -786,7 +780,7 @@ function M.select()
     prompt = 'Select extension to download',
   }, function(choice)
     if choice == nil then choice = 'cancelled' end
-    vim.print('your choice: ' .. choice)
+    -- vim.print('your choice: ' .. choice)
   end)
 end
 
@@ -819,7 +813,7 @@ function M.test_bit(stream, id)
     if bit.band(status, mask) ~= 0 then fext[#fext + 1] = ext end
   end
 
-  vim.print(stream .. id .. ' available formats are: ' .. vim.inspect(fext))
+  -- vim.print(stream .. id .. ' available formats are: ' .. vim.inspect(fext))
 end
 
 vim.keymap.set('n', '<space>r', ":lua require'pdh.rfc'.reload()<cr>")
