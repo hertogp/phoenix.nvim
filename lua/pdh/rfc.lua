@@ -717,9 +717,16 @@ local Act = {
 }
 
 function Act.actions.download(picker, item)
-  -- func names are tied to those mentioned in win.list/input key settings
-  -- vim.print(vim.inspect({ 'download item', vim.inspect(item) }))
-  -- vim.print(vim.inspect({ 'download selected is', picker.list.selected }))
+  Itms.fetch(item) -- upon success, sets item.file
+
+  if item.file then
+    local ok, lines = pcall(vim.fn.readfile, item.file)
+    picker.list:update({ force = true })
+    picker.preview:set_lines(lines)
+    picker.preview:set_title(item.title)
+    picker.preview:highlight({ ft = 'rfc' })
+  end
+  -- picker.preview:update(picker)
 end
 
 function Act.actions.download_selection(picker, item)
@@ -744,22 +751,9 @@ function Act.confirm(picker, item)
     -- edit in nvim
     vim.cmd('edit ' .. item.file)
   else
+    -- TODO: Brave browser can't access .local/data files ..
     vim.cmd('!open ' .. item.file)
   end
-
-  -- if vim.fn.filereadable(item.file) == 0 then
-  --   local lines = H.fetch(item.docid)
-  --   if #lines > 0 then
-  --     H.save(item.docid, lines)
-  --     -- vim.print(vim.inspect({ Itms[item.idx].name, item.name }))
-  --     vim.cmd('edit ' .. item.file)
-  --     -- vim.cmd('set ft=rfc')
-  --     -- TODO: mark as downloaded and available here?
-  --     -- [ ] this should be Itms.update(items), here called as Itms.update({item}).
-  --   end
-  -- else
-  --   vim.cmd('edit ' .. item.file)
-  -- end
 end
 
 --[[ Module ]]
