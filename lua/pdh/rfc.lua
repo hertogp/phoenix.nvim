@@ -73,18 +73,18 @@ local H = {
   sep = '│', -- separator for local index lines: stream|id|text
 }
 
---- fetch an ietf document, returns (possibly empty) list of lines
----@param stream stream
-function H.fetch(stream, id)
+--- fetch an ietf document, returns it as a list of lines (possibly empty)
+---@param docid string Unique document name of <stream><nr>, e.g. bcp11
+function H.fetch(docid)
   -- return a, possibly empty, list of lines
   -- TODO: use pcall so we do not error out needlessly
-  local url = H.url(stream, id)
+  local url = H.url(docid:lower())
   local rv = plenary.curl.get({ url = url, accept = 'plain/text' })
 
   if rv and rv.status == 200 then
     -- no newline's for buf set lines, no formfeed for snacks preview
     local lines = vim.split(rv.body, '[\r\n\f]')
-    vim.notify('downloaded ' .. stream .. ' (' .. #lines .. 'lines)')
+    vim.notify('downloaded ' .. docid .. ' (' .. #lines .. 'lines)')
     return lines
   else
     vim.notify('[failed] status: ' .. rv.status .. ' for ' .. url, vim.log.levels.WARN)
@@ -110,35 +110,26 @@ function H.dir(spec)
   return vim.fs.joinpath(path, top)
 end
 
----@param stream stream
----@param id string|number|nil
+---@param docid string Unique document name <stream><nr>, e.g. bcp11
 ---@param ext string
-function H.fname(stream, id, ext)
-  -- return full file path for (stream, id) or nil
-  -- keep stream and ext lower case at all times
-  id = id or 'index'
-  ext = ext and ext:lower() or 'txt'
-  stream = stream and stream:lower()
+function H.fname(docid, ext)
+  -- return full file path for docid with extension or nil
   local fdir, fname
   local cfg = M.config
   local top = M.config.top or H.top
 
-  if id == 'index' then
+  if docid:match('index$') then
     -- it's an document index, ext is always txt
-    fdir = cfg.cache
-    fname = vim.fs.joinpath(fdir, top, string.format('%s-index.%s', stream, 'txt'))
+    fname = vim.fs.joinpath(cfg.cache, top, string.format('%s.%s', docid:lower(), 'txt'))
+
     return vim.fs.normalize(fname)
   end
 
-  -- id is an ietf document number
-  id = tonumber(id) -- eliminate leading zero's (if any)
-  assert(id)
-
   -- find fdir based on markers
+  local stream = docid:match('^[^%d-]+')
   if type(cfg.data) == 'table' then fdir = vim.fs.root(0, cfg.data) end
-
   fdir = fdir or cfg.data or vim.fn.stdpath('data')
-  fname = vim.fs.joinpath(fdir, top, stream, string.format('%s%d.%s', stream, id, ext))
+  fname = vim.fs.joinpath(fdir, top, stream, docid:lower() .. '.' .. ext)
 
   return vim.fs.normalize(fname)
 end
@@ -167,12 +158,12 @@ function H.modeline(spec)
 end
 
 -- save to disk, creating directory as needed
-function H.save(stream, id, lines)
-  local fname = H.fname(stream, id, 'txt')
+function H.save(docid, lines)
+  local fname = H.fname(docid, 'txt')
 
   if fname == nil then return fname end
 
-  if id ~= 'index' then
+  if not docid:match('index$') then
     -- only add modeline for rfc, bcp etc.. not for index files
     lines[#lines + 1] = '/* vim: set ft=rfc: */'
   end
@@ -186,27 +177,22 @@ function H.save(stream, id, lines)
   local dir = vim.fs.dirname(fname)
   vim.fn.mkdir(dir, 'p')
   if vim.fn.writefile(lines, fname) < 0 then
-    vim.notify('could not write index ' .. stream .. ' to ' .. fname, vim.log.levels.ERROR)
+    vim.notify('could not write ' .. docid .. ' to ' .. fname, vim.log.levels.ERROR)
   end
 
   return fname
 end
 
-function H.url(stream, id, ext)
+function H.url(docid, ext)
   -- returns url for stream document or its index
-
+  -- docid is either <stream>-index or <stream><nr>
+  -- <stream> should be one of rfc, std, bcp, fyi or ien (review: enforce?)
+  local stream = string.match(docid, '^[^%d-]+'):lower()
+  vim.print(vim.inspect({ 'H.url', docid, stream }))
   ext = ext or 'txt'
   local base = 'https://www.rfc-editor.org'
-  local fmt
-  if id == 'index' then
-    fmt = '%s/%s/%s-%s.%s' -- base/stream/stream-index.ext
-  else
-    id = tonumber(id) -- assume pos integer, no floats
-    assert(id)
-    fmt = '%s/%s/%s%d.%s' -- base/stream/stream<id>.ext
-  end
 
-  return string.format(fmt, base, stream, stream, id, ext)
+  return string.format('%s/%s/%s.%s', base, stream, docid, ext)
 end
 
 --[[ INDEX ]]
@@ -220,10 +206,14 @@ local Idx = {}
 
 -- retrieves (and caches) an index for the given `stream` from the ietf
 -- returns a list: { {stream, id, text}, .. } or nil on failure
----@return index | nil
-function Idx.curl(stream)
+---@param docid string Unique document name for an index <stream>-index, e.g. bcp-index
+---@return index index A (possibly empty) list of partly parsed index entries, { {stream, nr, text}, ..}
+function Idx.curl(docid)
   -- retrieve raw content from the ietf
-  local url = H.url(stream, 'index')
+  docid = docid:lower() -- just to be sure
+  local url = H.url(docid, 'txt')
+  local stream = vim.split(docid, '-')[1]
+  local idx = {} -- parsed content { {s, n, t}, ... }
 
   -- retrieve index from the ietf
   local lines = {}
@@ -234,7 +224,7 @@ function Idx.curl(stream)
     lines = vim.split(rv.body, '[\r\n\f]')
   else
     vim.notify('[warn] download failed: [' .. rv.status .. '] ' .. url, vim.log.levels.ERROR)
-    return nil
+    return idx -- will be {}
   end
 
   -- parse assembled line into {stream, id, text}
@@ -249,7 +239,6 @@ function Idx.curl(stream)
   end
 
   -- assemble and parse lines
-  local idx = {} -- parsed content { {s, n, t}, ... }
   local acc = '' -- accumulated sofar
   local max = stream == 'ien' and 3 or 1 -- allow for leading ws in ien index
   for _, line in ipairs(lines) do
@@ -276,12 +265,10 @@ function Idx.curl(stream)
     for _, entry in ipairs(idx) do
       lines[#lines + 1] = table.concat(entry, H.sep)
     end
-    H.save(stream, 'index', lines)
-  else
-    return nil -- fail
+    H.save(docid, lines)
   end
 
-  return idx -- { {stream, nr, title }, .. }
+  return idx -- { {stream, nr, title }, .. } or empty list
 end
 
 -- adds an index (local/remote) for a stream (possibly update cache)
@@ -292,7 +279,8 @@ function Idx:get(stream)
   -- get a single stream, either from disk or from ietf
   -- NOTE: we do not check if stream is already present in self
   local idx = {} ---@type index
-  local fname = H.fname(stream, 'index', 'txt')
+  local docid = stream:lower() .. '-index'
+  local fname = H.fname(docid, 'txt')
   local ftime = vim.fn.getftime(fname) -- if file unreadable, then ftime = -1
   local ttl = (M.config.ttl or 0) + ftime - vim.fn.localtime()
 
@@ -311,9 +299,9 @@ function Idx:get(stream)
   end
 
   if ttl < 1 then
-    idx = Idx.curl(stream) or readfile()
+    idx = Idx.curl(docid) or readfile()
   else
-    idx = readfile() or Idx.curl(stream)
+    idx = readfile() or Idx.curl(docid)
   end
 
   if #idx < 1 then vim.notify('[warn] no index available for ' .. stream, vim.log.levels.WARN) end
@@ -434,14 +422,13 @@ function Itms.new(idx, entry)
     item = {
       idx = idx,
       score = idx,
-      -- file = <to be updated later>, if set, item has local file
-      text = text,
-      title = string.format('%s%s', stream, id):upper(), -- title of preview window
+      text = text, -- used by snack matcher
+      title = string.format('%s%s', stream, id):upper(), -- used by snack as preview win title
 
-      -- extra fields to search on
+      -- extra fields to search on using > field:term in search prompt
+      docid = string.format('%s%s', stream:lower(), tonumber(id)),
       name = string.format('%s%d', stream, id):upper(),
       stream = stream:lower(),
-      id = id,
     }
 
     -- update fields in item
@@ -458,7 +445,8 @@ end
 function Itms.set_file(item)
   item.file = nil -- nothing found yet
   for _, ext in ipairs(Itms.FORMATS) do
-    local fname = H.fname(item.stream, item.id, ext)
+    local fname = H.fname(item.docid, ext)
+    vim.print(vim.inspect({ 'set_file', item.docid, fname }))
     if fname and vim.fn.filereadable(fname) == 1 then
       item.file = fname
       break
@@ -558,9 +546,9 @@ function Itms.preview(item)
   local url
   local ext = vim.split(item.format, ',%s*')[1] -- for (possible) url
   if #ext == 0 then
-    url = H.url(item.stream, item.id, 'txt') .. ' (*maybe*)'
+    url = H.url(item.docid, 'txt') .. ' (*maybe*)'
   else
-    url = H.url(item.stream, item.id, ext)
+    url = H.url(item.docid, ext)
   end
 
   local lines = {
@@ -660,9 +648,9 @@ function Act.confirm(picker, item)
   --     not available.
   picker:close()
   if vim.fn.filereadable(item.file) == 0 then
-    local lines = H.fetch(item.stream, item.id)
+    local lines = H.fetch(item.docid)
     if #lines > 0 then
-      H.save(item.stream, item.id, lines)
+      H.save(item.docid, lines)
       -- vim.print(vim.inspect({ Itms[item.idx].name, item.name }))
       vim.cmd('edit ' .. item.file)
       vim.cmd('set ft=rfc')
@@ -773,7 +761,7 @@ function M.test() end
 function M.select()
   local choices = Itms.FORMATS
   for idx, v in ipairs(choices) do
-    v = v .. '|' .. ' ' .. H.fname('rfc', 123, v)
+    v = v .. '|' .. ' ' .. H.fname('rfc123', v)
     choices[idx] = v
   end
   vim.ui.select(choices, {
@@ -784,15 +772,14 @@ function M.select()
   end)
 end
 
-function M.test_bit(stream, id)
+function M.test_bit(docid)
   -- status could also be either nil or 1st ext found (txt, html etc..)
   -- or even nil vs { ext's }
   -- then there would be no need for bit op shenanigans
   -- snacks.input overrides vim.ui.input
   -- check out snacks.picker.select, snacks.util.spinner, plenary popup,
   -- plenary has a plenary.select
-  stream = stream and stream:lower() or 'rfc'
-  id = id or 1
+  docid = docid and docid:lower() or 'rfc1'
   bit = require 'bit'
 
   local masks = {
@@ -804,7 +791,7 @@ function M.test_bit(stream, id)
 
   local status = 0x00
   for ext, mask in pairs(masks) do
-    local fname = H.fname(stream, id, ext)
+    local fname = H.fname(docid, ext)
     if vim.fn.filereadable(fname) == 1 then status = bit.bor(status, mask) end
   end
 
