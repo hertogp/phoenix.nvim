@@ -183,6 +183,10 @@ function H.save(docid, lines)
   return fname
 end
 
+--- return a url for given `docid` and `ext` (defaults to txt)
+---@param docid string
+---@param ext string
+---@return string url the url for given `docid` and `ext`
 function H.url(docid, ext)
   -- returns url for stream document or its index
   -- docid is either <stream>-index or <stream><nr>
