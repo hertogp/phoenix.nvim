@@ -451,17 +451,18 @@ end
 ---@return table item on success, item.file is set to the local filename; nil otherwise
 function Itms.fetch(item)
   -- get an item from the ietf and save it on disk (if possible)
-  local formats = item.format:lower()
-  for _, ext in Itms.FORMATS do
+  for _, ext in ipairs(Itms.FORMATS) do
     -- ignore item.format, that is not always accurate; just take 1st available format
     local url = H.url(item.docid, ext)
     local fname = H.fname(item.docid, ext)
     local opts = { url = url, accept = Itms.ACCEPT[ext] or 'text/plain', output = fname }
     local ok, rv = pcall(plenary.curl.get, opts)
-    if ok then
-      vim.notify(string.format('download %s.%s succeeded', item.docid, ext))
+    if ok and rv and rv.status == 200 then
+      vim.notify(string.format('download %s.%s succeeded (http: %s)', item.docid, ext, rv.status))
       item.file = fname
       return item
+    else
+      vim.notify(string.format('document %s.%s not found (http: %s)', item.docid))
     end
   end
   vim.notify(string.format('download %s failed', item.docid))
@@ -810,11 +811,9 @@ function M.search(streams)
   })
 end
 
-function M.test(docid, ext)
-  local fname = H.fname(docid, ext)
-  local url = H.url(docid, ext)
-  local dname, rv = H.fetch(url, fname)
-  vim.print(vim.inspect({ 'test', docid, url, rv, dname }))
+function M.test(docid)
+  local itm = Itms.fetch({ docid = docid })
+  vim.print(vim.inspect({ 'test', docid, itm }))
 end
 
 function M.select()
