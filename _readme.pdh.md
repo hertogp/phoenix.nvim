@@ -11,10 +11,14 @@ date: today
 - [-] four
 - [c] cancelled
 
-~ohoh~
-'~ohoh~'
-~/home/page
-~/homepage
+"~/home/page"
+"~/homepage"
+"~/homepage"
+"~/homepage"
+"~/homepage"
+"~/homepage"
+"~/homepage"
+"~/homepage"
 
 
 

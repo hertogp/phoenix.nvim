@@ -45,20 +45,22 @@ local M = {} -- TODO: review how/why H.methods require M access
 -- if not needed anymore, it can move to the [[ MODULE ]] section
 
 --[[ DEPENDENCIES ]]
-
-local ok, plenary, snacks
-
-ok, plenary = pcall(require, 'plenary')
-if not ok then
-  error('plenary, a dependency, is missing')
-  return
+local function dependency(name)
+  -- so we avoid introducing ok as a script wide variable
+  local ok, var = pcall(require, name)
+  if not ok then
+    vim.notify('[error] missing dependency: ' .. name, vim.log.levels.ERROR)
+    return
+  end
+  return var
 end
 
-ok, snacks = pcall(require, 'snacks')
-if not ok then
-  error('snacks, a dependency, is missing')
-  return
-end
+-- check all dependencies before bailing (if applicable)
+local plenary = dependency('plenary')
+local snacks = dependency('snacks')
+-- if one of the dependencies are not there, bail
+if not plenary then return end
+if not snacks then return end
 
 --[[ HELPERS ]]
 -- H.methods assume caller already checked validity of arguments supplied
@@ -102,9 +104,7 @@ function H.dir(spec)
     path = vim.fs.normalize(spec)
   end
 
-  if path == nil or vim.fn.filereadable(path) == 0 then
-    path = vim.fn.stdpath('data')
-  end
+  if path == nil or vim.fn.filereadable(path) == 0 then path = vim.fn.stdpath('data') end
 
   -- path = (path and vim.fn.filereadable(path)) or vim.fn.stdpath('data')
   return vim.fs.joinpath(path, top)
@@ -135,9 +135,7 @@ function H.fname(stream, id, ext)
   assert(id)
 
   -- find fdir based on markers
-  if type(cfg.data) == 'table' then
-    fdir = vim.fs.root(0, cfg.data)
-  end
+  if type(cfg.data) == 'table' then fdir = vim.fs.root(0, cfg.data) end
 
   fdir = fdir or cfg.data or vim.fn.stdpath('data')
   fname = vim.fs.joinpath(fdir, top, stream, string.format('%s%d.%s', stream, id, ext))
@@ -162,9 +160,7 @@ function H.modeline(spec)
         vim.notify('modeline: ignoring unknown option ' .. vim.inspect(k), vim.log.levels.WARN)
       end
     end
-    if #opts > 0 then
-      return string.format('/* vim: set%s: */', opts)
-    end
+    if #opts > 0 then return string.format('/* vim: set%s: */', opts) end
   end
 
   return nil -- do not add modeline
@@ -174,9 +170,7 @@ end
 function H.save(stream, id, lines)
   local fname = H.fname(stream, id, 'txt')
 
-  if fname == nil then
-    return fname
-  end
+  if fname == nil then return fname end
 
   if id ~= 'index' then
     -- only add modeline for rfc, bcp etc.. not for index files
@@ -250,9 +244,7 @@ function Idx.curl(stream)
     -- return a parsed accumulated entry line (if any) or nil upon failure
     local nr, title = string.match(line, '^(%d+)%s+(.*)')
     nr = tonumber(nr) -- eleminate any leading zero's
-    if nr ~= nil then
-      return { stream, nr, title }
-    end
+    if nr ~= nil then return { stream, nr, title } end
     return nil -- so it actually won't add the entry
   end
 
@@ -325,9 +317,7 @@ function Idx:get(stream)
     idx = readfile() or Idx.curl(stream)
   end
 
-  if #idx < 1 then
-    vim.notify('[warn] no index available for ' .. stream, vim.log.levels.WARN)
-  end
+  if #idx < 1 then vim.notify('[warn] no index available for ' .. stream, vim.log.levels.WARN) end
 
   for _, entry in ipairs(idx) do
     table.insert(self, entry)
@@ -405,9 +395,7 @@ function Itms:from(streams)
   -- refill
   Idx:from(streams) -- { {stream, nr, text}, .. }
 
-  if #Idx == 0 then
-    return nil
-  end
+  if #Idx == 0 then return nil end
 
   for idx, entry in ipairs(Idx) do
     table.insert(self, Itms.new(idx, entry))
@@ -523,9 +511,7 @@ function Itms.set_tags(item)
   -- local known = { 'txt', 'html', 'pdf', 'xml' } -- TODO: make this an Itms.FORMAT constant list
   local seen = {}
   for _, fmt in ipairs(Itms.FORMATS) do
-    if item.format:match(fmt) then
-      seen[#seen + 1] = fmt
-    end
+    if item.format:match(fmt) then seen[#seen + 1] = fmt end
   end
   if #seen > 0 then
     -- keep the default '-' if no formats were found
@@ -727,7 +713,7 @@ M.config = {
   cache = vim.fn.stdpath('cache'), -- store indices only once
   data = vim.fn.stdpath('data'), -- path or markers
   top = 'ietf.org',
-  ttl = 60, -- time-to-live [second], before downloading again
+  ttl = 4 * 3600, -- time-to-live [second], before downloading again
   edit = 'tabedit ',
   symbol = 'smiley', -- others are document, whatever
   -- either set ft by vim.cmd after opening it, or add a modeline
@@ -799,9 +785,7 @@ function M.select()
   vim.ui.select(choices, {
     prompt = 'Select extension to download',
   }, function(choice)
-    if choice == nil then
-      choice = 'cancelled'
-    end
+    if choice == nil then choice = 'cancelled' end
     vim.print('your choice: ' .. choice)
   end)
 end
@@ -827,19 +811,17 @@ function M.test_bit(stream, id)
   local status = 0x00
   for ext, mask in pairs(masks) do
     local fname = H.fname(stream, id, ext)
-    if vim.fn.filereadable(fname) == 1 then
-      status = bit.bor(status, mask)
-    end
+    if vim.fn.filereadable(fname) == 1 then status = bit.bor(status, mask) end
   end
 
   local fext = {}
   for ext, mask in pairs(masks) do
-    if bit.band(status, mask) ~= 0 then
-      fext[#fext + 1] = ext
-    end
+    if bit.band(status, mask) ~= 0 then fext[#fext + 1] = ext end
   end
 
   vim.print(stream .. id .. ' available formats are: ' .. vim.inspect(fext))
 end
+
+vim.keymap.set('n', '<space>r', ":lua require'pdh.rfc'.reload()<cr>")
 
 return M
