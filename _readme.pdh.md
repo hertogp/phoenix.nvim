@@ -11,6 +11,11 @@ date: today
 - [-] four
 - [c] cancelled
 
+~ohoh~
+'~ohoh~'
+~/home/page
+~/homepage
+
 
 
 ## Markdown samples

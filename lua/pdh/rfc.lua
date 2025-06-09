@@ -13,6 +13,11 @@ TODO: these need some TLC
 - [x] parse an entry into topic|nr|title|status|formats|doi|updates|updated_by|obsoletes|obsoleted_by
       - status and other known (label ..) are parsed into tags for an entry & removed from display
       - this is parsed when loading index for searching, rather than when saving index to disk
+- [ ] How to handle the (possibly) formats:
+      - default to first Itms.FORMATS, if available then no questions asked
+      - if not available, use the next one
+      - preview: if txt is available, use that, otherwise preview the item
+      - open: use first format available, txt opened in nvim, rest is !open'd
 - [ ] formats other than TXT are redirected to browser w/ a URL (.pdf, .html etc..) or the info page
       e.g. https://www.editor-rfc.org/info/rfc8  (no extension)
 - [ ] info page the default when choosing to browse for an rfc, rather than downloading it?
@@ -410,6 +415,8 @@ function Itms:from(streams)
   return self
 end
 
+---@param item table
+---@return table[] parts of the line to display in results list window for `item`
 function Itms.format(item)
   -- format an item to display in picker list
   -- `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/format.lua`
@@ -432,7 +439,7 @@ end
 --- create a new picker item for given (idx, {stream, id, text})
 ---@param idx integer
 ---@param entry entry
----@return table | nil
+---@return table | nil item fields parsed from an index entry's text or nil
 function Itms.new(idx, entry)
   local item = nil -- returned if entry is malformed
   local stream, id, text = unpack(entry)
@@ -443,7 +450,7 @@ function Itms.new(idx, entry)
     item = {
       idx = idx,
       score = idx,
-      file = fname, -- used for previewing file if present
+      -- file = <to be updated later>, if set, item has local file
       text = text,
       title = string.format('%s%s', stream, id):upper(), -- title of preview window
 
@@ -455,15 +462,34 @@ function Itms.new(idx, entry)
       symbol = Itms.ICONS[exists] or '? ',
     }
 
-    item = Itms.tags(item)
+    -- update fields in item
+    Itms.set_tags(item)
+    Itms.set_file(item)
   end
   return item -- if nil, won't get added to the list
 end
 
---- extracts known `tags` from an entry's `text` and add as named fields
+--- Sets item.file to the first filename on disk (if any) in order of Itms.FORMATS
 ---@param item table
----@return table The item with tags added (if any) which are removed from its `text`
-function Itms.tags(item)
+---@return table item sets item.file is either the first filename found or nil (missing)
+function Itms.set_file(item)
+  local name = nil -- used as-is if nothing found
+  for _, ext in ipairs(Itms.FORMATS) do
+    local fname = H.fname(item.stream, item.id, ext)
+    vim.print(vim.inspect({ item.stream, item.id, ext, fname }))
+    if fname and vim.fn.filereadable(fname) then
+      name = fname
+      break
+    end
+  end
+  item.file = name -- also removes any item.file if nothing was found
+  return item
+end
+
+--- extracts known `tags` from an entry's `text` and adds them as named fields
+---@param item table
+---@return table item with parsed tags added as extra fields
+function Itms.set_tags(item)
   -- take out all (word <stuff>) for known words
   -- (Status: _), ..., (Obsoletes _) (Obsoleted by _), ...
   local tags = {
@@ -542,7 +568,10 @@ function Itms.preview(item)
   -- called when item not locally available
   local title = tostring(item.title)
   local ft = 'markdown'
+  local cache = vim.fs.joinpath(vim.fn.fnamemodify(M.config.cache, ':p:~:.'), M.config.top, '/')
+  local data = vim.fs.joinpath(vim.fn.fnamemodify(M.config.data, ':p:~:.'), M.config.top, '/')
   local fmt2cols = '   %-15s%s'
+  local fmt2path = '   %-15s`%s`' -- prevent strikethrough's
   local f = string.format
   -- REVIEW: tags are not consistent: plurals should always be lists of strings?
   local ext = vim.split(item.format, ', *')[1] or 'txt'
@@ -572,10 +601,11 @@ function Itms.preview(item)
     f(fmt2cols, 'UPDATED by', item.updated_by:upper()),
     '',
     '',
-    '### URI',
+    '### PATH',
     '',
-    f(fmt2cols, 'PATH', vim.fn.fnamemodify(item.file, ':p:~:.')),
-    f(fmt2cols, 'URL', H.url(item.stream, item.id, ext)),
+    f(fmt2path, 'CACHE', cache),
+    f(fmt2path, 'DATA', data),
+    f(fmt2path, 'URL', H.url(item.stream, item.id, ext)),
   }
 
   return title, ft, lines
@@ -692,7 +722,6 @@ end
 M.config = {
   cache = vim.fn.stdpath('cache'), -- store indices only once
   data = vim.fn.stdpath('data'), -- path or markers
-  -- data = { '.git', '.gitignore' },
   top = 'ietf.org',
   ttl = 60, -- time-to-live [second], before downloading again
   edit = 'tabedit ',
