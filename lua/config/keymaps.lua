@@ -93,6 +93,4 @@ nmap('<leader>dl', "<Cmd>lua require'dap'.run_last()<CR>", 'debug, run last')
 
 --[[ development ]]
 
-nmap('<leader>fr', ":lua require('pdh.rfc').search('rfc')<cr>", "find ietf RFC's")
-nmap('<leader>fb', ":lua require('pdh.rfc').search('bcp')<cr>", "find ietf BCP's")
-nmap('<leader>fs', ":lua require('pdh.rfc').search('std')<cr>", "find ietf STD's")
+nmap('<leader>rs', ":lua require('pdh.rfc').search({'rfc', 'std', 'bcp'})<cr>", "find ietf RFC/STD/BCP's")

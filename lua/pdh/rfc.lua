@@ -31,8 +31,25 @@ NOTE:
 - matcher:
   * with field:pattern, this matches against item.field=..., so item.author=concat(tags.authors)
     - a nested field (like tags.date won't be used as such a match)
-A picker normally searches only in item.text for a match, not in the results display list lines!
--
+- A picker normally searches only in item.text for a match, not in the results display list lines!
+- Example:  > file:. date:may date:2009 -> all items with an item.file on disk dated may 2009
+# rfc-editor.org - links
+- `:!open https://www.rfc-editor.org/info/rfc8`
+- `:!open https://www.rfc-editor.org/rfc/`  (also has /std, /bcp, /fyi, /ien; txt, html, xml, json, ps)
+- `:!open https://www.rfc-editor.org/std/`
+- `:!open https://www.rfc-editor.org/bcp/`  (txt)
+- `:!open https://www.rfc-editor.org/ien/`
+- `:!open https://www.rfc-editor.org/fyi/` (txt, html, ps)
+- `:!open https://www.rfc-editor.org/rpc/wiki/doku.php?id=rfc_files_available`
+- `:!open https://www.rfc-editor.org/rfc/inline-errata/` if errata exists: ..rfc/inline-errata/<docid>.html
+- `:!open https://www.rfc-editor.org/rfc/pdfrfc/`  rfc/pdfrfc/<docid>.txt.pdf  (only rfc's)
+
+Examples
+- `:!open https://www.rfc-editor.org/rfc/rfc5234.txt` (also: .html, .json (metadata) ..)
+- `:!open https://www.rfc-editor.org/rfc/rfc5234.json`
+- `:!open https://www.rfc-editor.org/errata/rfc5234`  (this is an html page!)
+- `:!open `
+
 --]]
 
 --[[ TYPES ]]
@@ -451,7 +468,6 @@ end
 ---@return table item on success, item.file is set to the local filename; nil otherwise
 function Itms.fetch(item)
   -- get an item from the ietf and save it on disk (if possible)
-  -- TODO: for txt-files, remove the formfeeds, or preview won't work
   for _, ext in ipairs(Itms.FORMATS) do
     -- ignore item.format, that is not always accurate; just take 1st available format
     local url = H.url(item.docid, ext)
@@ -459,7 +475,6 @@ function Itms.fetch(item)
     local opts = { url = url, accept = Itms.ACCEPT[ext] or 'text/plain', output = fname }
     local ok, rv = pcall(plenary.curl.get, opts)
     if ok and rv and rv.status == 200 then
-      vim.notify(string.format('download %s.%s succeeded (http: %s)', item.docid, ext, rv.status))
       item.file = fname
       return item
     else
@@ -650,15 +665,19 @@ function Itms.details(item)
 end
 
 function Itms.preview(ctx)
-  -- gets called to fill the preview window (if defined by user)
-  -- each time the ctx.item is the current one in the results list
+  -- called when ctx.item becomes the current one in the results list
   -- see snacks.picker.core.preview for the preview funcs used below
-  if ctx.item.docid == 'rfc8' then
-    vim.print('Itms.preview called for ' .. ctx.item.docid) --
+
+  local function set_preview(title, lines, ft)
+    ctx.preview:reset()
+    ctx.preview:set_lines(lines)
+    ctx.preview:set_title(title)
+    ctx.preview:highlight({ ft = ft })
   end
 
   if ctx.item.file and ctx.item.file:match('%.txt$') then
     -- preview ourselves, since snacks trips over any formfeeds in the txt-file
+    -- TODO: this reads the file every time, could cache that in _preview
     local ok, lines = pcall(vim.fn.readfile, ctx.item.file)
     local title, ft
 
@@ -669,28 +688,18 @@ function Itms.preview(ctx)
       title = ctx.item.docid:upper()
       ft = 'rfc' -- since we're looking at the text itself
     end
-
-    ctx.preview:reset()
-    ctx.preview:set_lines(lines)
-    ctx.preview:set_title(title)
-    ctx.preview:highlight({ ft = ft })
-  elseif ctx.item.missing then
+    set_preview(title, lines, ft)
+  elseif ctx.item._preview then
     -- we've seen it before, use previously assembled info
-    ctx.preview:reset()
-    ctx.preview:set_lines(ctx.item.missing.lines)
-    ctx.preview:set_title(ctx.item.missing.title)
-    ctx.preview:highlight({ ft = ctx.item.missing.ft })
+    local m = ctx.item._preview
+    set_preview(m.title, m.lines, m.ft)
   else
     -- create table `missing` to use for previewing
     -- we do not set ctx.item.preview={ft=.., text=".."} since text must be split
     -- each time its the current item in the list
     local title, ft, lines = Itms.details(ctx.item)
-    ctx.preview:reset()
-    ctx.preview:set_lines(lines)
-    ctx.preview:set_title(title)
-    ctx.preview:highlight({ ft = ft })
-    -- create table for next time this item needs to be previewed
-    ctx.item.missing = { title = title, ft = ft, lines = lines }
+    set_preview(title, lines, ft)
+    ctx.item._preview = { title = title, ft = ft, lines = lines } -- remember for next time
   end
 end
 
@@ -706,16 +715,16 @@ local Act = {
   win = {
     list = { -- the results list window
       keys = {
-        ['<c-i>f'] = { 'fetch', mode = { 'n', 'i' } },
-        ['<c-i>d'] = { 'delete', mode = { 'n', 'i' } },
-        ['<c-i>o'] = { 'confirm', mode = { 'n', 'i' } },
+        [',rf'] = { 'fetch', mode = { 'n', 'i' } },
+        [',rr'] = { 'delete', mode = { 'n', 'i' } },
+        [',ro'] = { 'confirm', mode = { 'n', 'i' } },
       },
     },
     input = { -- the input window where search is typed
       keys = {
-        ['<c-i>f'] = { 'fetch', mode = { 'n', 'i' } },
-        ['<c-i>d'] = { 'delete', mode = { 'n', 'i' } },
-        ['<c-i>o'] = { 'confirm', mode = { 'n', 'i' } },
+        [',rf'] = { 'fetch', mode = { 'n', 'i' } },
+        [',rr'] = { 'delete', mode = { 'n', 'i' } },
+        [',ro'] = { 'confirm', mode = { 'n', 'i' } },
       },
     },
   },
@@ -728,10 +737,10 @@ function Act.actions.fetch(picker, curr_item)
   local notices = { '# Download status ' .. #items .. ' items\n' }
 
   for n, item in ipairs(items) do
-    items.fetch(item) -- upon success, sets item.file
+    Itms.fetch(item) -- upon success, sets item.file
 
     if item.file then
-      item.missing = nil
+      item._preview = nil
       picker.list:unselect(item)
       picker.list:update({ force = true })
       picker.preview:show(picker, { force = true })
@@ -744,7 +753,7 @@ function Act.actions.fetch(picker, curr_item)
 end
 
 function Act.actions.delete(picker, curr_item)
-  -- curr_item == picker.list:current()
+  -- curr_item == picker.list:current() ?= picker:current()
   local items = picker.list.selected
   if #items == 0 then items = { curr_item } end
   local notices = { '# Delete status ' .. #items .. ' items\n' }
