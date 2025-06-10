@@ -707,13 +707,13 @@ local Act = {
     list = { -- the results list window
       keys = {
         ['<c-x>'] = { 'download', mode = { 'n', 'i' } },
-        ['<c-m-x>'] = { 'download_selection', mode = { 'n', 'i' } },
+        ['<c-m-x>'] = { 'delete', mode = { 'n', 'i' } },
       },
     },
     input = { -- the input window where search is typed
       keys = {
         ['<c-x>'] = { 'download', mode = { 'n', 'i' } },
-        ['<c-m-x>'] = { 'download_selection', mode = { 'n', 'i' } },
+        ['<c-m-x>'] = { 'delete', mode = { 'n', 'i' } },
         ['<c-y>'] = { 'echo', mode = { 'n', 'i' } },
       },
     },
@@ -721,13 +721,54 @@ local Act = {
 }
 
 function Act.actions.download(picker, item)
-  Itms.fetch(item) -- upon success, sets item.file
+  local items = picker.list.selected
+  if #items == 0 then items = { item } end
+  local notices = { '# Download status ' .. #items .. ' items\n' }
 
-  if item.file then
-    item.missing = nil
+  for n, itm in ipairs(items) do
+    Itms.fetch(itm) -- upon success, sets item.file
+
+    if itm.file then
+      itm.missing = nil
+      picker.list:unselect(itm)
+      picker.list:update({ force = true })
+      picker.preview:show(picker, { force = true })
+      notices[#notices + 1] = string.format('- (%d/%s) %s - success', n, #items, itm.docid)
+    else
+      notices[#notices + 1] = string.format('- (%d/%s) %s - failed!', n, #items, itm.docid)
+    end
+  end
+  vim.notify(table.concat(notices, '\n'))
+end
+
+function Act.actions.delete(picker, item)
+  local items = picker.list.selected
+  if #items == 0 then items = { item } end
+  local notices = { '# Delete status ' .. #items .. ' items\n' }
+
+  for n, itm in ipairs(items) do
+    local result
+    if itm.file and vim.fn.filereadable(itm.file) == 1 then
+      local rv = vim.fn.delete(itm.file)
+      if rv == 0 then
+        result = 'success'
+        itm.file = nil
+      else
+        result = 'failed! (' .. vim.inspect(rv) .. ')'
+      end
+    elseif item.file then
+      result = 'file not found'
+      item.file = nil
+    else
+      result = 'item.file is ' .. vim.inspect(itm.file)
+    end
+    -- itm.missing = nil -- so it refreshes
+    picker.list:unselect(itm) -- whether selected or not ..
     picker.list:update({ force = true })
     picker.preview:show(picker, { force = true })
+    notices[#notices + 1] = string.format('- (%d/%s) %s - %s', n, #items, itm.docid, result)
   end
+  vim.notify(table.concat(notices, '\n'))
 end
 
 function Act.actions.download_selection(picker, item)
