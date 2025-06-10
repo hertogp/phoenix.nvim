@@ -249,7 +249,6 @@ return {
       end,
       desc = '[r]esume last search',
     },
-
     {
       '<space>w',
       function()

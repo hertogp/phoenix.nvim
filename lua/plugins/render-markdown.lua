@@ -52,6 +52,6 @@ return {
   },
 
   keys = {
-    { '<leader>r', '<cmd>RenderMarkdown toggle<cr>', mode = 'n', desc = 'Toggle RenderMarkdown' },
+    { '<leader>R', '<cmd>RenderMarkdown toggle<cr>', mode = 'n', desc = 'Toggle RenderMarkdown' },
   },
 }

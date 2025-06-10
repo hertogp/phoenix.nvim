@@ -706,53 +706,56 @@ local Act = {
   win = {
     list = { -- the results list window
       keys = {
-        ['<c-x>'] = { 'download', mode = { 'n', 'i' } },
-        ['<c-m-x>'] = { 'delete', mode = { 'n', 'i' } },
+        ['<c-i>f'] = { 'fetch', mode = { 'n', 'i' } },
+        ['<c-i>d'] = { 'delete', mode = { 'n', 'i' } },
+        ['<c-i>o'] = { 'confirm', mode = { 'n', 'i' } },
       },
     },
     input = { -- the input window where search is typed
       keys = {
-        ['<c-x>'] = { 'download', mode = { 'n', 'i' } },
-        ['<c-m-x>'] = { 'delete', mode = { 'n', 'i' } },
-        ['<c-y>'] = { 'echo', mode = { 'n', 'i' } },
+        ['<c-i>f'] = { 'fetch', mode = { 'n', 'i' } },
+        ['<c-i>d'] = { 'delete', mode = { 'n', 'i' } },
+        ['<c-i>o'] = { 'confirm', mode = { 'n', 'i' } },
       },
     },
   },
 }
 
-function Act.actions.download(picker, item)
+function Act.actions.fetch(picker, curr_item)
+  -- curr_item == picker.list:current()
   local items = picker.list.selected
-  if #items == 0 then items = { item } end
+  if #items == 0 then items = { curr_item } end
   local notices = { '# Download status ' .. #items .. ' items\n' }
 
-  for n, itm in ipairs(items) do
-    Itms.fetch(itm) -- upon success, sets item.file
+  for n, item in ipairs(items) do
+    items.fetch(item) -- upon success, sets item.file
 
-    if itm.file then
-      itm.missing = nil
-      picker.list:unselect(itm)
+    if item.file then
+      item.missing = nil
+      picker.list:unselect(item)
       picker.list:update({ force = true })
       picker.preview:show(picker, { force = true })
-      notices[#notices + 1] = string.format('- (%d/%s) %s - success', n, #items, itm.docid)
+      notices[#notices + 1] = string.format('- (%d/%s) %s - success', n, #items, item.docid)
     else
-      notices[#notices + 1] = string.format('- (%d/%s) %s - failed!', n, #items, itm.docid)
+      notices[#notices + 1] = string.format('- (%d/%s) %s - failed!', n, #items, item.docid)
     end
   end
   vim.notify(table.concat(notices, '\n'))
 end
 
-function Act.actions.delete(picker, item)
+function Act.actions.delete(picker, curr_item)
+  -- curr_item == picker.list:current()
   local items = picker.list.selected
-  if #items == 0 then items = { item } end
+  if #items == 0 then items = { curr_item } end
   local notices = { '# Delete status ' .. #items .. ' items\n' }
 
-  for n, itm in ipairs(items) do
+  for n, item in ipairs(items) do
     local result
-    if itm.file and vim.fn.filereadable(itm.file) == 1 then
-      local rv = vim.fn.delete(itm.file)
+    if item.file and vim.fn.filereadable(item.file) == 1 then
+      local rv = vim.fn.delete(item.file)
       if rv == 0 then
         result = 'success'
-        itm.file = nil
+        item.file = nil
       else
         result = 'failed! (' .. vim.inspect(rv) .. ')'
       end
@@ -760,27 +763,15 @@ function Act.actions.delete(picker, item)
       result = 'file not found'
       item.file = nil
     else
-      result = 'item.file is ' .. vim.inspect(itm.file)
+      result = 'item.file is ' .. vim.inspect(item.file)
     end
-    -- itm.missing = nil -- so it refreshes
-    picker.list:unselect(itm) -- whether selected or not ..
+    -- item.missing = nil -- so it refreshes
+    picker.list:unselect(item) -- whether selected or not ..
     picker.list:update({ force = true })
     picker.preview:show(picker, { force = true })
-    notices[#notices + 1] = string.format('- (%d/%s) %s - %s', n, #items, itm.docid, result)
+    notices[#notices + 1] = string.format('- (%d/%s) %s - %s', n, #items, item.docid, result)
   end
   vim.notify(table.concat(notices, '\n'))
-end
-
-function Act.actions.download_selection(picker, item)
-  -- item is current item in the list
-  -- picker.list.selected is list of selected items
-  local x = picker.list.selected
-  -- vim.print('selected ' .. #x .. ' items')
-end
-
-function Act.actions.echo(picker)
-  -- vim.print('echo called')
-  -- vim.print(vim.inspect({ 'echo', vim.inspect(picker) }))
 end
 
 function Act.confirm(picker, item)
@@ -791,7 +782,12 @@ function Act.confirm(picker, item)
 
   if item.file and item.file:match('%.txt$') then
     -- edit in nvim
-    vim.cmd('edit ' .. item.file)
+    vim.cmd(M.config.edit .. ' ' .. item.file)
+    local ext = item.file:match('%.[^%.]+$')
+    local ft = M.config.filetype[ext]
+    if ft then
+      vim.cmd('set ft=' .. ft) -- TODO: M.config candidate
+    end
   elseif item.file then
     -- TODO: Brave browser can't access .local/data files ..
     vim.cmd('!open ' .. item.file)
@@ -806,9 +802,6 @@ M.config = {
   top = 'ietf.org',
   ttl = 4 * 3600, -- time-to-live [second], before downloading again
   edit = 'tabedit ',
-  symbol = 'smiley', -- others are document, whatever
-  -- either set ft by vim.cmd after opening it, or add a modeline
-  -- at the end of the file after downloading.
   filetype = {
     txt = 'rfc',
   },
@@ -816,6 +809,7 @@ M.config = {
 
 function M.reload()
   -- for developing
+  vim.keymap.set('n', '<space>r', ":lua require'pdh.rfc'.reload()<cr>")
   return require('plenary.reload').reload_module('pdh.rfc')
 end
 
