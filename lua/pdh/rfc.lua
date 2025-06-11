@@ -13,17 +13,27 @@ TODO: these need some TLC
 - [x] parse an entry into topic|nr|title|status|formats|doi|updates|updated_by|obsoletes|obsoleted_by
       - status and other known (label ..) are parsed into tags for an entry & removed from display
       - this is parsed when loading index for searching, rather than when saving index to disk
-- [ ] How to handle the (possibly) formats:
+- [x] How to handle the (possibly) formats:
       - default to first Itms.FORMATS, if available then no questions asked
       - if not available, use the next one
       - preview: if txt is available, use that, otherwise preview the item
       - open: use first format available, txt opened in nvim, rest is !open'd
-- [ ] formats other than TXT are redirected to browser w/ a URL (.pdf, .html etc..) or the info page
+- [x] formats other than TXT are redirected to browser w/ a URL (.pdf, .html etc..) or the info page
       e.g. https://www.editor-rfc.org/info/rfc8  (no extension)
-- [ ] info page the default when choosing to browse for an rfc, rather than downloading it?
-- [ ] no local file, just show the item without the error msg.  Howto avoid that error?
-- [ ] when download fails, flash a warning and do not create a local file with just a modeline.
-- [ ] how to handle icons properly?
+- [c] info page the default when choosing to browse for an rfc, rather than downloading it?
+- [x] no local file, just show the item without the error msg.  Howto avoid that error?
+- [x] when download fails, flash a warning and do not create a local file with just a modeline.
+- [x] how to handle icons properly?
+- [ ] add item.errata if rfcnr is listed in `:!open https://www.rfc-editor.org/rfc/RFCs_for_errata.txt'
+      * note: url is case sensitive!
+      * errate itself is only available as a modified rfc<nr>.html, eg:
+        `:!open https://www.rfc-editor.org/rfc/inline-errata/rfc1001.html`
+        `:!open https://www.rfc-editor.org/rfc/inline-errata/`
+      * maybe just add 'E' to open rfc/inline-errata/rfc<nr>.html (if any)
+- references
+  * `:!open https://www.rfc-editor.org/rfc/rfc-ref.txt`
+  * `:!open https://www.rfc-editor.org/rfc/bcp-ref.txt`
+  * `:!open https://www.rfc-editor.org/rfc/std-ref.txt` -> [std<nr>] lines with info url's of std and rfc's
 
 NOTE:
 - :Show lua =require'snacks'.picker.lines() -> new tab with picker return value printed for inspection
@@ -208,6 +218,8 @@ function H.url(docid, ext)
   ext = ext or 'txt'
   local base = 'https://www.rfc-editor.org'
 
+  -- rfc-editor/rfc/RFCs_for_errata.txt also exist, but is not of the form
+  -- <docid><nr> or <docid>-index ...
   return string.format('%s/%s/%s.%s', base, stream, docid, ext)
 end
 
@@ -215,7 +227,7 @@ end
 -- functions that work with the indices of streams of ietf documents
 
 ---@class Index
----@field curl fun(stream: stream): index Retrieve (and cache) an index from the ietf
+---@field fetch fun(docid: string): index Retrieve (and cache) an index from the ietf
 ---@field get fun(self: Index, stream: stream): Index Add an index to Idx
 ---@field index fun(self: Index, streams: stream[]): Index Add one or more indices to Idx
 local Idx = {}
@@ -228,7 +240,7 @@ function Idx.fetch(docid)
   -- retrieve raw content from the ietf
   docid = docid:lower() -- just to be sure
   local url = H.url(docid, 'txt')
-  local stream = vim.split(docid, '[%d-]')[1]:lower()
+  local stream = vim.split(docid, '[%d-]')[1]:lower() -- docid = <stream>-index
   local idx = {} -- parsed content { {s, n, t}, ... }
 
   -- retrieve index from the ietf
@@ -236,7 +248,7 @@ function Idx.fetch(docid)
   local ok, rv = pcall(plenary.curl.get, { url = url, accept = 'plain/text' })
 
   if ok and rv and rv.status == 200 then
-    -- no newline's for buf set lines, no formfeed for snacks preview
+    -- formfeed probably not necessary
     lines = vim.split(rv.body, '[\r\n\f]')
   else
     vim.notify('[warn] download failed: [' .. rv.status .. '] ' .. url, vim.log.levels.ERROR)
@@ -325,7 +337,9 @@ function Idx:get(stream)
     idx = readfile() or Idx.fetch(docid)
   end
 
-  if #idx < 1 then vim.notify('[warn] no index available for ' .. stream, vim.log.levels.WARN) end
+  if #idx < 1 then
+    vim.notify('[warn] no index available for ' .. stream, vim.log.levels.WARN) --
+  end
 
   for _, entry in ipairs(idx) do
     table.insert(self, entry)
@@ -382,10 +396,12 @@ local Itms = {
   },
 
   FORMATS = { -- publication formats, order is to check for presence or download
-    'txt',
-    'html',
-    'xml',
+    -- see: `:!open https://www.rfc-editor.org/rpc/wiki/doku.php?id=rfc_files_available`
+    'txt', -- available for all
+    'html', -- available for all and only format for rfc/inline-errata
+    'xml', -- available from rfc8650 and onwards
     'pdf',
+    'ps', -- a few rfc's are available only in postscript
   },
 
   ACCEPT = { -- accept headers for fetching
@@ -467,6 +483,8 @@ end
 ---@param entry entry
 ---@return table | nil item fields parsed from an index entry's text or nil
 function Itms.new(idx, entry)
+  -- TODO:
+  -- [ ] rfc status '-' is Not issued, n/a for bcp, std or others (use stream as status)
   local item = nil -- returned if entry is malformed
   local stream, id, text = unpack(entry)
   if stream and id and text then
@@ -492,7 +510,7 @@ end
 
 --- Sets item.file to the first filename on disk (if any) in order of Itms.FORMATS
 ---@param item table
----@return table item sets item.file is either the first filename found or nil (missing)
+---@return table item sets item.file, either the first filename found or nil (missing)
 function Itms.set_file(item)
   item.file = nil -- nothing found yet
   for _, ext in ipairs(Itms.FORMATS) do
@@ -511,19 +529,20 @@ end
 function Itms.set_tags(item)
   -- take out all (word <stuff>) for known words
   -- (Status: _), ..., (Obsoletes _) (Obsoleted by _), ...
+  -- for RFC's that are not issued, there won't be a status. Others donot have a status
   local tags = {
     -- ensure these tags are present with a default value
-    obsoletes = '-',
-    obsoleted_by = '-',
-    updates = '-',
-    updated_by = '-',
-    also = '-',
-    status = '-',
+    obsoletes = 'n/a',
+    obsoleted_by = 'n/a',
+    updates = 'n/a',
+    updated_by = 'n/a',
+    also = 'n/a',
+    status = 'n/a',
     format = '', -- empty string means no format(s) listed/found
-    doi = '-',
+    doi = 'n/a',
     -- these two are not `()`-constructs
-    authors = '-',
-    date = '-',
+    authors = 'n/a',
+    date = 'n/a',
   }
 
   -- ensure all known tags, with their defaults, are present in item
@@ -638,20 +657,24 @@ function Itms.details(item)
   return title, ft, lines
 end
 
+---@param ctx snacks.Picker
+---@param title string
+---@param lines string[]
+---@param ft string
+function Itms._set_preview(ctx, title, lines, ft)
+  -- see snacks.picker.core.preview for the preview funcs used below
+  ctx.preview:reset() -- REVIEW: necessary ?
+  ctx.preview:set_lines(lines)
+  ctx.preview:set_title(title)
+  ctx.preview:highlight({ ft = ft })
+end
+
 function Itms.preview(ctx)
   -- called when ctx.item becomes the current one in the results list
-  -- see snacks.picker.core.preview for the preview funcs used below
-
-  local function set_preview(title, lines, ft)
-    ctx.preview:reset()
-    ctx.preview:set_lines(lines)
-    ctx.preview:set_title(title)
-    ctx.preview:highlight({ ft = ft })
-  end
 
   if ctx.item.file and ctx.item.file:match('%.txt$') then
     -- preview ourselves, since snacks trips over any formfeeds in the txt-file
-    -- TODO: this reads the file every time, could cache that in _preview
+    -- REVIEW: this reads the file every time, could cache that in _preview?
     local ok, lines = pcall(vim.fn.readfile, ctx.item.file)
     local title, ft
 
@@ -662,17 +685,15 @@ function Itms.preview(ctx)
       title = ctx.item.docid:upper()
       ft = 'rfc' -- since we're looking at the text itself
     end
-    set_preview(title, lines, ft)
+    Itms._set_preview(ctx, title, lines, ft)
   elseif ctx.item._preview then
     -- we've seen it before, use previously assembled info
     local m = ctx.item._preview
-    set_preview(m.title, m.lines, m.ft)
+    Itms._set_preview(ctx, m.title, m.lines, m.ft)
   else
-    -- create table `missing` to use for previewing
-    -- we do not set ctx.item.preview={ft=.., text=".."} since text must be split
-    -- each time its the current item in the list
+    -- use item._preview: since item.preview={text="..", ..} means text will be split every time
     local title, ft, lines = Itms.details(ctx.item)
-    set_preview(title, lines, ft)
+    Itms._set_preview(ctx, title, lines, ft)
     ctx.item._preview = { title = title, ft = ft, lines = lines } -- remember for next time
   end
 end
@@ -681,26 +702,32 @@ end
 -- TODO:
 -- [ ] configurable: select before download or default to 1st in line
 -- [ ] configurable open action: select or edit, tabnew, !open as appropiate
---     sometimes you want to see the html/xml in neovim itself
+--     sometimes you want to see the html/xml in neovim itself?
 
 local Act = {
   actions = {}, -- functions to be defined later on, as referenced by win.list/input.keys
   -- see `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/config/defaults.lua`
   win = {
     -- temp mappings during search, ',<x>' since ',' usually isn't used in searches
-    -- TODO: add 'M' for meta data
+    -- TODO, add:
+    -- [*]'M' for meta data (json) -- how to store this?
+    -- [*]'E' for errata? -- open browser for the inline-errata (if it exists)
+    -- [*]'S' to open rfc-editor search?
+    --
     list = { -- the results list window
       keys = {
         ['F'] = { 'fetch', mode = { 'n' } },
         ['R'] = { 'remove', mode = { 'n' } },
         ['O'] = { 'confirm', mode = { 'n' } },
+        ['I'] = { 'inspect', mode = { 'n' } },
       },
     },
     input = { -- the input window where search is typed
       keys = {
         ['F'] = { 'fetch', mode = { 'n' } },
-        ['R'] = { 'delete', mode = { 'n' } },
+        ['R'] = { 'remove', mode = { 'n' } },
         ['O'] = { 'confirm', mode = { 'n' } },
+        ['I'] = { 'inspect', mode = { 'n' } },
       },
     },
   },
@@ -710,7 +737,7 @@ function Act.actions.fetch(picker, curr_item)
   -- curr_item == picker.list:current()
   local items = picker.list.selected
   if #items == 0 then items = { curr_item } end
-  local notices = { '# Download status ' .. #items .. ' items\n' }
+  local notices = { '# Fetch:\n' }
 
   for n, item in ipairs(items) do
     Itms.fetch(item) -- upon success, sets item.file
@@ -725,38 +752,57 @@ function Act.actions.fetch(picker, curr_item)
       notices[#notices + 1] = string.format('- (%d/%s) %s - failed!', n, #items, item.docid)
     end
   end
-  vim.notify(table.concat(notices, '\n'))
+  vim.notify(table.concat(notices, '\n'), vim.log.levels.INFO)
 end
 
-function Act.actions.delete(picker, curr_item)
+function Act.actions.inspect(picker, item)
+  -- set preview to show item table
+  -- local lines = { '# ' .. item.docid:upper(), ' \r\n', ' \r\n', '## Details', '\n', '```luai\n', '\n', '{' }
+  local lines = { '\n# ' .. item.docid:upper(), '\n\n## Item fields\n\n```lua\n{\n' }
+  local keys = {}
+  for k, _ in pairs(item) do
+    if not k:match('^_') then keys[#keys + 1] = k end
+  end
+  table.sort(keys)
+
+  for _, key in ipairs(keys) do
+    -- use vim.inspect for value (may not always be string or number)
+    lines[#lines + 1] = string.format('  %-15s= %s', key, vim.inspect(item[key]))
+  end
+  lines[#lines + 1] = '\n}\n\n```'
+
+  Itms._set_preview(picker, item.title, lines, 'markdown')
+end
+
+function Act.actions.remove(picker, curr_item)
   -- curr_item == picker.list:current() ?= picker:current()
   local items = picker.list.selected
   if #items == 0 then items = { curr_item } end
-  local notices = { '# Delete status ' .. #items .. ' items\n' }
+  local notices = { '# Remove:\n' }
 
   for n, item in ipairs(items) do
     local result
     if item.file and vim.fn.filereadable(item.file) == 1 then
       local rv = vim.fn.delete(item.file)
       if rv == 0 then
-        result = 'success'
+        result = 'removed'
         item.file = nil
       else
-        result = 'failed! (' .. vim.inspect(rv) .. ')'
+        -- keep unreadable item.file
+        result = 'failed!'
       end
     elseif item.file then
-      result = 'file not found'
-      item.file = nil
+      result = 'not found'
     else
-      result = 'item.file is ' .. vim.inspect(item.file)
+      result = 'no file item'
     end
-    -- item.missing = nil -- so it refreshes
+    Itms.set_file(item) -- set .file: maybe other formats are still there
     picker.list:unselect(item) -- whether selected or not ..
     picker.list:update({ force = true })
     picker.preview:show(picker, { force = true })
     notices[#notices + 1] = string.format('- (%d/%s) %s - %s', n, #items, item.docid, result)
   end
-  vim.notify(table.concat(notices, '\n'))
+  vim.notify(table.concat(notices, '\n'), vim.log.levels.INFO)
 end
 
 function Act.confirm(picker, item)
