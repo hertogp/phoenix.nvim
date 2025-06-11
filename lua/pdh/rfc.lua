@@ -95,48 +95,41 @@ local H = {
 }
 
 --- fetch an ietf document, save to disk, returns its filename upon success, nil otherwise
----@param url string Url for document to retrieve
----@return string|nil filename when successful, nil upon failure
----@return table? return value
-function H.fetch(url, fname)
-  -- return a, possibly empty, list of lines
-  -- TODO: use pcall so we do not error out needlessly
-  -- accept:
-  -- txt: headers = {  "content-type: text/plain;          charset=utf-8", "content-length: 12136", },
-  -- html: headers = { "content-type: text/html;           charset=UTF-8", }
-  -- xml: headers = {  "content-type: application/rfc+xml; charset=utf-8", "content-length: 19055", }
-  -- pdf: headers = { , "content-type: application/pdf",   "content-length: 5010729", }
-  local ext = fname:match('%.[^.]+$')
-  local accept = {
-    txt = 'text/plain',
-    html = 'text/html',
-    xml = 'application/xml',
-    pdf = 'applicaiton/pdf',
-  }
-  local ok, rv = pcall(plenary.curl.get, {
-    url = url,
-    accept = accept[ext],
-    output = fname,
-  })
-
-  if ok then
-    return fname, rv
-  else
-    vim.print(vim.inspect({ 'fetch error', rv }))
-    return nil, rv
-  end
-  -- if and rv and rv.status == 200 then
-  --   -- no newline's for buf set lines, no formfeed for snacks preview
-  --   local lines = vim.split(rv.body, '[\r\n\f]')
-  --   vim.notify('downloaded ' .. docid .. ' (' .. #lines .. 'lines)')
-  --   return lines
-  -- else
-  --   vim.notify('[failed] status: ' .. rv.status .. ' for ' .. url, vim.log.levels.WARN)
-  --   return {}
-  -- end
-end
+-- -@param url string Url for document to retrieve
+-- -@return string|nil filename when successful, nil upon failure
+-- -@return table? return value
+-- function H.fetch(url, fname)
+--   -- return a, possibly empty, list of lines
+--   -- TODO: use pcall so we do not error out needlessly
+--   -- accept:
+--   -- txt: headers = {  "content-type: text/plain;          charset=utf-8", "content-length: 12136", },
+--   -- html: headers = { "content-type: text/html;           charset=UTF-8", }
+--   -- xml: headers = {  "content-type: application/rfc+xml; charset=utf-8", "content-length: 19055", }
+--   -- pdf: headers = { , "content-type: application/pdf",   "content-length: 5010729", }
+--   local ext = fname:match('%.[^.]+$')
+--   local accept = {
+--     txt = 'text/plain',
+--     html = 'text/html',
+--     xml = 'application/xml',
+--     pdf = 'applicaiton/pdf',
+--   }
+--   local ok, rv = pcall(plenary.curl.get, {
+--     url = url,
+--     accept = accept[ext],
+--     output = fname,
+--   })
+--
+--   if ok then
+--     return fname, rv
+--   else
+--     vim.print(vim.inspect({ 'fetch error', rv }))
+--     return nil, rv
+--   end
+-- end
 
 --- find root dir or use cfg.top, fallback to stdpath data dir
+---@param spec string|table a top dir relative to rfc-root dir or list of rfc-root dir markers, eg. {'.git'}
+---@return string path full path to rfc-top directory (/rfc-root/rfc-top)
 function H.dir(spec)
   local path
   local top = M.config.top or H.top
@@ -154,10 +147,10 @@ function H.dir(spec)
   return vim.fs.joinpath(path, top)
 end
 
----@param docid string Unique ietf document name, e.g. bcp11 or bcp-index
+---@param docid string unique ietf document name, e.g. bcp11 or bcp-index
 ---@param ext string
+---@return string path full file path for `docid.ext` or nil
 function H.fname(docid, ext)
-  -- return full file path for docid with extension or nil
   local fdir, fname
   local cfg = M.config
   local top = M.config.top or H.top
@@ -178,54 +171,31 @@ function H.fname(docid, ext)
   return vim.fs.normalize(fname)
 end
 
--- returns a modeline string if possible, nil otherwise
-function H.modeline(spec)
-  if type(spec) == 'string' then
-    -- use verbatim
-    return spec
-  end
-
-  if type(spec) == 'table' then
-    -- build modeline, ignore unknown options
-    local opts = ''
-    for k, v in pairs(spec) do
-      if vim.fn.exists(string.format('&%s', k)) == 1 then
-        opts = string.format('%s %s=%s', opts, k, v)
-      else
-        vim.notify('modeline: ignoring unknown option ' .. vim.inspect(k), vim.log.levels.WARN)
-      end
-    end
-    if #opts > 0 then return string.format('/* vim: set%s: */', opts) end
-  end
-
-  return nil -- do not add modeline
-end
-
 -- save to disk, creating directory as needed
-function H.save(docid, lines)
-  local fname = H.fname(docid, 'txt')
-
-  if fname == nil then return fname end
-
-  if not docid:match('index$') then
-    -- only add modeline for rfc, bcp etc.. not for index files
-    lines[#lines + 1] = '/* vim: set ft=rfc: */'
-  end
-
-  for idx, line in ipairs(lines) do
-    -- snacks.picker.preview.lua, line:find("[%z\1-\8\11\12\14-\31]") -> binary is true
-    -- so keep snacks happy
-    lines[idx] = string.gsub(line, '[%z\1-\8\11\12\14-\31]', '')
-  end
-
-  local dir = vim.fs.dirname(fname)
-  vim.fn.mkdir(dir, 'p')
-  if vim.fn.writefile(lines, fname) < 0 then
-    vim.notify('could not write ' .. docid .. ' to ' .. fname, vim.log.levels.ERROR)
-  end
-
-  return fname
-end
+-- function H.save(docid, lines)
+--   local fname = H.fname(docid, 'txt')
+--
+--   if fname == nil then return fname end
+--
+--   if not docid:match('index$') then
+--     -- only add modeline for rfc, bcp etc.. not for index files
+--     lines[#lines + 1] = '/* vim: set ft=rfc: */'
+--   end
+--
+--   for idx, line in ipairs(lines) do
+--     -- snacks.picker.preview.lua, line:find("[%z\1-\8\11\12\14-\31]") -> binary is true
+--     -- so keep snacks happy
+--     lines[idx] = string.gsub(line, '[%z\1-\8\11\12\14-\31]', '')
+--   end
+--
+--   local dir = vim.fs.dirname(fname)
+--   vim.fn.mkdir(dir, 'p')
+--   if vim.fn.writefile(lines, fname) < 0 then
+--     vim.notify('could not write ' .. docid .. ' to ' .. fname, vim.log.levels.ERROR)
+--   end
+--
+--   return fname
+-- end
 
 ---@param docid string Unique ietf document name, e.g. bcp11 or bcp-index
 ---@param ext string
@@ -311,7 +281,12 @@ function Idx.fetch(docid)
     for _, entry in ipairs(idx) do
       lines[#lines + 1] = table.concat(entry, H.sep)
     end
-    H.save(docid, lines)
+    local fname = H.fname(docid, 'txt')
+    local dir = vim.fs.dirname(fname)
+    vim.fn.mkdir(dir, 'p')
+    if vim.fn.writefile(lines, fname) < 0 then
+      vim.notify('[error] could not write ' .. docid .. ' to ' .. fname, vim.log.levels.ERROR)
+    end
   end
 
   return idx -- { {stream, nr, title }, .. } or empty list
@@ -479,11 +454,10 @@ function Itms.fetch(item)
       return item
     else
       if vim.fn.delete(fname) ~= 0 then
-        vim.notify('could not delete artifact: ' .. fname) -- remove artifact
+        vim.notify('[error] could not delete artifact: ' .. fname, vim.log.levels.ERROR) -- remove artifact
       end
     end
   end
-  vim.notify(string.format('download %s failed', item.docid))
   item.file = nil
   return item
 end
@@ -713,18 +687,20 @@ local Act = {
   actions = {}, -- functions to be defined later on, as referenced by win.list/input.keys
   -- see `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/config/defaults.lua`
   win = {
+    -- temp mappings during search, ',<x>' since ',' usually isn't used in searches
+    -- TODO: add 'M' for meta data
     list = { -- the results list window
       keys = {
-        [',rf'] = { 'fetch', mode = { 'n', 'i' } },
-        [',rr'] = { 'delete', mode = { 'n', 'i' } },
-        [',ro'] = { 'confirm', mode = { 'n', 'i' } },
+        ['F'] = { 'fetch', mode = { 'n' } },
+        ['R'] = { 'remove', mode = { 'n' } },
+        ['O'] = { 'confirm', mode = { 'n' } },
       },
     },
     input = { -- the input window where search is typed
       keys = {
-        [',rf'] = { 'fetch', mode = { 'n', 'i' } },
-        [',rr'] = { 'delete', mode = { 'n', 'i' } },
-        [',ro'] = { 'confirm', mode = { 'n', 'i' } },
+        ['F'] = { 'fetch', mode = { 'n' } },
+        ['R'] = { 'delete', mode = { 'n' } },
+        ['O'] = { 'confirm', mode = { 'n' } },
       },
     },
   },
