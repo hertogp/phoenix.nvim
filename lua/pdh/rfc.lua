@@ -35,6 +35,33 @@ TODO: these need some TLC
   * `:!open https://www.rfc-editor.org/rfc/bcp-ref.txt`
   * `:!open https://www.rfc-editor.org/rfc/std-ref.txt` -> [std<nr>] lines with info url's of std and rfc's
 
+- URLS
+
+  * https://www.rfc-editor.org/
+     `-rfc/                                                              : series kind
+        |- rfc<nr>.txt (txt, html, xml, pdf, ps, json (metadata))        : rfc,   doc
+        |-/rfc-index.txt                                                 : rfc,   idx (idx=index)
+        |-/bcp-index.txt                                                 : bcp,   idx
+        |-/std-index.txt                                                 : std,   idx
+        |-/ien-index.txt                                                 : ien,   idx
+        |-/fyi-index.txt                                                 : fyi,   idx
+        |-/RFCs_for_errata.txt (only here, case sensitive)               : rfc,   err(ata)
+     `-bcp/            bcp<nr>.txt (only txt), also bcp-index.txt        : bcp,   doc
+     `-std/            std<nr>.txt (only txt, also std-index.txt         : std,   doc
+     `-ien/            ien<nr>.txt (txt, html, pdf), also ien-index.txt  : ien,   doc
+     `-fyi/            fyi<nr>.txt (txt, html), also fyi-index.txt       : fyi,   doc
+     `-info/           rfc<nr> (no extension)                            : rfc,   inf(o)
+     `-inline-errata/  rfc<nr>.html (only html)                          : rfc,   err
+
+    So per series:
+    - rfc: idx, doc, inf(o), err(ata), err(ata)-idx
+    - bcp: idx, doc
+    - std: idx, doc
+    - ien: idx, doc
+    - fyi: idx, doc
+
+  * also subdirs: rfc/{bcp, std, ien, fyi} with <docid>.ext and series-index.txt
+
 NOTE:
 - :Show lua =require'snacks'.picker.lines() -> new tab with picker return value printed for inspection
 - finder:
@@ -102,6 +129,11 @@ local H = {
   valid = { rfc = true, bcp = true, std = true, fyi = true, ien = true },
   top = 'ietf.org', -- subdir under topdir for ietf documents
   sep = '│', -- separator for local index lines: stream|id|text
+
+  URL = {
+    ['info'] = '',
+    ['rfc'] = '',
+  },
 }
 
 --- fetch an ietf document, save to disk, returns its filename upon success, nil otherwise
@@ -211,15 +243,17 @@ end
 ---@param ext string
 ---@return string url the url for given `docid` and `ext`
 function H.url(docid, ext)
-  -- returns url for stream document or its index
-  -- docid is either <stream>-index or <stream><nr>
+  -- returns url for an ietf document
+  -- docid is either <stream>-index, <stream><nr> or RFCs_for_errata
   -- <stream> should be one of rfc, std, bcp, fyi or ien (review: enforce?)
   local stream = vim.split(docid, '[%d-]')[1]:lower()
   ext = ext or 'txt'
   local base = 'https://www.rfc-editor.org'
-
-  -- rfc-editor/rfc/RFCs_for_errata.txt also exist, but is not of the form
-  -- <docid><nr> or <docid>-index ...
+  if stream == 'errata' then
+    -- this one doesn't play nice with the <stream><..> convention
+    stream = 'rfc'
+    docid = 'RFCs_for_errata'
+  end
   return string.format('%s/%s/%s.%s', base, stream, docid, ext)
 end
 
@@ -230,8 +264,44 @@ end
 ---@field fetch fun(docid: string): index Retrieve (and cache) an index from the ietf
 ---@field get fun(self: Index, stream: stream): Index Add an index to Idx
 ---@field index fun(self: Index, streams: stream[]): Index Add one or more indices to Idx
-local Idx = {}
+local Idx = {
+  ERRATA = {},
+}
 
+function Idx.errata()
+  -- get the errata into Idx.ERRATA { docid -> true }
+  local url = H.url('errata', 'txt')
+  local fname = H.fname('errata', 'txt')
+  local ftime = vim.fn.getftime(fname) -- if file unreadable, then ftime = -1
+  local ttl = (M.config.ttl or 0) + ftime - vim.fn.localtime()
+  if ttl < 1 then
+    local ok, rv = pcall(plenary.curl.get, { url = url, accept = 'plain/text' })
+    if ok and rv and rv.status == 200 then
+      local lines = vim.split(rv.body, '[\r\n]', { trimempty = true })
+      for k, n in ipairs(lines) do
+        if n and #n > 0 then Idx.ERRATA['rfc' .. tonumber(n)] = true end
+      end
+      local dir = vim.fs.dirname(fname)
+      vim.fn.mkdir(dir, 'p')
+      if vim.fn.writefile(lines, fname) < 0 then
+        vim.notify('[error] could not write errata: ' .. fname, vim.log.levels.ERROR)
+      end
+    else
+      vim.notify('[error] could not get errata', vim.log.levels.ERROR)
+    end
+  else
+    vim.notify('fname is ' .. fname)
+    local ok, lines = pcall(vim.fn.readfile, fname)
+    if ok then
+      for _, nr in ipairs(lines) do
+        Idx.ERRATA['rfc' .. tonumber(nr)] = true
+      end
+    else
+      vim.notify('!ok, err is ' .. vim.inspect(lines))
+    end
+  end
+  return Idx
+end
 -- retrieves (and caches) an index for the given `stream` from the ietf
 -- returns a list: { {stream, id, text}, .. } or nil on failure
 ---@param docid string Unique ietf document name, e.g. bcp11 or bcp-index
@@ -487,6 +557,10 @@ function Itms.new(idx, entry)
   -- [ ] rfc status '-' is Not issued, n/a for bcp, std or others (use stream as status)
   local item = nil -- returned if entry is malformed
   local stream, id, text = unpack(entry)
+  local docid = string.format('%s%s', stream:lower(), tonumber(id))
+  local errata = 'no'
+  if stream:lower() == 'rfc' and Idx.ERRATA[docid] then errata = 'yes' end
+
   if stream and id and text then
     item = {
       idx = idx,
@@ -495,6 +569,7 @@ function Itms.new(idx, entry)
       title = string.format('%s%s', stream, id):upper(), -- used by snack as preview win title
 
       -- extra fields to search on using > field:term in search prompt
+      errata = errata,
       docid = string.format('%s%s', stream:lower(), tonumber(id)),
       name = string.format('%s%d', stream, id):upper(),
       stream = stream:lower(),
@@ -710,9 +785,9 @@ local Act = {
   win = {
     -- temp mappings during search, ',<x>' since ',' usually isn't used in searches
     -- TODO, add:
-    -- [*]'M' for meta data (json) -- how to store this?
-    -- [*]'E' for errata? -- open browser for the inline-errata (if it exists)
-    -- [*]'S' to open rfc-editor search?
+    -- [*] 'M' for meta data (json) -- how to store this?
+    -- [*] 'E' for errata? -- open browser for the inline-errata (if it exists)
+    -- [*] 'S' to open rfc-editor search?
     --
     list = { -- the results list window
       keys = {
@@ -720,6 +795,7 @@ local Act = {
         ['R'] = { 'remove', mode = { 'n' } },
         ['O'] = { 'confirm', mode = { 'n' } },
         ['I'] = { 'inspect', mode = { 'n' } },
+        ['S'] = { 'search', mode = { 'n' } },
       },
     },
     input = { -- the input window where search is typed
@@ -728,6 +804,7 @@ local Act = {
         ['R'] = { 'remove', mode = { 'n' } },
         ['O'] = { 'confirm', mode = { 'n' } },
         ['I'] = { 'inspect', mode = { 'n' } },
+        ['S'] = { 'search', mode = { 'n' } },
       },
     },
   },
@@ -803,6 +880,15 @@ function Act.actions.remove(picker, curr_item)
     notices[#notices + 1] = string.format('- (%d/%s) %s - %s', n, #items, item.docid, result)
   end
   vim.notify(table.concat(notices, '\n'), vim.log.levels.INFO)
+end
+
+function Act.actions.search(_, item) -- ignores picker, item
+  local info = { rfc = true, bcp = true, std = true }
+  if info[item.stream] then
+    vim.cmd(('!open https://rfc-editor.org/info/%s'):format(item.docid))
+  else
+    vim.notify('[info] no info page for ' .. item.docid, vim.log.levels.INFO)
+  end
 end
 
 function Act.confirm(picker, item)
@@ -888,11 +974,6 @@ function M.search(streams)
   })
 end
 
-function M.test(docid)
-  local itm = Itms.fetch({ docid = docid })
-  vim.print(vim.inspect({ 'test', docid, itm }))
-end
-
 function M.select()
   local choices = Itms.FORMATS
   for idx, v in ipairs(choices) do
@@ -936,6 +1017,48 @@ function M.test_bit(docid)
   end
 
   -- vim.print(stream .. id .. ' available formats are: ' .. vim.inspect(fext))
+end
+
+function M.test(type, docid, ext)
+  local series = docid:match('^%D+')
+  local url_parts = {
+    base = 'https://www.rf-editor.org',
+    docid = docid,
+    ext = ext,
+    series = series,
+  }
+  local url_patterns = {
+    rfc = {
+      index = '<base>/<series>/<series>-index.txt',
+      document = '<base>/<series>/<docid>.<ext>',
+      errata_index = '<base>/rfc/RFCs_for_errata.txt', --series==rfc
+      errata_page = '<base>/inline-errata/<docid>.html', --,,
+      info_page = '<base>/info/<docid>', --,,
+    },
+    std = {
+      index = '<base>/<series>/<series>-index.txt',
+      document = '<base>/<series>/<docid>.<ext>',
+    },
+    bcp = {
+      index = '<base>/<series>/<series>-index.txt',
+      document = '<base>/<series>/<docid>.<ext>',
+    },
+    ien = {
+      index = '<base>/<series>/<series>-index.txt',
+      document = '<base>/<series>/<docid>.<ext>',
+    },
+    fyi = {
+      index = '<base>/<series>/<series>-index.txt',
+      document = '<base>/<series>/<docid>.<ext>',
+    },
+  }
+
+  local pattern = url_patterns[series][type]
+  if pattern then
+    return pattern:gsub('(%b<>)', function(key)
+      return url_parts[key:sub(2, -2)]
+    end)
+  end
 end
 
 vim.keymap.set('n', '<space>r', ":lua require'pdh.rfc'.reload()<cr>")
