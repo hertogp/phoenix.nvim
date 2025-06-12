@@ -917,9 +917,9 @@ function Act.actions.fetch(picker, curr_item)
       picker.list:unselect(item)
       picker.list:update({ force = true })
       picker.preview:show(picker, { force = true })
-      notices[#notices + 1] = string.format('- (%d/%s) %s - success', n, #items, item.docid)
+      notices[#notices + 1] = ('- (%d/%s) %s - success'):format(n, #items, item.docid)
     else
-      notices[#notices + 1] = string.format('- (%d/%s) %s - failed!', n, #items, item.docid)
+      notices[#notices + 1] = ('- (%d/%s) %s - failed!'):format(n, #items, item.docid)
     end
   end
   vim.notify(table.concat(notices, '\n'), vim.log.levels.INFO)
@@ -940,7 +940,7 @@ function Act.actions.inspect(picker, item)
 
   for _, key in ipairs(keys) do
     -- use vim.inspect for value (may not always be string or number)
-    lines[#lines + 1] = string.format('  %-15s= %s', key, vim.inspect(item[key]))
+    lines[#lines + 1] = ('  %-15s= %s'):format(key, vim.inspect(item[key]))
   end
   lines[#lines + 1] = '\n}\n\n```'
 
@@ -973,7 +973,7 @@ function Act.actions.remove(picker, curr_item)
     picker.list:unselect(item) -- whether selected or not ..
     picker.list:update({ force = true })
     picker.preview:show(picker, { force = true })
-    notices[#notices + 1] = string.format('- (%d/%s) %s - %s', n, #items, item.docid, result)
+    notices[#notices + 1] = ('- (%d/%s) %s - %s'):format(n, #items, item.docid, result)
   end
   vim.notify(table.concat(notices, '\n'), vim.log.levels.INFO)
 end
