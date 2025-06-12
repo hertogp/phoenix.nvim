@@ -1,41 +1,20 @@
 --[[
 
 Easily search, download and read ietf rfc's.
-
-fuzzy> 'bgp !info 'path | 'select
-- 'str match exact occurrences
-- !str exclude exact occurrences
-- ^str match exact occurrences at start of the string
-- str$ match exact occurrences at end of the string
-- | acts as OR operator: ^core go$ | rb$ | py$ <- match entries that start with core and end with either go, rb or py
-
-TODO: these need some TLC
-- [x] parse an entry into topic|nr|title|status|formats|doi|updates|updated_by|obsoletes|obsoleted_by
-      - status and other known (label ..) are parsed into tags for an entry & removed from display
-      - this is parsed when loading index for searching, rather than when saving index to disk
-- [x] How to handle the (possibly) formats:
-      - default to first Itms.FORMATS, if available then no questions asked
-      - if not available, use the next one
-      - preview: if txt is available, use that, otherwise preview the item
-      - open: use first format available, txt opened in nvim, rest is !open'd
-- [x] formats other than TXT are redirected to browser w/ a URL (.pdf, .html etc..) or the info page
-      e.g. https://www.editor-rfc.org/info/rfc8  (no extension)
-- [c] info page the default when choosing to browse for an rfc, rather than downloading it?
-- [x] no local file, just show the item without the error msg.  Howto avoid that error?
-- [x] when download fails, flash a warning and do not create a local file with just a modeline.
-- [x] how to handle icons properly?
-- [ ] add item.errata if rfcnr is listed in `:!open https://www.rfc-editor.org/rfc/RFCs_for_errata.txt'
-      * note: url is case sensitive!
-      * errate itself is only available as a modified rfc<nr>.html, eg:
-        `:!open https://www.rfc-editor.org/rfc/inline-errata/rfc1001.html`
-        `:!open https://www.rfc-editor.org/rfc/inline-errata/`
-      * maybe just add 'E' to open rfc/inline-errata/rfc<nr>.html (if any)
-- references
+- some entry points
+  * `:!open https://www.rfc-editor.org/rfc/rfc-index.txt`
   * `:!open https://www.rfc-editor.org/rfc/rfc-ref.txt`
   * `:!open https://www.rfc-editor.org/rfc/rfc-index.xml` -- rfc<x>.json contains the values as well
+  * `:!open https://www.rfc-editor.org/info/rfc8`
+  * `:!open https://www.rfc-editor.org/rfc/`  (also /std, /bcp, /fyi, /ien)
+  * `:!open https://www.rfc-editor.org/rpc/wiki/doku.php?id=rfc_files_available`
+  * `:!open https://www.rfc-editor.org/rfc/inline-errata/` if errata exists: ..rfc/inline-errata/<docid>.html
+  * `:!open https://www.rfc-editor.org/rfc/pdfrfc/`  rfc/pdfrfc/<docid>.txt.pdf  (only rfc's)
+  * `:!open https://www.rfc-editor.org/rfc/rfc5234.txt` (also: .html, .json (metadata) ..)
+  * `:!open https://www.rfc-editor.org/rfc/rfc5234.json`
+  * `:!open https://www.rfc-editor.org/errata/rfc5234`  (this is an html page!)
 
 - URLS
-
   * https://www.rfc-editor.org/
      `-rfc/                                                              : series kind
         |- rfc<nr>.txt (txt, html, xml, pdf, ps, json (metadata))        : rfc,   doc
@@ -68,31 +47,6 @@ TODO: these need some TLC
       BCP is its own series, like IEN and FYI's
     - Status only applies to RFC's, STD/BCP/IEN/FYI have no status
 
-NOTE:
-- :Show lua =require'snacks'.picker.lines() -> new tab with picker return value printed for inspection
-- finder:
-- matcher:
-  * with field:pattern, this matches against item.field=..., so item.author=concat(tags.authors)
-    - a nested field (like tags.date won't be used as such a match)
-- A picker normally searches only in item.text for a match, not in the results display list lines!
-- Example:  > file:. date:may date:2009 -> all items with an item.file on disk dated may 2009
-# rfc-editor.org - links
-- `:!open https://www.rfc-editor.org/info/rfc8`
-- `:!open https://www.rfc-editor.org/rfc/`  (also has /std, /bcp, /fyi, /ien; txt, html, xml, json, ps)
-- `:!open https://www.rfc-editor.org/std/`
-- `:!open https://www.rfc-editor.org/bcp/`  (txt)
-- `:!open https://www.rfc-editor.org/ien/`
-- `:!open https://www.rfc-editor.org/fyi/` (txt, html, ps)
-- `:!open https://www.rfc-editor.org/rpc/wiki/doku.php?id=rfc_files_available`
-- `:!open https://www.rfc-editor.org/rfc/inline-errata/` if errata exists: ..rfc/inline-errata/<docid>.html
-- `:!open https://www.rfc-editor.org/rfc/pdfrfc/`  rfc/pdfrfc/<docid>.txt.pdf  (only rfc's)
-
-Examples
-- `:!open https://www.rfc-editor.org/rfc/rfc5234.txt` (also: .html, .json (metadata) ..)
-- `:!open https://www.rfc-editor.org/rfc/rfc5234.json`
-- `:!open https://www.rfc-editor.org/errata/rfc5234`  (this is an html page!)
-- `:!open `
-
 --]]
 
 --[[ TYPES ]]
@@ -107,23 +61,16 @@ local M = {} -- TODO: review how/why H.methods require M access
 --[[ DEPENDENCIES ]]
 
 ---@param name string
----@return any dependency the required dependency or nil
+---@return any dependency the required dependency or go bust
 local function dependency(name)
-  -- so we avoid introducing ok as a script wide variable
   local ok, var = pcall(require, name)
-  if not ok then
-    vim.notify('[error] missing dependency: ' .. name, vim.log.levels.ERROR)
-    return
-  end
+  assert(ok, ('[error] missing dependency: '):format(name), vim.log.levels.ERROR)
   return var
 end
 
 -- check all dependencies before bailing (if applicable)
 local plenary = dependency('plenary')
 local snacks = dependency('snacks')
--- if one of the dependencies are not there, bail
-if not plenary then return end
-if not snacks then return end
 
 --[[ HELPERS ]]
 -- H.methods assert and may fail, so caller beware & be responsible
@@ -1065,7 +1012,7 @@ function M.search(series)
   -- [ ] when resuming, check file status exists or not? Otherwise you download
   -- something, resume but it still shows as missing and marked for download.
 
-  -- Itms:from(series)
+  if #Itms < 1 then Itms:from(series) end
 
   return snacks.picker({
     items = Itms,
