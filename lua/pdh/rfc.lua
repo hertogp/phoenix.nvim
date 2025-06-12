@@ -100,7 +100,6 @@ Examples
 ---@alias series "rfc" | "bcp" | "std" | "fyi" | "ien"
 ---@alias entry { [1]: series, [2]: integer, [3]: string}
 ---@alias index entry[]
----@alias docid string unique document name (<series><nr>)
 
 local M = {} -- TODO: review how/why H.methods require M access
 -- if not needed anymore, it can move to the [[ MODULE ]] section
@@ -127,9 +126,16 @@ if not plenary then return end
 if not snacks then return end
 
 --[[ HELPERS ]]
--- H.methods assume caller already checked validity of arguments supplied
--- so they simply `assert` and possibly fail hard
+-- H.methods assert and may fail, so caller beware & be responsible
 
+---@class Helper helper table
+---@field URL_PATTERNS table maps doctype->(sub)series->url patterns
+---@field FNAME_PATTERN table maps doctype->(sub)series->fname patterns
+---@field top string top (sub)dir under data/cache dir where the rfc files are stored
+---@field sep string separator used in index files: { {series|nr|text}, .. }
+---@field dir fun(spec:string|table):string cache/data directory path or bust
+---@field fname fun(type:string, docid:string, ext:string):string fname or bust
+---@field url fun(type:string, docid:string, ext:string):string|nil url or bust
 local H = {
   -- valid values for series
   -- valid = { rfc = true, bcp = true, std = true, fyi = true, ien = true },
@@ -313,10 +319,9 @@ end
 function H.url(type, docid, ext)
   -- docid is <series>-index or <series><nr>
 
+  local url = nil
   local series = docid:match('^%D+')
   local url_parts = {
-    -- note: alphanumeric keys only (a-zA-Z0-9), otherwise use something like:
-    -- pattern:gsub('(%b<>)', function(key) return url_parts[key:sub(2, -2)] end) end
     base = 'https://www.rfc-editor.org',
     docid = docid,
     series = series,
@@ -325,13 +330,10 @@ function H.url(type, docid, ext)
   if H.URL_PATTERNS[series] then
     local pattern = H.URL_PATTERNS[series][type]
     if pattern then
-      local url = pattern:gsub('<(.-)>', url_parts) -- '<(%S+)> won't work?
-      -- local url = pattern:gsub('(%b<>)', function(key)
-      --   return url_parts[key:sub(2, -2)]
-      -- end)
-      return url
+      url = pattern:gsub('<(.-)>', url_parts) -- '<(%S+)> won't work?
     end
   end
+  return url
 end
 
 --[[ INDEX ]]
@@ -966,17 +968,17 @@ function Act.actions.remove(picker, curr_item)
   vim.notify(table.concat(notices, '\n'), vim.log.levels.INFO)
 end
 
-function Act.actions.visit_info(picker, item)
+function Act.actions.visit_info(_, item)
   local url = H.url('info', item.docid, 'html')
   if url then vim.cmd(('!open %s'):format(url)) end
 end
 
-function Act.actions.visit_page(picker, item)
+function Act.actions.visit_page(_, item)
   local url = H.url('document', item.docid, 'html')
   if url then vim.cmd(('!open %s'):format(url)) end
 end
 
-function Act.actions.visit_errata(picker, item)
+function Act.actions.visit_errata(_, item)
   local url = H.url('errata', item.docid, '')
   if url then vim.cmd(('!open %s'):format(url)) end
 end
