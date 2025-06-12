@@ -212,6 +212,7 @@ local H = {
 --   if ok then
 --     return fname, rv
 --   else
+--     -- TODO: remove output file, don't wanne leave artifacts behind
 --     vim.print(vim.inspect({ 'fetch error', rv }))
 --     return nil, rv
 --   end
@@ -347,6 +348,7 @@ function Idx:errata()
   local ftime = vim.fn.getftime(fname) -- if file unreadable, then ftime = -1
   local ttl = (M.config.ttl or 0) + ftime - vim.fn.localtime()
   if ttl < 1 then
+    -- read from the net
     local ok, rv = pcall(plenary.curl.get, { url = url, accept = 'plain/text' })
     if ok and rv and rv.status == 200 then
       local lines = vim.split(rv.body, '[\r\n]', { trimempty = true })
@@ -362,7 +364,7 @@ function Idx:errata()
       vim.notify('[error] could not get errata', vim.log.levels.ERROR)
     end
   else
-    vim.notify('fname is ' .. fname)
+    -- read from disk
     local ok, lines = pcall(vim.fn.readfile, fname)
     if ok then
       for _, nr in ipairs(lines) do
@@ -604,20 +606,20 @@ function Itms.details(item)
     '',
     '### TAGS',
     '',
-    fmt2cols('ALSO', item.also:upper()),
-    fmt2cols('OBSOLETES', item.obsoletes:upper()),
-    fmt2cols('OBSOLETED by', item.obsoleted_by:upper()),
-    fmt2cols('UPDATES', item.updates:upper()),
-    fmt2cols('UPDATED by', item.updated_by:upper()),
+    fmt2cols:format('ALSO', item.also:upper()),
+    fmt2cols:format('OBSOLETES', item.obsoletes:upper()),
+    fmt2cols:format('OBSOLETED by', item.obsoleted_by:upper()),
+    fmt2cols:format('UPDATES', item.updates:upper()),
+    fmt2cols:format('UPDATED by', item.updated_by:upper()),
     '',
     '',
     '### PATH',
     '',
-    fmt2path('CACHE', cache),
-    fmt2path('DATA', data),
-    fmt2path('FILE', file),
+    fmt2path:format('CACHE', cache),
+    fmt2path:format('DATA', data),
+    fmt2path:format('FILE', file),
     '',
-    fmt2path('URL', url),
+    fmt2path:format('URL', url),
   }
 
   return title, ft, lines
@@ -675,7 +677,7 @@ end
 function Itms:from(series)
   -- clear self first, TODO: only needed if series altered or TTL's expired
   local cnt = #Itms
-  for i = 0, cnt do
+  for i = 1, cnt do
     Itms[i] = nil
   end
 
@@ -1049,22 +1051,21 @@ function M.setup(opts)
   M.config = vim.tbl_extend('force', M.config, opts)
   M.config.data = H.dir(M.config.data)
   M.config.cache = H.dir(M.config.cache)
+  M.config.series = M.config.series or { 'rfc', 'bcp', 'std' }
+  -- load up the Idx and Itms tables
+  Itms:from(M.config.series)
+
   return M
 end
 
 function M.search(series)
   -- search the (sub)series index/indices
-  -- Use the source Luke!
-  -- * `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/preview.lua`
-  -- * `:!open https://github.com/folke/todo-comments.nvim/blob/main/lua/todo-comments/search.lua`
-  -- * `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/preview.lua`
-
   -- TODO:
   -- [ ] if series has not changed, donot load Itms again
   -- [ ] when resuming, check file status exists or not? Otherwise you download
   -- something, resume but it still shows as missing and marked for download.
 
-  Itms:from(series)
+  -- Itms:from(series)
 
   return snacks.picker({
     items = Itms,
