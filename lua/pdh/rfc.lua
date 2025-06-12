@@ -704,7 +704,7 @@ end
 --- create a new picker item for given (idx, {series, id, text})
 ---@param idx integer
 ---@param entry entry
----@return table | nil item fields parsed from an index entry's text or nil
+---@return table|nil item fields parsed from an index entry's text or nil
 function Itms.new(idx, entry)
   local item = nil -- returned if entry is malformed
   local series, id, text = unpack(entry)
@@ -721,8 +721,8 @@ function Itms.new(idx, entry)
 
       -- extra fields to search on using > field:term in search prompt
       errata = errata,
-      docid = string.format('%s%s', series, tonumber(id)),
-      name = string.format('%s%d', series, id):upper(),
+      docid = ('%s%s'):format(series, id),
+      name = ('%s%d'):format(series, id):upper(),
       series = series:lower(),
     }
 
