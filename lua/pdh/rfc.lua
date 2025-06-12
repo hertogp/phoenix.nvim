@@ -32,8 +32,7 @@ TODO: these need some TLC
       * maybe just add 'E' to open rfc/inline-errata/rfc<nr>.html (if any)
 - references
   * `:!open https://www.rfc-editor.org/rfc/rfc-ref.txt`
-  * `:!open https://www.rfc-editor.org/rfc/bcp-ref.txt`
-  * `:!open https://www.rfc-editor.org/rfc/std-ref.txt` -> [std<nr>] lines with info url's of std and rfc's
+  * `:!open https://www.rfc-editor.org/rfc/rfc-index.xml` -- rfc<x>.json contains the values as well
 
 - URLS
 
@@ -101,7 +100,7 @@ Examples
 ---@alias series "rfc" | "bcp" | "std" | "fyi" | "ien"
 ---@alias entry { [1]: series, [2]: integer, [3]: string}
 ---@alias index entry[]
----@alias docid string Unique name for an ietf document
+---@alias docid string unique document name (<series><nr>)
 
 local M = {} -- TODO: review how/why H.methods require M access
 -- if not needed anymore, it can move to the [[ MODULE ]] section
@@ -133,7 +132,7 @@ if not snacks then return end
 
 local H = {
   -- valid values for series
-  valid = { rfc = true, bcp = true, std = true, fyi = true, ien = true },
+  -- valid = { rfc = true, bcp = true, std = true, fyi = true, ien = true },
   top = 'ietf.org', -- subdir under topdir for ietf documents
   sep = '│', -- separator for local index lines: series|id|text
 
@@ -224,8 +223,8 @@ local H = {
 -- end
 
 --- find root dir or use cfg.top, fallback to stdpath data dir
----@param spec string|table a top dir relative to rfc-root dir or list of rfc-root dir markers, eg. {'.git'}
----@return string path full path to rfc-top directory (/rfc-root/rfc-top)
+---@param spec string|table a top dir relative to Rfc-root dir or list root dir markers, eg. {'.git'}
+---@return string path full path to rfc-top directory (/rfc-root/rfc-top) (or go bust)
 function H.dir(spec)
   local path
 
@@ -239,9 +238,10 @@ function H.dir(spec)
   return assert(path, ('invalid directory specification %s'):format(vim.inspect(spec)))
 end
 
+---Translate document type, id and extension to a local filename (or die trying)
 ---@param type string type of document (index, document, info, ..)
----@param docid string unique ietf document name, e.g. bcp11 or bcp-index
----@param ext string
+---@param docid string unique document name (<series><nr>)
+---@param ext string file extension
 ---@return string path full file path for doc-type and docid or bust!
 function H.fname(type, docid, ext)
   local series = docid:match('%D+'):lower()
@@ -307,7 +307,7 @@ end
 -- end
 
 ---@param type string type of document (index, document, errata, info or errata_index)
----@param docid string unique ietf document name or (sub)series
+---@param docid string unique document name (<series><nr>) or (sub)series
 ---@param ext string
 ---@return string|nil url the url for given `docid` and `ext`
 function H.url(type, docid, ext)
@@ -544,7 +544,7 @@ local Itms = {
     txt = ' ', -- text
   },
 
-  FORMATS = { -- publication formats, order is to check for presence or download
+  FORMATS = { -- order is important: first one available (disk/net) is used
     -- see: `:!open https://www.rfc-editor.org/rpc/wiki/doku.php?id=rfc_files_available`
     'txt', -- available for all
     'html', -- available for all and only format for rfc/inline-errata
@@ -874,9 +874,9 @@ local Act = {
         ['R'] = { 'remove', mode = { 'n' } },
         ['O'] = { 'confirm', mode = { 'n' } },
         ['I'] = { 'inspect', mode = { 'n' } },
-        ['S'] = { 'search', mode = { 'n' } },
-        ['Vi'] = { 'visit_info', mode = { 'n' } },
-        ['Ve'] = { 'visit_errata', mode = { 'n' } },
+        ['gi'] = { 'visit_info', mode = { 'n' } },
+        ['ge'] = { 'visit_errata', mode = { 'n' } },
+        ['gx'] = { 'visit_page', mode = { 'n' } },
       },
     },
     input = { -- the input window where search is typed
@@ -885,9 +885,10 @@ local Act = {
         ['R'] = { 'remove', mode = { 'n' } },
         ['O'] = { 'confirm', mode = { 'n' } },
         ['I'] = { 'inspect', mode = { 'n' } },
-        ['S'] = { 'search', mode = { 'n' } },
-        ['Vi'] = { 'visit_info', mode = { 'n' } },
-        ['Ve'] = { 'visit_errata', mode = { 'n' } },
+        ['gi'] = { 'visit_info', mode = { 'n' } },
+        ['ge'] = { 'visit_errata', mode = { 'n' } },
+        ['gx'] = { 'visit_page', mode = { 'n' } },
+        ['gy'] = { 'visit_page', mode = { 'n' } },
       },
     },
   },
@@ -965,23 +966,17 @@ function Act.actions.remove(picker, curr_item)
   vim.notify(table.concat(notices, '\n'), vim.log.levels.INFO)
 end
 
-function Act.actions.search(_, item) -- ignores picker, item
-  local info = { rfc = true, bcp = true, std = true }
-  if info[item.series] then
-    vim.cmd(('!open https://rfc-editor.org/info/%s'):format(item.docid))
-  else
-    vim.notify('[info] no info page for ' .. item.docid, vim.log.levels.INFO)
-  end
-end
-
 function Act.actions.visit_info(picker, item)
-  picker:close()
   local url = H.url('info', item.docid, 'html')
   if url then vim.cmd(('!open %s'):format(url)) end
 end
 
+function Act.actions.visit_page(picker, item)
+  local url = H.url('document', item.docid, 'html')
+  if url then vim.cmd(('!open %s'):format(url)) end
+end
+
 function Act.actions.visit_errata(picker, item)
-  picker:close()
   local url = H.url('errata', item.docid, '')
   if url then vim.cmd(('!open %s'):format(url)) end
 end
