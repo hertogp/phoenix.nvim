@@ -98,8 +98,8 @@ Examples
 
 --[[ TYPES ]]
 
----@alias stream "rfc" | "bcp" | "std" | "fyi" | "ien"
----@alias entry { [1]: stream, [2]: integer, [3]: string}
+---@alias series "rfc" | "bcp" | "std" | "fyi" | "ien"
+---@alias entry { [1]: series, [2]: integer, [3]: string}
 ---@alias index entry[]
 ---@alias docid string Unique name for an ietf document
 
@@ -132,7 +132,7 @@ if not snacks then return end
 -- so they simply `assert` and possibly fail hard
 
 local H = {
-  -- valid values for stream
+  -- valid values for series
   valid = { rfc = true, bcp = true, std = true, fyi = true, ien = true },
   top = 'ietf.org', -- subdir under topdir for ietf documents
   sep = '│', -- separator for local index lines: stream|id|text
@@ -272,13 +272,13 @@ end
 -- end
 
 ---@param type string type of document (index, document, errata, info or errata_index)
----@param docid string unique ietf document name, e.g. bcp11 or bcp-index
+---@param docid string unique ietf document name or (sub)series
 ---@param ext string
 ---@return string|nil url the url for given `docid` and `ext`
 function H.url(type, docid, ext)
   -- docid is <series>-index or <stream><nr>
 
-  local series = docid:match('^[^%d-]+')
+  local series = docid:match('^%D+')
   local url_parts = {
     base = 'https://www.rfc-editor.org',
     docid = docid,
@@ -299,9 +299,9 @@ end
 -- functions that work with the indices of streams of ietf documents
 
 ---@class Index
----@field fetch fun(docid: string): index Retrieve (and cache) an index from the ietf
----@field get fun(self: Index, stream: stream): Index Add an index to Idx
----@field index fun(self: Index, streams: stream[]): Index Add one or more indices to Idx
+---@field fetch fun(series: series): index Retrieve (and cache) an index from the ietf
+---@field get fun(self: Index, series: series): Index Add an index to Idx
+---@field index fun(self: Index, series: series[]): Index Add one or more indices to Idx
 local Idx = {
   ERRATA = {},
 }
@@ -317,7 +317,7 @@ function Idx.errata()
     if ok and rv and rv.status == 200 then
       local lines = vim.split(rv.body, '[\r\n]', { trimempty = true })
       for k, n in ipairs(lines) do
-        if n and #n > 0 then Idx.ERRATA['rfc' .. tonumber(n)] = true end
+        if n and #n > 0 then Idx.ERRATA[('rfc%d'):format(n)] = true end
       end
       local dir = vim.fs.dirname(fname)
       vim.fn.mkdir(dir, 'p')
@@ -332,7 +332,7 @@ function Idx.errata()
     local ok, lines = pcall(vim.fn.readfile, fname)
     if ok then
       for _, nr in ipairs(lines) do
-        Idx.ERRATA['rfc' .. tonumber(nr)] = true
+        Idx.ERRATA[('rfc%d'):format(nr)] = true
       end
     else
       vim.notify('!ok, err is ' .. vim.inspect(lines))
@@ -342,13 +342,11 @@ function Idx.errata()
 end
 -- retrieves (and caches) an index for the given `stream` from the ietf
 -- returns a list: { {stream, id, text}, .. } or nil on failure
----@param docid string Unique ietf document name, e.g. bcp11 or bcp-index
----@return index index A (possibly empty) list of partly parsed index entries, { {stream, nr, text}, ..}
-function Idx.fetch(docid)
+---@param series series a document (sub)series
+---@return index index A (possibly empty) list of index entries, { {stream, nr, text}, ..}
+function Idx.fetch(series)
   -- retrieve raw content from the ietf
-  docid = docid:lower() -- just to be sure
-  local url = H.url('index', docid, 'txt')
-  local stream = vim.split(docid, '[%d-]')[1]:lower() -- docid = <stream>-index
+  local url = H.url('index', series, 'txt')
   local idx = {} -- parsed content { {s, n, t}, ... }
 
   -- retrieve index from the ietf
@@ -370,13 +368,13 @@ function Idx.fetch(docid)
     -- return a parsed accumulated entry line (if any) or nil upon failure
     local nr, title = string.match(line, '^(%d+)%s+(.*)')
     nr = tonumber(nr) -- eleminate any leading zero's
-    if nr ~= nil then return { stream, nr, title } end
+    if nr ~= nil then return { series, nr, title } end
     return nil -- so it actually won't add the entry
   end
 
   -- assemble and parse lines
   local acc = '' -- accumulated sofar
-  local max = stream == 'ien' and 3 or 1 -- allow for leading ws in ien index
+  local max = series == 'ien' and 3 or 1 -- allow for leading ws in ien index
   for _, line in ipairs(lines) do
     local start = string.match(line, '^(%s*)%d+%s+%S')
     if start and #start < max then
@@ -401,11 +399,11 @@ function Idx.fetch(docid)
     for _, entry in ipairs(idx) do
       lines[#lines + 1] = table.concat(entry, H.sep)
     end
-    local fname = H.fname(docid, 'txt')
+    local fname = H.fname(series, 'txt')
     local dir = vim.fs.dirname(fname)
     vim.fn.mkdir(dir, 'p')
     if vim.fn.writefile(lines, fname) < 0 then
-      vim.notify('[error] could not write ' .. docid .. ' to ' .. fname, vim.log.levels.ERROR)
+      vim.notify('[error] could not write ' .. series .. ' to ' .. fname, vim.log.levels.ERROR)
     end
   end
 
@@ -414,14 +412,13 @@ end
 
 -- adds an index (local/remote) for a stream (possibly update cache)
 ---@param self Index
----@param stream stream
+---@param series series
 ---@return Index
-function Idx:get(stream)
+function Idx:get(series)
   -- get a single stream, either from disk or from ietf
   -- NOTE: we do not check if stream is already present in self
   local idx = {} ---@type index
-  local docid = stream:lower() .. '-index'
-  local fname = H.fname(docid, 'txt')
+  local fname = H.fname(series, 'txt')
   local ftime = vim.fn.getftime(fname) -- if file unreadable, then ftime = -1
   local ttl = (M.config.ttl or 0) + ftime - vim.fn.localtime()
 
@@ -440,13 +437,13 @@ function Idx:get(stream)
   end
 
   if ttl < 1 then
-    idx = Idx.fetch(docid) or readfile()
+    idx = Idx.fetch(series) or readfile()
   else
-    idx = readfile() or Idx.fetch(docid)
+    idx = readfile() or Idx.fetch(series)
   end
 
   if #idx < 1 then
-    vim.notify('[warn] no index available for ' .. stream, vim.log.levels.WARN) --
+    vim.notify('[warn] no index available for ' .. series, vim.log.levels.WARN) --
   end
 
   for _, entry in ipairs(idx) do
@@ -456,11 +453,11 @@ function Idx:get(stream)
   return self
 end
 
---- build an index for 1 or more types of streams
+--- build an index for 1 or more document (sub)series
 ---@param self Index
----@param streams stream[]
+---@param series series[]
 ---@return entry[]
-function Idx:from(streams)
+function Idx:from(series)
   -- clear index
   local cnt = #Idx
   for i = 0, cnt do
@@ -468,11 +465,11 @@ function Idx:from(streams)
   end
 
   -- refill
-  streams = streams or { 'rfc' }
-  streams = type(streams) == 'string' and { streams } or streams
-  streams = vim.tbl_map(string.lower, streams) -- stream names always lowercase
-  for _, stream in ipairs(streams) do
-    assert(H.valid[stream])
+  series = series or { 'rfc' }
+  series = type(series) == 'string' and { series } or series
+  series = vim.tbl_map(string.lower, series) -- stream names always lowercase
+  for _, stream in ipairs(series) do
+    assert(H.URL_PATTERNS[stream])
     Idx:get(stream)
   end
   return self
@@ -490,7 +487,7 @@ end
 
 ---@class Items
 ---@field details fun(item: table): title: string, ft: string, lines: string[]
----@field from fun(self: Items, streams: stream[]): Items
+---@field from fun(self: Items, series: series[]): Items
 ---@field new fun(idx: integer, entry: entry): item: table
 ---@field parse fun(text: string): text: string, tags:table
 local Itms = {
@@ -522,9 +519,9 @@ local Itms = {
 
 --- Builds self.list of picker items, from 1 or more streams; returns #items
 ---@param self Items
----@param streams stream[]
+---@param series series[]
 ---@return Items | nil
-function Itms:from(streams)
+function Itms:from(series)
   -- clear self first, TODO: only needed if streams altered or TTL's expired
   local cnt = #Itms
   for i = 0, cnt do
@@ -532,7 +529,7 @@ function Itms:from(streams)
   end
 
   -- refill
-  Idx:from(streams) -- { {stream, nr, text}, .. }
+  Idx:from(series) -- { {stream, nr, text}, .. }
 
   if #Idx == 0 then return nil end
 
@@ -595,9 +592,10 @@ function Itms.new(idx, entry)
   -- [ ] rfc status '-' is Not issued, n/a for bcp, std or others (use stream as status)
   local item = nil -- returned if entry is malformed
   local stream, id, text = unpack(entry)
-  local docid = string.format('%s%s', stream:lower(), tonumber(id))
-  local errata = 'no'
-  if stream:lower() == 'rfc' and Idx.ERRATA[docid] then errata = 'yes' end
+  stream = stream:lower() -- just in case
+  local docid = ('%s%s'):format(stream, id)
+  local errata = Idx.ERRATA[docid] and 'yes' or 'no'
+  if docid == 'rfc2' then vim.print(vim.inspect({ docid, errata, Idx.ERRATA[docid] })) end
 
   if stream and id and text then
     item = {
@@ -1057,46 +1055,13 @@ function M.test_bit(docid)
   -- vim.print(stream .. id .. ' available formats are: ' .. vim.inspect(fext))
 end
 
-function M.test(type, docid, ext)
-  local series = docid:match('^%D+')
-  local url_parts = {
-    base = 'https://www.rf-editor.org',
-    docid = docid,
-    ext = ext,
-    series = series,
-  }
-  local url_patterns = {
-    rfc = {
-      index = '<base>/<series>/<series>-index.txt',
-      document = '<base>/<series>/<docid>.<ext>',
-      errata_index = '<base>/rfc/RFCs_for_errata.txt',
-      errata_page = '<base>/inline-errata/<docid>.html',
-      info_page = '<base>/info/<docid>',
-    },
-    std = {
-      index = '<base>/<series>/<series>-index.txt',
-      document = '<base>/<series>/<docid>.<ext>',
-    },
-    bcp = {
-      index = '<base>/<series>/<series>-index.txt',
-      document = '<base>/<series>/<docid>.<ext>',
-    },
-    ien = {
-      index = '<base>/<series>/<series>-index.txt',
-      document = '<base>/<series>/<docid>.<ext>',
-    },
-    fyi = {
-      index = '<base>/<series>/<series>-index.txt',
-      document = '<base>/<series>/<docid>.<ext>',
-    },
-  }
-
-  -- return url or nil
-  local pattern = url_patterns[series][type]
-  if pattern then
-    return pattern:gsub('(%b<>)', function(key)
-      return url_parts[key:sub(2, -2)]
-    end)
+function M.test()
+  Idx.errata()
+  local count = 1
+  for n, entry in pairs(Idx.ERRATA) do
+    count = count + 1
+    vim.print(vim.inspect({ n, entry, Idx.ERRATA['rfc2'] }))
+    if count > 10 then break end
   end
 end
 
