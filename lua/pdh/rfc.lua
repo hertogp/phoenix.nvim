@@ -135,18 +135,15 @@ local H = {
   -- valid values for series
   valid = { rfc = true, bcp = true, std = true, fyi = true, ien = true },
   top = 'ietf.org', -- subdir under topdir for ietf documents
-  sep = '│', -- separator for local index lines: stream|id|text
+  sep = '│', -- separator for local index lines: series|id|text
 
-  -- map categories -> url-type -> url (where rfc, std etc .. are categories)
-  -- see https://www.rfc-editor.org/faq/#streamcat
-  -- RFCs have status: unknown, proposed standard, internet standard, informational etc ..
-  --
   URL_PATTERNS = {
+    -- { series = { doc-type = pattern } }
     rfc = {
       index = '<base>/<series>/<series>-index.txt',
       document = '<base>/<series>/<docid>.<ext>',
       errata_index = '<base>/rfc/RFCs_for_errata.txt',
-      errata_doc = '<base>/inline-errata/<docid>.html',
+      errata = '<base>/errata/<docid>',
       info = '<base>/info/<docid>',
     },
     std = {
@@ -237,10 +234,10 @@ function H.fname(docid, ext)
   end
 
   -- find fdir based on markers
-  local stream = vim.split(docid, '[%d-]')[1]:lower()
+  local series = vim.split(docid, '[%d-]')[1]:lower()
   if type(cfg.data) == 'table' then fdir = vim.fs.root(0, cfg.data) end
   fdir = fdir or cfg.data or vim.fn.stdpath('data')
-  fname = vim.fs.joinpath(fdir, top, stream, docid:lower() .. '.' .. ext)
+  fname = vim.fs.joinpath(fdir, top, series, docid:lower() .. '.' .. ext)
 
   return vim.fs.normalize(fname)
 end
@@ -276,10 +273,12 @@ end
 ---@param ext string
 ---@return string|nil url the url for given `docid` and `ext`
 function H.url(type, docid, ext)
-  -- docid is <series>-index or <stream><nr>
+  -- docid is <series>-index or <series><nr>
 
   local series = docid:match('^%D+')
   local url_parts = {
+    -- note: alphanumeric keys only (a-zA-Z0-9), otherwise use something like:
+    -- pattern:gsub('(%b<>)', function(key) return url_parts[key:sub(2, -2)] end) end
     base = 'https://www.rfc-editor.org',
     docid = docid,
     ext = ext,
@@ -288,15 +287,14 @@ function H.url(type, docid, ext)
   if not H.URL_PATTERNS[series] then return nil end
   -- return url or nil
   local pattern = H.URL_PATTERNS[series][type]
-  local url
-  if pattern then url = pattern:gsub('(%b<>)', function(key)
-    return url_parts[key:sub(2, -2)]
-  end) end
-  return url
+  if pattern then
+    local url = pattern:gsub('<(%w+)>', url_parts)
+    return url
+  end
 end
 
 --[[ INDEX ]]
--- functions that work with the indices of streams of ietf documents
+-- functions that work with the indices of (sub)series (rfc, std, ..)
 
 ---@class Index
 ---@field fetch fun(series: series): index Retrieve (and cache) an index from the ietf
@@ -306,7 +304,7 @@ local Idx = {
   ERRATA = {},
 }
 
-function Idx.errata()
+function Idx:errata()
   -- get the errata into Idx.ERRATA { docid -> true }
   local url = H.url('errata_index', 'rfc', 'txt')
   local fname = H.fname('errata', 'txt')
@@ -340,10 +338,11 @@ function Idx.errata()
   end
   return Idx
 end
--- retrieves (and caches) an index for the given `stream` from the ietf
--- returns a list: { {stream, id, text}, .. } or nil on failure
+
+-- retrieves (and caches) an index for the given (sub)`series` from the ietf
+-- returns a list: { {series, id, text}, .. } or nil on failure
 ---@param series series a document (sub)series
----@return index index A (possibly empty) list of index entries, { {stream, nr, text}, ..}
+---@return index index A (possibly empty) list of index entries, { {series, nr, text}, ..}
 function Idx.fetch(series)
   -- retrieve raw content from the ietf
   local url = H.url('index', series, 'txt')
@@ -361,7 +360,7 @@ function Idx.fetch(series)
     return idx -- will be {}
   end
 
-  -- parse assembled line into {stream, id, text}
+  -- parse assembled line into {series, id, text}
   ---@param line string
   ---@return entry | nil
   local parse = function(line)
@@ -407,16 +406,16 @@ function Idx.fetch(series)
     end
   end
 
-  return idx -- { {stream, nr, title }, .. } or empty list
+  return idx -- { {series, nr, title }, .. } or empty list
 end
 
--- adds an index (local/remote) for a stream (possibly update cache)
+-- adds an index (local/remote) for a series (possibly update cache)
 ---@param self Index
 ---@param series series
 ---@return Index
 function Idx:get(series)
-  -- get a single stream, either from disk or from ietf
-  -- NOTE: we do not check if stream is already present in self
+  -- get a single series, either from disk or from ietf
+  -- NOTE: we do not check if series is already present in self
   local idx = {} ---@type index
   local fname = H.fname(series, 'txt')
   local ftime = vim.fn.getftime(fname) -- if file unreadable, then ftime = -1
@@ -464,14 +463,18 @@ function Idx:from(series)
     Idx[i] = nil
   end
 
-  -- refill
+  -- refill items
   series = series or { 'rfc' }
   series = type(series) == 'string' and { series } or series
-  series = vim.tbl_map(string.lower, series) -- stream names always lowercase
-  for _, stream in ipairs(series) do
-    assert(H.URL_PATTERNS[stream])
-    Idx:get(stream)
+  series = vim.tbl_map(string.lower, series) -- series name is always lowercase
+  for _, series_name in ipairs(series) do
+    assert(H.URL_PATTERNS[series_name])
+    Idx:get(series_name)
   end
+
+  -- refill ERRATA
+  Idx:errata()
+
   return self
 end
 
@@ -517,19 +520,19 @@ local Itms = {
   },
 }
 
---- Builds self.list of picker items, from 1 or more streams; returns #items
+--- Builds self.list of picker items, from 1 or more (sub)series; returns #items
 ---@param self Items
 ---@param series series[]
 ---@return Items | nil
 function Itms:from(series)
-  -- clear self first, TODO: only needed if streams altered or TTL's expired
+  -- clear self first, TODO: only needed if series altered or TTL's expired
   local cnt = #Itms
   for i = 0, cnt do
     Itms[i] = nil
   end
 
   -- refill
-  Idx:from(series) -- { {stream, nr, text}, .. }
+  Idx:from(series) -- { {series, nr, text}, .. }
 
   if #Idx == 0 then return nil end
 
@@ -583,32 +586,32 @@ function Itms.fetch(item)
   return item
 end
 
---- create a new picker item for given (idx, {stream, id, text})
+--- create a new picker item for given (idx, {series, id, text})
 ---@param idx integer
 ---@param entry entry
 ---@return table | nil item fields parsed from an index entry's text or nil
 function Itms.new(idx, entry)
   -- TODO:
-  -- [ ] rfc status '-' is Not issued, n/a for bcp, std or others (use stream as status)
+  -- [?] rfc status '-' is Not issued, n/a for bcp, std or others (use series as status)
   local item = nil -- returned if entry is malformed
-  local stream, id, text = unpack(entry)
-  stream = stream:lower() -- just in case
-  local docid = ('%s%s'):format(stream, id)
+  local series, id, text = unpack(entry)
+  series = series:lower() -- just in case
+  local docid = ('%s%s'):format(series, id)
   local errata = Idx.ERRATA[docid] and 'yes' or 'no'
-  if docid == 'rfc2' then vim.print(vim.inspect({ docid, errata, Idx.ERRATA[docid] })) end
+  if docid == 'rfc2' then vim.print(vim.inspect({ docid, errata, #Idx.ERRATA, docid, Idx.ERRATA[docid] })) end
 
-  if stream and id and text then
+  if series and id and text then
     item = {
       idx = idx,
       score = idx,
       text = text, -- used by snack matcher
-      title = string.format('%s%s', stream, id):upper(), -- used by snack as preview win title
+      title = string.format('%s%s', series, id):upper(), -- used by snack as preview win title
 
       -- extra fields to search on using > field:term in search prompt
       errata = errata,
-      docid = string.format('%s%s', stream:lower(), tonumber(id)),
-      name = string.format('%s%d', stream, id):upper(),
-      stream = stream:lower(),
+      docid = string.format('%s%s', series:lower(), tonumber(id)),
+      name = string.format('%s%d', series, id):upper(),
+      series = series:lower(),
     }
 
     -- update fields in item
@@ -742,7 +745,7 @@ function Itms.details(item)
     f(fmt2cols, 'STATUS', item.status:upper()),
     f(fmt2cols, 'DATE', item.date or '-'),
     '',
-    f(fmt2cols, 'STREAM', item.stream:upper()),
+    f(fmt2cols, 'SERIES', item.series:upper()),
     f(fmt2cols, 'FORMATS', item.format:upper()),
     f(fmt2cols, 'DOI', item.doi:upper()),
     '',
@@ -832,6 +835,8 @@ local Act = {
         ['O'] = { 'confirm', mode = { 'n' } },
         ['I'] = { 'inspect', mode = { 'n' } },
         ['S'] = { 'search', mode = { 'n' } },
+        ['Vi'] = { 'visit_info', mode = { 'n' } },
+        ['Ve'] = { 'visit_errata', mode = { 'n' } },
       },
     },
     input = { -- the input window where search is typed
@@ -841,6 +846,8 @@ local Act = {
         ['O'] = { 'confirm', mode = { 'n' } },
         ['I'] = { 'inspect', mode = { 'n' } },
         ['S'] = { 'search', mode = { 'n' } },
+        ['Vi'] = { 'visit_info', mode = { 'n' } },
+        ['Ve'] = { 'visit_errata', mode = { 'n' } },
       },
     },
   },
@@ -920,11 +927,23 @@ end
 
 function Act.actions.search(_, item) -- ignores picker, item
   local info = { rfc = true, bcp = true, std = true }
-  if info[item.stream] then
+  if info[item.series] then
     vim.cmd(('!open https://rfc-editor.org/info/%s'):format(item.docid))
   else
     vim.notify('[info] no info page for ' .. item.docid, vim.log.levels.INFO)
   end
+end
+
+function Act.actions.visit_info(picker, item)
+  picker:close()
+  local url = H.url('info', item.docid, 'html')
+  if url then vim.cmd(('!open %s'):format(url)) end
+end
+
+function Act.actions.visit_errata(picker, item)
+  picker:close()
+  local url = H.url('errata', item.docid, '')
+  if url then vim.cmd(('!open %s'):format(url)) end
 end
 
 function Act.confirm(picker, item)
@@ -983,19 +1002,19 @@ function M.setup(opts)
   return M
 end
 
-function M.search(streams)
-  -- search the stream(s) index/indices
+function M.search(series)
+  -- search the (sub)series index/indices
   -- Use the source Luke!
   -- * `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/preview.lua`
   -- * `:!open https://github.com/folke/todo-comments.nvim/blob/main/lua/todo-comments/search.lua`
   -- * `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/preview.lua`
 
   -- TODO:
-  -- [ ] if streams have not changed, donot load Itms again
+  -- [ ] if series has not changed, donot load Itms again
   -- [ ] when resuming, check file status exists or not? Otherwise you download
   -- something, resume but it still shows as missing and marked for download.
   --
-  Itms:from(streams)
+  Itms:from(series)
 
   return snacks.picker({
     items = Itms,
@@ -1051,8 +1070,6 @@ function M.test_bit(docid)
   for ext, mask in pairs(masks) do
     if bit.band(status, mask) ~= 0 then fext[#fext + 1] = ext end
   end
-
-  -- vim.print(stream .. id .. ' available formats are: ' .. vim.inspect(fext))
 end
 
 function M.test()
