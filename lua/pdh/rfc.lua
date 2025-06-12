@@ -61,6 +61,13 @@ TODO: these need some TLC
     - fyi: idx, doc
 
   * also subdirs: rfc/{bcp, std, ien, fyi} with <docid>.ext and series-index.txt
+  * terminology:
+    - streams - producers of documents: https://www.rfc-editor.org/faq/#streamcat
+      Document stream = IETF, IRTF, IAB, Independant
+    - Category = (proposed) STD, BCP, Experimental, Informational and Historic (aka status)
+    - Series = The RFC series, STD docs are a subseries of the RFC series
+      BCP is its own series, like IEN and FYI's
+    - Status only applies to RFC's, STD/BCP/IEN/FYI have no status
 
 NOTE:
 - :Show lua =require'snacks'.picker.lines() -> new tab with picker return value printed for inspection
@@ -130,9 +137,34 @@ local H = {
   top = 'ietf.org', -- subdir under topdir for ietf documents
   sep = '│', -- separator for local index lines: stream|id|text
 
-  URL = {
-    ['info'] = '',
-    ['rfc'] = '',
+  -- map categories -> url-type -> url (where rfc, std etc .. are categories)
+  -- see https://www.rfc-editor.org/faq/#streamcat
+  -- RFCs have status: unknown, proposed standard, internet standard, informational etc ..
+  --
+  URL_PATTERNS = {
+    rfc = {
+      index = '<base>/<series>/<series>-index.txt',
+      document = '<base>/<series>/<docid>.<ext>',
+      errata_index = '<base>/rfc/RFCs_for_errata.txt',
+      errata_doc = '<base>/inline-errata/<docid>.html',
+      info = '<base>/info/<docid>',
+    },
+    std = {
+      index = '<base>/<series>/<series>-index.txt',
+      document = '<base>/<series>/<docid>.<ext>',
+    },
+    bcp = {
+      index = '<base>/<series>/<series>-index.txt',
+      document = '<base>/<series>/<docid>.<ext>',
+    },
+    ien = {
+      index = '<base>/<series>/<series>-index.txt',
+      document = '<base>/<series>/<docid>.<ext>',
+    },
+    fyi = {
+      index = '<base>/<series>/<series>-index.txt',
+      document = '<base>/<series>/<docid>.<ext>',
+    },
   },
 }
 
@@ -239,22 +271,28 @@ end
 --   return fname
 -- end
 
----@param docid string Unique ietf document name, e.g. bcp11 or bcp-index
+---@param type string type of document (index, document, errata, info or errata_index)
+---@param docid string unique ietf document name, e.g. bcp11 or bcp-index
 ---@param ext string
----@return string url the url for given `docid` and `ext`
-function H.url(docid, ext)
-  -- returns url for an ietf document
-  -- docid is either <stream>-index, <stream><nr> or RFCs_for_errata
-  -- <stream> should be one of rfc, std, bcp, fyi or ien (review: enforce?)
-  local stream = vim.split(docid, '[%d-]')[1]:lower()
-  ext = ext or 'txt'
-  local base = 'https://www.rfc-editor.org'
-  if stream == 'errata' then
-    -- this one doesn't play nice with the <stream><..> convention
-    stream = 'rfc'
-    docid = 'RFCs_for_errata'
-  end
-  return string.format('%s/%s/%s.%s', base, stream, docid, ext)
+---@return string|nil url the url for given `docid` and `ext`
+function H.url(type, docid, ext)
+  -- docid is <series>-index or <stream><nr>
+
+  local series = docid:match('^[^%d-]+')
+  local url_parts = {
+    base = 'https://www.rfc-editor.org',
+    docid = docid,
+    ext = ext,
+    series = series,
+  }
+  if not H.URL_PATTERNS[series] then return nil end
+  -- return url or nil
+  local pattern = H.URL_PATTERNS[series][type]
+  local url
+  if pattern then url = pattern:gsub('(%b<>)', function(key)
+    return url_parts[key:sub(2, -2)]
+  end) end
+  return url
 end
 
 --[[ INDEX ]]
@@ -270,7 +308,7 @@ local Idx = {
 
 function Idx.errata()
   -- get the errata into Idx.ERRATA { docid -> true }
-  local url = H.url('errata', 'txt')
+  local url = H.url('errata_index', 'rfc', 'txt')
   local fname = H.fname('errata', 'txt')
   local ftime = vim.fn.getftime(fname) -- if file unreadable, then ftime = -1
   local ttl = (M.config.ttl or 0) + ftime - vim.fn.localtime()
@@ -309,7 +347,7 @@ end
 function Idx.fetch(docid)
   -- retrieve raw content from the ietf
   docid = docid:lower() -- just to be sure
-  local url = H.url(docid, 'txt')
+  local url = H.url('index', docid, 'txt')
   local stream = vim.split(docid, '[%d-]')[1]:lower() -- docid = <stream>-index
   local idx = {} -- parsed content { {s, n, t}, ... }
 
@@ -531,7 +569,7 @@ function Itms.fetch(item)
   -- get an item from the ietf and save it on disk (if possible)
   for _, ext in ipairs(Itms.FORMATS) do
     -- ignore item.format, that is not always accurate; just take 1st available format
-    local url = H.url(item.docid, ext)
+    local url = H.url('document', item.docid, ext)
     local fname = H.fname(item.docid, ext)
     local opts = { url = url, accept = Itms.ACCEPT[ext] or 'text/plain', output = fname }
     local ok, rv = pcall(plenary.curl.get, opts)
@@ -690,9 +728,9 @@ function Itms.details(item)
   local url
   local ext = vim.split(item.format, ',%s*')[1] -- for (possible) url
   if #ext == 0 then
-    url = H.url(item.docid, 'txt') .. ' (*maybe*)'
+    url = H.url('document', item.docid, 'txt') .. ' (*maybe*)'
   else
-    url = H.url(item.docid, ext)
+    url = H.url('document', item.docid, ext)
   end
 
   local lines = {
@@ -1031,9 +1069,9 @@ function M.test(type, docid, ext)
     rfc = {
       index = '<base>/<series>/<series>-index.txt',
       document = '<base>/<series>/<docid>.<ext>',
-      errata_index = '<base>/rfc/RFCs_for_errata.txt', --series==rfc
-      errata_page = '<base>/inline-errata/<docid>.html', --,,
-      info_page = '<base>/info/<docid>', --,,
+      errata_index = '<base>/rfc/RFCs_for_errata.txt',
+      errata_page = '<base>/inline-errata/<docid>.html',
+      info_page = '<base>/info/<docid>',
     },
     std = {
       index = '<base>/<series>/<series>-index.txt',
@@ -1053,6 +1091,7 @@ function M.test(type, docid, ext)
     },
   }
 
+  -- return url or nil
   local pattern = url_patterns[series][type]
   if pattern then
     return pattern:gsub('(%b<>)', function(key)
