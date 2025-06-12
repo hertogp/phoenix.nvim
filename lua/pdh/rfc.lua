@@ -340,13 +340,17 @@ end
 -- functions that work with the indices of (sub)series (rfc, std, ..)
 
 ---@class Index
+---@field ERRATA table map rfc<nr>-> true iff errata exist
+---@field errata fun(self: Index): Index updates self.ERRATA table
 ---@field fetch fun(series: series): index Retrieve (and cache) an index from the ietf
 ---@field get fun(self: Index, series: series): Index Add an index to Idx
----@field index fun(self: Index, series: series[]): Index Add one or more indices to Idx
+---@field from fun(self: Index, series: series[]): Index Add one or more indices to Idx
 local Idx = {
   ERRATA = {},
 }
 
+---@param self Index
+---@return Index index updates self.ERRATA from the errata index
 function Idx:errata()
   -- get the errata into Idx.ERRATA { docid -> true }
   local url = H.url('errata_index', 'rfc', 'txt')
