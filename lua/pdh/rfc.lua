@@ -590,7 +590,6 @@ function Itms.details(item)
   local file = item.file or '*n/a*'
   local fmt2cols = '   %-15s%s'
   local fmt2path = '   %-15s%s' -- prevent strikethrough's use `%s` (if using ~ in path)
-  local f = string.format
   local url
   local ext = vim.split(item.format, ',%s*')[1] -- for (possible) url
   if #ext == 0 then
@@ -600,36 +599,36 @@ function Itms.details(item)
   end
   local lines = {
     '',
-    f('# %s', item.name),
+    ('# %s'):format(item.name),
     '',
     '',
-    f('## %s', item.text),
+    ('## %s'):format(item.text),
     '',
-    f(fmt2cols, 'AUTHORS', item.authors),
-    f(fmt2cols, 'STATUS', item.status:upper()),
-    f(fmt2cols, 'DATE', item.date or '-'),
+    fmt2cols:format('AUTHORS', item.authors),
+    fmt2cols:format('STATUS', item.status:upper()),
+    fmt2cols:format('DATE', item.date or '-'),
     '',
-    f(fmt2cols, 'SERIES', item.series:upper()),
-    f(fmt2cols, 'FORMATS', item.format:upper()),
-    f(fmt2cols, 'DOI', item.doi:upper()),
+    fmt2cols:format('SERIES', item.series:upper()),
+    fmt2cols:format('FORMATS', item.format:upper()),
+    fmt2cols:format('DOI', item.doi:upper()),
     '',
     '',
     '### TAGS',
     '',
-    f(fmt2cols, 'ALSO', item.also:upper()),
-    f(fmt2cols, 'OBSOLETES', item.obsoletes:upper()),
-    f(fmt2cols, 'OBSOLETED by', item.obsoleted_by:upper()),
-    f(fmt2cols, 'UPDATES', item.updates:upper()),
-    f(fmt2cols, 'UPDATED by', item.updated_by:upper()),
+    fmt2cols('ALSO', item.also:upper()),
+    fmt2cols('OBSOLETES', item.obsoletes:upper()),
+    fmt2cols('OBSOLETED by', item.obsoleted_by:upper()),
+    fmt2cols('UPDATES', item.updates:upper()),
+    fmt2cols('UPDATED by', item.updated_by:upper()),
     '',
     '',
     '### PATH',
     '',
-    f(fmt2path, 'CACHE', cache),
-    f(fmt2path, 'DATA', data),
-    f(fmt2path, 'FILE', file),
+    fmt2path('CACHE', cache),
+    fmt2path('DATA', data),
+    fmt2path('FILE', file),
     '',
-    f(fmt2path, 'URL', url),
+    fmt2path('URL', url),
   }
 
   return title, ft, lines
