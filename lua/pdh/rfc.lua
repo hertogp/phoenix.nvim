@@ -203,51 +203,6 @@ function H.fname(type, docid, ext)
   local fname = pattern:gsub('<(.-)>', fname_parts)
   return fname
 end
--- local fdir, fname
--- local cfg = M.config
--- local top = M.config.top or H.top
---
--- if docid:match('index$') then
---   -- it's an document index, ext is always txt
---   fname = vim.fs.joinpath(cfg.cache, top, string.format('%s.%s', docid:lower(), 'txt'))
---
---   return vim.fs.normalize(fname)
--- end
---
--- -- find fdir based on markers
--- local series = vim.split(docid, '[%d-]')[1]:lower()
--- if type(cfg.data) == 'table' then fdir = vim.fs.root(0, cfg.data) end
--- fdir = fdir or cfg.data or vim.fn.stdpath('data')
--- fname = vim.fs.joinpath(fdir, top, series, docid:lower() .. '.' .. ext)
---
--- return vim.fs.normalize(fname)
--- end
-
--- save to disk, creating directory as needed
--- function H.save(docid, lines)
---   local fname = H.fname(docid, 'txt')
---
---   if fname == nil then return fname end
---
---   if not docid:match('index$') then
---     -- only add modeline for rfc, bcp etc.. not for index files
---     lines[#lines + 1] = '/* vim: set ft=rfc: */'
---   end
---
---   for idx, line in ipairs(lines) do
---     -- snacks.picker.preview.lua, line:find("[%z\1-\8\11\12\14-\31]") -> binary is true
---     -- so keep snacks happy
---     lines[idx] = string.gsub(line, '[%z\1-\8\11\12\14-\31]', '')
---   end
---
---   local dir = vim.fs.dirname(fname)
---   vim.fn.mkdir(dir, 'p')
---   if vim.fn.writefile(lines, fname) < 0 then
---     vim.notify('could not write ' .. docid .. ' to ' .. fname, vim.log.levels.ERROR)
---   end
---
---   return fname
--- end
 
 ---@param type string type of document (index, document, errata, info or errata_index)
 ---@param docid string unique document name (<series><nr>) or (sub)series
@@ -465,13 +420,6 @@ end
 
 --[[ ITEM ]]
 --- state and functions that work with picker items
---- TODO:
---- [ ] Itms.fname() -> fname (first existing or possible), exists
----     to be used for preferred download/open and exists for Icon in result list
---- [ ] confirm ext if multiple are possible before download
---- [ ] preview should not defer to picker, do it ourself
----     that way we can curl to output file & preview older rfc's with a
----     formfeed character (picker would warn of a binary file)
 
 ---@class Items
 ---@field ICONS table map true/false to an icon for display in results window
@@ -794,10 +742,6 @@ function Itms.preview(ctx)
 end
 
 --[[ Actions ]]
--- TODO:
--- [ ] configurable: select before download or default to 1st in line
--- [ ] configurable open action: select or edit, tabnew, !open as appropiate
---     sometimes you want to see the html/xml in neovim itself?
 
 ---@class Actions
 ---@field actions table
@@ -1008,9 +952,7 @@ end
 function M.search(series)
   -- search the (sub)series index/indices
   -- TODO:
-  -- [ ] if series has not changed, donot load Itms again
-  -- [ ] when resuming, check file status exists or not? Otherwise you download
-  -- something, resume but it still shows as missing and marked for download.
+  -- [ ] check if indices need refreshing ..
 
   if #Itms < 1 then Itms:from(series) end
 
