@@ -536,18 +536,23 @@ end
 ---     formfeed character (picker would warn of a binary file)
 
 ---@class Items
----@field details fun(item: table): title: string, ft: string, lines: string[]
+---@field ICONS table map true/false to an icon for display in results window
+---@field FORMATS table ordered list of supported formats for douments
+---@field ACCEPT table maps extentions to `accept` field ivalues in a HTTP header
+---@field details fun(ctx: table): title:string, ft:string, lines:string[]
+---@field fetch fun(item:table): item:table
+---@field format fun(item:table): string[]
 ---@field from fun(self: Items, series: series[]): Items
----@field new fun(idx: integer, entry: entry): item: table
----@field parse fun(text: string): text: string, tags:table
+---@field new fun(idx: integer, entry: entry): item:table
+---@field preview fun(ctx:table):nil
+---@field set_file fun(item: table):table
+---@field set_tags fun(item: table):table
+---@field _set_preview fun(ctx:table, title:string, lines:string[], ft:string):nil
 local Itms = {
   ICONS = {
     -- NOTE: add a space after the icon (it is used as-is here)
     [false] = ' ',
     [true] = ' ',
-
-    -- REVIEW: add icons for publication formats here? Not used (yet)
-    txt = ' ', -- text
   },
 
   FORMATS = { -- order is important: first one available (disk/net) is used
@@ -564,52 +569,73 @@ local Itms = {
     html = 'text/html',
     xml = 'application/xml',
     pdf = 'applicaiton/pdf',
+    ps = 'applicaiton/ps',
   },
 }
 
---- Builds self.list of picker items, from 1 or more (sub)series; returns #items
----@param self Items
----@param series series[]
----@return Items | nil
-function Itms:from(series)
-  -- clear self first, TODO: only needed if series altered or TTL's expired
-  local cnt = #Itms
-  for i = 0, cnt do
-    Itms[i] = nil
+--- returns `title`, `ft`, `lines` for use in a preview
+--- (used when no local file is present to be previewd)
+---@param item table An item of the picker result list
+---@return string title The title for an item
+---@return string ft The filetype to use when previewing
+---@return string[] lines The lines to display when previewing
+function Itms.details(item)
+  -- called when item not locally available
+  local title = tostring(item.title)
+  local ft = 'markdown'
+  -- local cache = vim.fs.joinpath(vim.fn.fnamemodify(M.config.cache, ':p:~:.'), M.config.top, '/')
+  -- local data = vim.fs.joinpath(vim.fn.fnamemodify(M.config.data, ':p:~:.'), M.config.top, '/')
+  local cache = vim.fs.joinpath(M.config.cache, M.config.top, '/')
+  local data = vim.fs.joinpath(M.config.data, M.config.top, '/')
+  local file = item.file or '*n/a*'
+  local fmt2cols = '   %-15s%s'
+  local fmt2path = '   %-15s%s' -- prevent strikethrough's use `%s` (if using ~ in path)
+  local f = string.format
+  local url
+  local ext = vim.split(item.format, ',%s*')[1] -- for (possible) url
+  if #ext == 0 then
+    url = H.url('document', item.docid, 'txt') .. ' (*maybe*)'
+  else
+    url = H.url('document', item.docid, ext)
   end
-
-  -- refill
-  Idx:from(series) -- { {series, nr, text}, .. }
-
-  if #Idx == 0 then return nil end
-
-  for idx, entry in ipairs(Idx) do
-    table.insert(self, Itms.new(idx, entry))
-  end
-  return self
-end
-
----@param item table
----@return table[] parts of the line to display in results list window for `item`
-function Itms.format(item)
-  -- format an item to display in picker list
-  -- `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/format.lua`
-  local exists = item.file and true or false -- (vim.fn.filereadable(item.file) == 1)
-  local icon = Itms.ICONS[exists]
-  local hl_item = (exists and 'SnacksPickerGitStatusAdded') or 'SnacksPickerGitStatusUntracked'
-  local name = ('%-' .. (3 + #(tostring(#Itms))) .. 's'):format(item.name)
-  local ret = {
-    { icon, hl_item },
-    { H.sep, 'SnacksWinKeySep' },
-    { name, hl_item },
-    { H.sep, 'SnacksWinKeySep' },
-    { item.text, '' },
-    { ' ' .. item.date, 'SnacksWinKeySep' },
+  local lines = {
+    '',
+    f('# %s', item.name),
+    '',
+    '',
+    f('## %s', item.text),
+    '',
+    f(fmt2cols, 'AUTHORS', item.authors),
+    f(fmt2cols, 'STATUS', item.status:upper()),
+    f(fmt2cols, 'DATE', item.date or '-'),
+    '',
+    f(fmt2cols, 'SERIES', item.series:upper()),
+    f(fmt2cols, 'FORMATS', item.format:upper()),
+    f(fmt2cols, 'DOI', item.doi:upper()),
+    '',
+    '',
+    '### TAGS',
+    '',
+    f(fmt2cols, 'ALSO', item.also:upper()),
+    f(fmt2cols, 'OBSOLETES', item.obsoletes:upper()),
+    f(fmt2cols, 'OBSOLETED by', item.obsoleted_by:upper()),
+    f(fmt2cols, 'UPDATES', item.updates:upper()),
+    f(fmt2cols, 'UPDATED by', item.updated_by:upper()),
+    '',
+    '',
+    '### PATH',
+    '',
+    f(fmt2path, 'CACHE', cache),
+    f(fmt2path, 'DATA', data),
+    f(fmt2path, 'FILE', file),
+    '',
+    f(fmt2path, 'URL', url),
   }
 
-  return ret
+  return title, ft, lines
 end
 
+--- Retrieves an item's document from the rfc-editor
 ---@param item table the item to retrieve from the rfc editor
 ---@return table item on success, item.file is set to the local filename; nil otherwise
 function Itms.fetch(item)
@@ -633,13 +659,54 @@ function Itms.fetch(item)
   return item
 end
 
+---@param item table
+---@return table[] parts of the line to display in results list window for `item`
+function Itms.format(item)
+  -- format an item to display in picker list
+  -- `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/format.lua`
+  local exists = item.file and true or false -- (vim.fn.filereadable(item.file) == 1)
+  local icon = Itms.ICONS[exists]
+  local hl_item = (exists and 'SnacksPickerGitStatusAdded') or 'SnacksPickerGitStatusUntracked'
+  local name = ('%-' .. (3 + #(tostring(#Itms))) .. 's'):format(item.name)
+  local ret = {
+    { icon, hl_item },
+    { H.sep, 'SnacksWinKeySep' },
+    { name, hl_item },
+    { H.sep, 'SnacksWinKeySep' },
+    { item.text, '' },
+    { ' ' .. item.date, 'SnacksWinKeySep' },
+  }
+
+  return ret
+end
+
+--- Builds self.list of picker items, from 1 or more (sub)series; returns #items
+---@param self Items
+---@param series series[]
+---@return Items | nil
+function Itms:from(series)
+  -- clear self first, TODO: only needed if series altered or TTL's expired
+  local cnt = #Itms
+  for i = 0, cnt do
+    Itms[i] = nil
+  end
+
+  -- refill
+  Idx:from(series) -- { {series, nr, text}, .. }
+
+  if #Idx == 0 then return nil end
+
+  for idx, entry in ipairs(Idx) do
+    table.insert(self, Itms.new(idx, entry))
+  end
+  return self
+end
+
 --- create a new picker item for given (idx, {series, id, text})
 ---@param idx integer
 ---@param entry entry
 ---@return table | nil item fields parsed from an index entry's text or nil
 function Itms.new(idx, entry)
-  -- TODO:
-  -- [?] rfc status '-' is Not issued, n/a for bcp, std or others (use series as status)
   local item = nil -- returned if entry is malformed
   local series, id, text = unpack(entry)
   series = series:lower() -- just in case
@@ -650,12 +717,12 @@ function Itms.new(idx, entry)
     item = {
       idx = idx,
       score = idx,
-      text = text, -- used by snack matcher
-      title = string.format('%s%s', series, id):upper(), -- used by snack as preview win title
+      text = text, -- used by snacks.picker's matcher
+      title = ('%s%s'):format(series, id):upper(), -- used by snack as preview win title
 
       -- extra fields to search on using > field:term in search prompt
       errata = errata,
-      docid = string.format('%s%s', series:lower(), tonumber(id)),
+      docid = string.format('%s%s', series, tonumber(id)),
       name = string.format('%s%d', series, id):upper(),
       series = series:lower(),
     }
@@ -722,22 +789,14 @@ function Itms.set_tags(item)
     end
   end
 
-  -- fix item.formats value
-  -- `known` order is important: first item is used to download/open it
-  -- local known = { 'txt', 'html', 'pdf', 'xml' } -- TODO: make this an Itms.FORMAT constant list
+  -- fix item.formats value (keep only the known ext labels, if any)
   local seen = {}
   for _, fmt in ipairs(Itms.FORMATS) do
     if item.format:match(fmt) then seen[#seen + 1] = fmt end
   end
-  if #seen > 0 then
-    -- keep the default '-' if no formats were found
-    item.format = table.concat(seen, ', ')
-  end
+  if #seen > 0 then item.format = table.concat(seen, ', ') end
 
   -- extract date
-  -- TODO:
-  -- [ ] switch to vim.re/vim.regex or vim.lpeg? ien/fyi not consistent
-  -- [x] Date is <ws>Mon<ws>YYYY<dot>, e.g. May 1986.
   local date = item.text:match('%s%u%l%l%l-%s-%d%d%d%d%.?')
   if date then
     item.date = vim.trim(date):gsub('%.$', '')
@@ -754,70 +813,8 @@ function Itms.set_tags(item)
   return item
 end
 
---- returns `title`, `ft`, `lines` for use in a preview
---- (used when no local file is present to be previewd)
----@param item table An item of the picker result list
----@return string title The title for an item
----@return string ft The filetype to use when previewing
----@return table lines The lines to display when previewing
-function Itms.details(item)
-  -- called when item not locally available
-  local title = tostring(item.title)
-  local ft = 'markdown'
-  -- local cache = vim.fs.joinpath(vim.fn.fnamemodify(M.config.cache, ':p:~:.'), M.config.top, '/')
-  -- local data = vim.fs.joinpath(vim.fn.fnamemodify(M.config.data, ':p:~:.'), M.config.top, '/')
-  local cache = vim.fs.joinpath(M.config.cache, M.config.top, '/')
-  local data = vim.fs.joinpath(M.config.data, M.config.top, '/')
-  local file = item.file or '*n/a*'
-  local fmt2cols = '   %-15s%s'
-  local fmt2path = '   %-15s%s' -- prevent strikethrough's use `%s` (if using ~ in path)
-  local f = string.format
-  local url
-  local ext = vim.split(item.format, ',%s*')[1] -- for (possible) url
-  if #ext == 0 then
-    url = H.url('document', item.docid, 'txt') .. ' (*maybe*)'
-  else
-    url = H.url('document', item.docid, ext)
-  end
-
-  local lines = {
-    '',
-    f('# %s', item.name),
-    '',
-    '',
-    f('## %s', item.text),
-    '',
-    f(fmt2cols, 'AUTHORS', item.authors),
-    f(fmt2cols, 'STATUS', item.status:upper()),
-    f(fmt2cols, 'DATE', item.date or '-'),
-    '',
-    f(fmt2cols, 'SERIES', item.series:upper()),
-    f(fmt2cols, 'FORMATS', item.format:upper()),
-    f(fmt2cols, 'DOI', item.doi:upper()),
-    '',
-    '',
-    '### TAGS',
-    '',
-    f(fmt2cols, 'ALSO', item.also:upper()),
-    f(fmt2cols, 'OBSOLETES', item.obsoletes:upper()),
-    f(fmt2cols, 'OBSOLETED by', item.obsoleted_by:upper()),
-    f(fmt2cols, 'UPDATES', item.updates:upper()),
-    f(fmt2cols, 'UPDATED by', item.updated_by:upper()),
-    '',
-    '',
-    '### PATH',
-    '',
-    f(fmt2path, 'CACHE', cache),
-    f(fmt2path, 'DATA', data),
-    f(fmt2path, 'FILE', file),
-    '',
-    f(fmt2path, 'URL', url),
-  }
-
-  return title, ft, lines
-end
-
----@param ctx snacks.Picker
+--- sets the contents of the picker preview window
+---@param ctx table
 ---@param title string
 ---@param lines string[]
 ---@param ft string
@@ -829,6 +826,7 @@ function Itms._set_preview(ctx, title, lines, ft)
   ctx.preview:highlight({ ft = ft })
 end
 
+---@param ctx table picker object
 function Itms.preview(ctx)
   -- called when ctx.item becomes the current one in the results list
 
