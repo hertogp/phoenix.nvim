@@ -163,6 +163,31 @@ local H = {
       document = '<base>/<series>/<docid>.<ext>',
     },
   },
+
+  FNAME_PATTERNS = {
+    -- { series = { doc-type = { pattern } }
+    rfc = {
+      document = '<data>/<top>/<series>/<docid>.<ext>',
+      index = '<cache>/<top>/<series>-index.txt',
+      errata_index = '<cache>/<top>/<series>-errata.txt',
+    },
+    std = {
+      document = '<data>/<top>/<series>/<docid>.<ext>',
+      index = '<cache>/<top>/<series>-index.txt',
+    },
+    bcp = {
+      document = '<data>/<top>/<series>/<docid>.<ext>',
+      index = '<cache>/<top>/<series>-index.txt',
+    },
+    ien = {
+      document = '<data>/<top>/<series>/<docid>.<ext>',
+      index = '<cache>/<top>/<series>-index.txt',
+    },
+    fyi = {
+      document = '<data>/<top>/<series>/<docid>.<ext>',
+      index = '<cache>/<top>/<series>-index.txt',
+    },
+  },
 }
 
 --- fetch an ietf document, save to disk, returns its filename upon success, nil otherwise
@@ -203,7 +228,6 @@ local H = {
 ---@return string path full path to rfc-top directory (/rfc-root/rfc-top)
 function H.dir(spec)
   local path
-  local top = M.config.top or H.top
 
   if type(spec) == 'table' then
     -- find root dir based on markers in cfg.data
@@ -212,35 +236,49 @@ function H.dir(spec)
     path = vim.fs.normalize(spec)
   end
 
-  if path == nil or vim.fn.filereadable(path) == 0 then path = vim.fn.stdpath('data') end
-
-  -- path = (path and vim.fn.filereadable(path)) or vim.fn.stdpath('data')
-  return vim.fs.joinpath(path, top)
+  return assert(path, ('invalid directory specification %s'):format(vim.inspect(spec)))
 end
 
+---@param type string type of document (index, document, info, ..)
 ---@param docid string unique ietf document name, e.g. bcp11 or bcp-index
 ---@param ext string
----@return string path full file path for `docid.ext` or nil
-function H.fname(docid, ext)
-  local fdir, fname
-  local cfg = M.config
-  local top = M.config.top or H.top
+---@return string path full file path for doc-type and docid or bust!
+function H.fname(type, docid, ext)
+  local series = docid:match('%D+'):lower()
+  local fname_parts = {
+    cache = H.dir(M.config.cache),
+    data = H.dir(M.config.data),
+    series = series,
+    docid = docid,
+    top = M.config.top or H.top,
+    ext = ext,
+  }
 
-  if docid:match('index$') then
-    -- it's an document index, ext is always txt
-    fname = vim.fs.joinpath(cfg.cache, top, string.format('%s.%s', docid:lower(), 'txt'))
-
-    return vim.fs.normalize(fname)
-  end
-
-  -- find fdir based on markers
-  local series = vim.split(docid, '[%d-]')[1]:lower()
-  if type(cfg.data) == 'table' then fdir = vim.fs.root(0, cfg.data) end
-  fdir = fdir or cfg.data or vim.fn.stdpath('data')
-  fname = vim.fs.joinpath(fdir, top, series, docid:lower() .. '.' .. ext)
-
-  return vim.fs.normalize(fname)
+  assert(H.FNAME_PATTERNS[series], ('fname: series %s is not valid'):format(series))
+  assert(H.FNAME_PATTERNS[series][type], ('fname: type %s not valid for %s series'):format(type, series))
+  local pattern = H.FNAME_PATTERNS[series][type]
+  local fname = pattern:gsub('<(.-)>', fname_parts)
+  return fname
 end
+-- local fdir, fname
+-- local cfg = M.config
+-- local top = M.config.top or H.top
+--
+-- if docid:match('index$') then
+--   -- it's an document index, ext is always txt
+--   fname = vim.fs.joinpath(cfg.cache, top, string.format('%s.%s', docid:lower(), 'txt'))
+--
+--   return vim.fs.normalize(fname)
+-- end
+--
+-- -- find fdir based on markers
+-- local series = vim.split(docid, '[%d-]')[1]:lower()
+-- if type(cfg.data) == 'table' then fdir = vim.fs.root(0, cfg.data) end
+-- fdir = fdir or cfg.data or vim.fn.stdpath('data')
+-- fname = vim.fs.joinpath(fdir, top, series, docid:lower() .. '.' .. ext)
+--
+-- return vim.fs.normalize(fname)
+-- end
 
 -- save to disk, creating directory as needed
 -- function H.save(docid, lines)
@@ -281,15 +319,18 @@ function H.url(type, docid, ext)
     -- pattern:gsub('(%b<>)', function(key) return url_parts[key:sub(2, -2)] end) end
     base = 'https://www.rfc-editor.org',
     docid = docid,
-    ext = ext,
     series = series,
+    ext = ext,
   }
-  if not H.URL_PATTERNS[series] then return nil end
-  -- return url or nil
-  local pattern = H.URL_PATTERNS[series][type]
-  if pattern then
-    local url = pattern:gsub('<(%w+)>', url_parts)
-    return url
+  if H.URL_PATTERNS[series] then
+    local pattern = H.URL_PATTERNS[series][type]
+    if pattern then
+      local url = pattern:gsub('<(.-)>', url_parts) -- '<(%S+)> won't work?
+      -- local url = pattern:gsub('(%b<>)', function(key)
+      --   return url_parts[key:sub(2, -2)]
+      -- end)
+      return url
+    end
   end
 end
 
@@ -307,14 +348,14 @@ local Idx = {
 function Idx:errata()
   -- get the errata into Idx.ERRATA { docid -> true }
   local url = H.url('errata_index', 'rfc', 'txt')
-  local fname = H.fname('errata', 'txt')
+  local fname = assert(H.fname('errata_index', 'rfc', 'txt'))
   local ftime = vim.fn.getftime(fname) -- if file unreadable, then ftime = -1
   local ttl = (M.config.ttl or 0) + ftime - vim.fn.localtime()
   if ttl < 1 then
     local ok, rv = pcall(plenary.curl.get, { url = url, accept = 'plain/text' })
     if ok and rv and rv.status == 200 then
       local lines = vim.split(rv.body, '[\r\n]', { trimempty = true })
-      for k, n in ipairs(lines) do
+      for _, n in ipairs(lines) do
         if n and #n > 0 then Idx.ERRATA[('rfc%d'):format(n)] = true end
       end
       local dir = vim.fs.dirname(fname)
@@ -398,7 +439,7 @@ function Idx.fetch(series)
     for _, entry in ipairs(idx) do
       lines[#lines + 1] = table.concat(entry, H.sep)
     end
-    local fname = H.fname(series, 'txt')
+    local fname = H.fname('index', series, 'txt')
     local dir = vim.fs.dirname(fname)
     vim.fn.mkdir(dir, 'p')
     if vim.fn.writefile(lines, fname) < 0 then
@@ -417,7 +458,7 @@ function Idx:get(series)
   -- get a single series, either from disk or from ietf
   -- NOTE: we do not check if series is already present in self
   local idx = {} ---@type index
-  local fname = H.fname(series, 'txt')
+  local fname = H.fname('index', series, 'txt')
   local ftime = vim.fn.getftime(fname) -- if file unreadable, then ftime = -1
   local ttl = (M.config.ttl or 0) + ftime - vim.fn.localtime()
 
@@ -570,7 +611,7 @@ function Itms.fetch(item)
   for _, ext in ipairs(Itms.FORMATS) do
     -- ignore item.format, that is not always accurate; just take 1st available format
     local url = H.url('document', item.docid, ext)
-    local fname = H.fname(item.docid, ext)
+    local fname = H.fname('document', item.docid, ext)
     local opts = { url = url, accept = Itms.ACCEPT[ext] or 'text/plain', output = fname }
     local ok, rv = pcall(plenary.curl.get, opts)
     if ok and rv and rv.status == 200 then
@@ -598,7 +639,6 @@ function Itms.new(idx, entry)
   series = series:lower() -- just in case
   local docid = ('%s%s'):format(series, id)
   local errata = Idx.ERRATA[docid] and 'yes' or 'no'
-  if docid == 'rfc2' then vim.print(vim.inspect({ docid, errata, #Idx.ERRATA, docid, Idx.ERRATA[docid] })) end
 
   if series and id and text then
     item = {
@@ -628,7 +668,7 @@ end
 function Itms.set_file(item)
   item.file = nil -- nothing found yet
   for _, ext in ipairs(Itms.FORMATS) do
-    local fname = H.fname(item.docid, ext)
+    local fname = H.fname('document', item.docid, ext)
     if fname and vim.fn.filereadable(fname) == 1 then
       item.file = fname
       break
@@ -1032,14 +1072,13 @@ end
 function M.select()
   local choices = Itms.FORMATS
   for idx, v in ipairs(choices) do
-    v = v .. '|' .. ' ' .. H.fname('rfc123', v)
+    v = v .. '|' .. ' ' .. H.fname('document', 'rfc123', v)
     choices[idx] = v
   end
   vim.ui.select(choices, {
     prompt = 'Select extension to download',
   }, function(choice)
     if choice == nil then choice = 'cancelled' end
-    -- vim.print('your choice: ' .. choice)
   end)
 end
 
@@ -1062,7 +1101,7 @@ function M.test_bit(docid)
 
   local status = 0x00
   for ext, mask in pairs(masks) do
-    local fname = H.fname(docid, ext)
+    local fname = assert(H.fname('document', docid, ext))
     if vim.fn.filereadable(fname) == 1 then status = bit.bor(status, mask) end
   end
 
@@ -1072,14 +1111,9 @@ function M.test_bit(docid)
   end
 end
 
-function M.test()
-  Idx.errata()
-  local count = 1
-  for n, entry in pairs(Idx.ERRATA) do
-    count = count + 1
-    vim.print(vim.inspect({ n, entry, Idx.ERRATA['rfc2'] }))
-    if count > 10 then break end
-  end
+function M.test(type, docid, ext)
+  local fname = H.fname(type, docid, ext)
+  vim.print(vim.inspect({ type, docid, ext, fname }))
 end
 
 vim.keymap.set('n', '<space>r', ":lua require'pdh.rfc'.reload()<cr>")
