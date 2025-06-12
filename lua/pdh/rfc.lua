@@ -862,16 +862,20 @@ end
 -- [ ] configurable open action: select or edit, tabnew, !open as appropiate
 --     sometimes you want to see the html/xml in neovim itself?
 
+---@class Actions
+---@field actions table
+---@field win table
+---@field actions.fetch fun(picker:table, curr_item:table)
+---@field actions.inspect fun(picker:table, item:table)
+---@field actions.remove fun(picker:table, curr_item:table)
+---@field actions.visit_info fun(_, item:table)
+---@field actions.visit_page fun(_, item:table)
+---@field actions.visit_errate fun(_, item:table)
+
 local Act = {
   actions = {}, -- functions to be defined later on, as referenced by win.list/input.keys
   -- see `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/config/defaults.lua`
   win = {
-    -- temp mappings during search, ',<x>' since ',' usually isn't used in searches
-    -- TODO, add:
-    -- [*] 'M' for meta data (json) -- how to store this?
-    -- [*] 'E' for errata? -- open browser for the inline-errata (if it exists)
-    -- [*] 'S' to open rfc-editor search?
-    --
     list = { -- the results list window
       keys = {
         ['F'] = { 'fetch', mode = { 'n' } },
@@ -892,12 +896,14 @@ local Act = {
         ['gi'] = { 'visit_info', mode = { 'n' } },
         ['ge'] = { 'visit_errata', mode = { 'n' } },
         ['gx'] = { 'visit_page', mode = { 'n' } },
-        ['gy'] = { 'visit_page', mode = { 'n' } },
       },
     },
   },
 }
 
+--- retrieves one or more item(s) from the rfc-editor
+---@param picker table current picker in action
+---@param curr_item table the current item in pickers results window
 function Act.actions.fetch(picker, curr_item)
   -- curr_item == picker.list:current()
   local items = picker.list.selected
@@ -920,6 +926,9 @@ function Act.actions.fetch(picker, curr_item)
   vim.notify(table.concat(notices, '\n'), vim.log.levels.INFO)
 end
 
+--- sets the preview window contents to a dump of the item table
+---@param picker table current picker in action
+---@param item table the current item in pickers results window
 function Act.actions.inspect(picker, item)
   -- set preview to show item table
   -- local lines = { '# ' .. item.docid:upper(), ' \r\n', ' \r\n', '## Details', '\n', '```luai\n', '\n', '{' }
@@ -970,21 +979,33 @@ function Act.actions.remove(picker, curr_item)
   vim.notify(table.concat(notices, '\n'), vim.log.levels.INFO)
 end
 
+--- Visits the info page of the current item
+---@param _ table
+---@param item table the current item at the time of the keypress
 function Act.actions.visit_info(_, item)
   local url = H.url('info', item.docid, 'html')
   if url then vim.cmd(('!open %s'):format(url)) end
 end
 
+--- Visits the html page of the current item
+---@param _ table
+---@param item table the current item at the time of the keypress
 function Act.actions.visit_page(_, item)
   local url = H.url('document', item.docid, 'html')
   if url then vim.cmd(('!open %s'):format(url)) end
 end
 
+--- Visits the errate page (if any) of the current (rfc) item
+---@param _ table
+---@param item table the current item at the time of the keypress
 function Act.actions.visit_errata(_, item)
   local url = H.url('errata', item.docid, '')
   if url then vim.cmd(('!open %s'):format(url)) end
 end
 
+--- Open the current item, either is neovim (txt) or via `open` for other formats
+---@param picker table
+---@param item table the current item at the time of the keypress
 function Act.confirm(picker, item)
   picker:close()
   if not item.file then
