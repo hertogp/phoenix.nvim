@@ -137,8 +137,7 @@ if not snacks then return end
 ---@field fname fun(type:string, docid:string, ext:string):string fname or bust
 ---@field url fun(type:string, docid:string, ext:string):string|nil url or bust
 local H = {
-  -- valid values for series
-  -- valid = { rfc = true, bcp = true, std = true, fyi = true, ien = true },
+  -- fallbacks if M.config fails for some reason
   top = 'ietf.org', -- subdir under topdir for ietf documents
   sep = '│', -- separator for local index lines: series|id|text
 
@@ -197,23 +196,13 @@ local H = {
 
 --- fetch an ietf document, save to disk, returns its filename upon success, nil otherwise
 -- -@param url string Url for document to retrieve
+-- -@param fname string filename to download to
+-- -@param body? boolean return ok, lines instead of ok, fname
 -- -@return string|nil filename when successful, nil upon failure
 -- -@return table? return value
 -- function H.fetch(url, fname)
 --   -- return a, possibly empty, list of lines
---   -- TODO: use pcall so we do not error out needlessly
---   -- accept:
---   -- txt: headers = {  "content-type: text/plain;          charset=utf-8", "content-length: 12136", },
---   -- html: headers = { "content-type: text/html;           charset=UTF-8", }
---   -- xml: headers = {  "content-type: application/rfc+xml; charset=utf-8", "content-length: 19055", }
---   -- pdf: headers = { , "content-type: application/pdf",   "content-length: 5010729", }
 --   local ext = fname:match('%.[^.]+$')
---   local accept = {
---     txt = 'text/plain',
---     html = 'text/html',
---     xml = 'application/xml',
---     pdf = 'applicaiton/pdf',
---   }
 --   local ok, rv = pcall(plenary.curl.get, {
 --     url = url,
 --     accept = accept[ext],
@@ -870,7 +859,6 @@ end
 ---@field actions.visit_info fun(_, item:table)
 ---@field actions.visit_page fun(_, item:table)
 ---@field actions.visit_errate fun(_, item:table)
-
 local Act = {
   actions = {}, -- functions to be defined later on, as referenced by win.list/input.keys
   -- see `!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/config/defaults.lua`
@@ -1038,10 +1026,12 @@ M.config = {
   },
 }
 
-function M.reload()
+function M.reload(opts)
   -- for developing
   vim.keymap.set('n', '<space>r', ":lua require'pdh.rfc'.reload()<cr>")
-  return require('plenary.reload').reload_module('pdh.rfc')
+  opts = opts or {}
+  require('plenary.reload').reload_module('pdh.rfc')
+  require('pdh.rfc').setup(opts)
 end
 
 function M.find()
@@ -1057,7 +1047,8 @@ end
 function M.setup(opts)
   -- TODO: expand stdpath for cache and data here once, reuse everywhere else
   M.config = vim.tbl_extend('force', M.config, opts)
-
+  M.config.data = H.dir(M.config.data)
+  M.config.cache = H.dir(M.config.cache)
   return M
 end
 
@@ -1072,7 +1063,7 @@ function M.search(series)
   -- [ ] if series has not changed, donot load Itms again
   -- [ ] when resuming, check file status exists or not? Otherwise you download
   -- something, resume but it still shows as missing and marked for download.
-  --
+
   Itms:from(series)
 
   return snacks.picker({
@@ -1101,38 +1092,10 @@ function M.select()
   end)
 end
 
-function M.test_bit(docid)
-  -- status could also be either nil or 1st ext found (txt, html etc..)
-  -- or even nil vs { ext's }
-  -- then there would be no need for bit op shenanigans
-  -- snacks.input overrides vim.ui.input
-  -- check out snacks.picker.select, snacks.util.spinner, plenary popup,
-  -- plenary has a plenary.select
-  docid = docid and docid:lower() or 'rfc1'
-  bit = require 'bit'
-
-  local masks = {
-    txt = 0x01,
-    html = 0x02,
-    pdf = 0x04,
-    xml = 0x08,
-  }
-
-  local status = 0x00
-  for ext, mask in pairs(masks) do
-    local fname = assert(H.fname('document', docid, ext))
-    if vim.fn.filereadable(fname) == 1 then status = bit.bor(status, mask) end
-  end
-
-  local fext = {}
-  for ext, mask in pairs(masks) do
-    if bit.band(status, mask) ~= 0 then fext[#fext + 1] = ext end
-  end
-end
-
 function M.test(type, docid, ext)
   local fname = H.fname(type, docid, ext)
   vim.print(vim.inspect({ type, docid, ext, fname }))
+  vim.print(vim.inspect({ 'stats idx', #Idx, 'stats itms', #Itms }))
 end
 
 vim.keymap.set('n', '<space>r', ":lua require'pdh.rfc'.reload()<cr>")
