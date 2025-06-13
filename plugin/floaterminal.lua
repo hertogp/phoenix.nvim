@@ -52,7 +52,7 @@ local toggle_terminal = function(args)
   local chdir -- expand before creating floating window(!)
   if args.args == '@prj' then
     -- change working directory to working directory
-    chdir = 'cd ' .. Project_root(0) .. '\n'
+    chdir = 'cd ' .. (Project_root(0) or '.') .. '\n'
   elseif args.args == '@buf' then
     -- change working directory to buf dir
     chdir = 'cd ' .. vim.fn.expand('%:p:h') .. '\n'

@@ -123,7 +123,7 @@ function Project_root(bufnr)
   -- scratch buffers -> fallback to cwd
   local bufpath = vim.fs.dirname(api.nvim_buf_get_name(bufnr))
   if #bufpath < 1 or bufpath == '.' then
-    bufpath = uv.cwd()
+    bufpath = uv.cwd() --
   end
   bufpath = fs.normalize(bufpath)
   local sentinels = {
@@ -142,7 +142,7 @@ function Project_root(bufnr)
   if repo_dir then
     return vim.fs.dirname(repo_dir)
   else
-    return nil
+    return uv.cwd()
   end
 end
 
