@@ -87,6 +87,8 @@ local H = {
   -- fallbacks if M.config fails for some reason
   top = 'ietf.org', -- subdir under topdir for ietf documents
   sep = '│', -- separator for local index lines: series|id|text
+  on = ' ',
+  off = ' ',
 
   URL_PATTERNS = {
     -- { series = { doc-type = pattern } }
@@ -920,6 +922,7 @@ function M.reload(opts)
   -- for developing
   vim.keymap.set('n', '<space>r', ":lua require'pdh.rfc'.reload()<cr>")
   opts = opts or {}
+  require('plenary.reload').reload_module('plenary')
   require('plenary.reload').reload_module('pdh.rfc')
   require('pdh.rfc').setup(opts)
 end
@@ -979,82 +982,98 @@ function M.select()
   end)
 end
 
+function M.toggle()
+  local win = vim.api.nvim_get_current_win()
+  local buf = vim.api.nvim_win_get_buf(win)
+  local row, col = unpack(vim.api.nvim_win_get_cursor(win))
+  local char = vim.api.nvim_buf_get_text(buf, row - 1, col, row - 1, col + 1, {})
+  local line = vim.api.nvim_buf_get_lines(buf, row - 1, row, false)[1]
+  if line:match(H.on) then
+    line = line:gsub(H.on, H.off)
+  else
+    line = line:gsub(H.off, H.on)
+  end
+  vim.api.nvim_set_option_value('modifiable', true, { scope = 'local', buf = buf })
+  vim.api.nvim_buf_set_lines(buf, row - 1, row, false, { line })
+  vim.api.nvim_set_option_value('modifiable', false, { scope = 'local', buf = buf })
+  -- print(vim.inspect({ buf, row, col, char, line }))
+end
+--
 function M.test()
   -- test popup to:
   -- * select 1 or more series
   -- * change config items
-  local opts = {
-    dashboard = {
-      width = 60,
-      row = nil, -- dashboard position. nil for center
-      col = nil, -- dashboard position. nil for center
-      pane_gap = 4, -- empty columns between vertical panes
-      autokeys = '1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', -- autokey sequence
-      -- These settings are used by some built-in sections
-      preset = {
-        -- Defaults to a picker that supports `fzf-lua`, `telescope.nvim` and `mini.pick`
-        ---@type fun(cmd:string, opts:table)|nil
-        pick = nil,
-        -- Used by the `keys` section to show keymaps.
-        -- Set your custom keymaps here.
-        -- When using a function, the `items` argument are the default keymaps.
-        ---@type snacks.dashboard.Item[]
-        keys = {
-          { icon = ' ', key = 'f', desc = 'Find File', action = ":lua Snacks.dashboard.pick('files')" },
-          { icon = ' ', key = 'n', desc = 'New File', action = ':ene | startinsert' },
-          { icon = ' ', key = 'g', desc = 'Find Text', action = ":lua Snacks.dashboard.pick('live_grep')" },
-          { icon = ' ', key = 'r', desc = 'Recent Files', action = ":lua Snacks.dashboard.pick('oldfiles')" },
-          {
-            icon = ' ',
-            key = 'c',
-            desc = 'Config',
-            action = ":lua Snacks.dashboard.pick('files', {cwd = vim.fn.stdpath('config')})",
-          },
-          { icon = ' ', key = 's', desc = 'Restore Session', section = 'session' },
-          { icon = '󰒲 ', key = 'L', desc = 'Lazy', action = ':Lazy', enabled = package.loaded.lazy ~= nil },
-          { icon = ' ', key = 'q', desc = 'Quit', action = ':qa' },
-        },
-        -- Used by the `header` section
-        header = [[
-███╗   ██╗███████╗ ██████╗ ██╗   ██╗██╗███╗   ███╗
-████╗  ██║██╔════╝██╔═══██╗██║   ██║██║████╗ ████║
-██╔██╗ ██║█████╗  ██║   ██║██║   ██║██║██╔████╔██║
-██║╚██╗██║██╔══╝  ██║   ██║╚██╗ ██╔╝██║██║╚██╔╝██║
-██║ ╚████║███████╗╚██████╔╝ ╚████╔╝ ██║██║ ╚═╝ ██║
-╚═╝  ╚═══╝╚══════╝ ╚═════╝   ╚═══╝  ╚═╝╚═╝     ╚═╝]],
-      },
-      -- item field formatters
-      formats = {
-        icon = function(item)
-          if item.file and item.icon == 'file' or item.icon == 'directory' then return M.icon(item.file, item.icon) end
-          return { item.icon, width = 2, hl = 'icon' }
-        end,
-        footer = { '%s', align = 'center' },
-        header = { '%s', align = 'center' },
-        file = function(item, ctx)
-          local fname = vim.fn.fnamemodify(item.file, ':~')
-          fname = ctx.width and #fname > ctx.width and vim.fn.pathshorten(fname) or fname
-          if #fname > ctx.width then
-            local dir = vim.fn.fnamemodify(fname, ':h')
-            local file = vim.fn.fnamemodify(fname, ':t')
-            if dir and file then
-              file = file:sub(-(ctx.width - #dir - 2))
-              fname = dir .. '/…' .. file
-            end
-          end
-          local dir, file = fname:match('^(.*)/(.+)$')
-          return dir and { { dir .. '/', hl = 'dir' }, { file, hl = 'file' } } or { { fname, hl = 'file' } }
-        end,
-      },
-      sections = {
-        { section = 'header' },
-        { section = 'keys', gap = 1, padding = 1 },
-        { section = 'startup' },
-      },
-    },
-  }
+  local popup = require 'plenary'.popup
+  local function f(t)
+    return H.on .. H.sep .. t
+  end
+  local what = { f('rfc'), f('std'), f('bcp'), f('ien'), f('fyi') }
 
-  return snacks.dashboard(opts)
+  local cb_fun = function(win, _) -- ignore (current) line
+    local bufnr = vim.api.nvim_win_get_buf(win)
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    print(vim.inspect({ 'cb lines', lines }))
+  end
+
+  local cb_final = function(win, buf)
+    vim.api.nvim_buf_set_keymap(buf, 'n', '<tab>', ":lua require'pdh.rfc'.toggle()<cr>", {})
+    vim.api.nvim_buf_set_keymap(buf, 'n', 'q', '<cmd>close!<cr>', {})
+    print(vim.inspect({ 'finalize', win, buf }))
+  end
+
+  -- see `:!open https://github.com/nvim-telescope/telescope.nvim/blob/b4da76be54691e854d3e0e02c36b0245f945c2c7/lua/telescope/actions/init.lua#L1383C3-L1397C4`
+  local opts = {
+    -- show title, it won't show since border win and popup win overlap exactly
+    -- show title
+    focusable = true,
+    border = false, -- border is drawn in a second window of itself (with its own border)
+    -- title crap above
+    relative = 'editor',
+    cursorline = true,
+    minwidth = 20,
+    padding = { 0, 0, 0, 1 },
+    callback = cb_fun,
+    finalize_callback = cb_final,
+  }
+  local cwin, cfg = popup.create(what, opts)
+  local cbuf = vim.api.nvim_win_get_buf(cwin)
+  vim.api.nvim_set_option_value('modifiable', false, { scope = 'local', buf = cbuf })
+  -- vim.cmd('mapclear ' .. cbuf)
+  print(vim.inspect({
+    'bwin',
+    vim.api.nvim_win_set_config(cwin, { title = { { 'Series', 'Constant' } }, footer = 'footer' }),
+  }))
+
+  -- local bwin = cfg.border.win_id
+  -- local bbuf = cfg.border.bufnr
+  -- local blines = vim.api.nvim_buf_get_lines(bbuf, 0, -1, false)
+  -- print(vim.inspect({ 'cfg', cfg, 'win', win }))
+  -- print(vim.inspect({ 'blines', blines }))
+  -- print(vim.inspect({ 'c.b.contents', cfg.border.contents }))
+  -- vim.api.nvim_buf_set_lines(bbuf, 0, -1, false, cfg.border.contents)
+end
+
+function M.pop()
+  local function f(t)
+    return (' %s%s %s'):format(H.on, H.sep, t)
+  end
+  local what = { f('rfc'), f('std'), f('bcp'), f('ien'), f('fyi') }
+  local win_cfg = {
+    relative = 'editor',
+    width = 30,
+    height = 5,
+    style = 'minimal',
+    row = 30,
+    col = 80,
+    title = { { 'Select a series', 'Constant' } },
+    footer = { { 'tab to (un)select', 'Keyword' } },
+  }
+  local buf = vim.api.nvim_create_buf(true, false)
+  -- vim.api.nvim_buf_set_keymap(buf, 'n', '<tab>', ":lua require'pdh.rfc'.toggle()<cr>", {})
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, what)
+  vim.api.nvim_buf_set_keymap(buf, 'n', 'q', '<cmd>close!<cr>', {})
+
+  vim.api.nvim_open_win(buf, true, win_cfg)
 end
 
 vim.keymap.set('n', '<space>r', ":lua require'pdh.rfc'.reload()<cr>")

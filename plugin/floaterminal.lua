@@ -45,14 +45,18 @@ local function create_floating_window(opts)
   -- create floating window
   local win = vim.api.nvim_open_win(buf, true, win_config)
 
+  -- create easy quit in float window
+  vim.api.nvim_buf_set_keymap(buf, 'n', 'q', '<cmd>close!<cr>', {})
+
   return { buf = buf, win = win }
 end
 
 local toggle_terminal = function(args)
   local chdir -- expand before creating floating window(!)
-  if args.args == '@prj' then
-    -- change working directory to working directory
-    chdir = 'cd ' .. (Project_root(0) or '.') .. '\n'
+  local prjdir = Project_root(0)
+  if args.args == '@prj' and prjdir then
+    -- change working directory to project directory (if any)
+    chdir = 'cd ' .. prjdir .. '\n'
   elseif args.args == '@buf' then
     -- change working directory to buf dir
     chdir = 'cd ' .. vim.fn.expand('%:p:h') .. '\n'
