@@ -1056,41 +1056,56 @@ end
 function M.pop()
   local function f(t, on)
     local state = on == nil and H.on or on and H.on or H.off
-    return (' %s %s %s'):format(state, H.sep, t)
+    return (' %s%s %s'):format(state, H.sep, t)
   end
   local function toggle()
+    -- toggle H.on/H.off on current line (finds 1st occurrence on the line)
     local win = vim.api.nvim_get_current_win()
     local buf = vim.api.nvim_win_get_buf(win)
     local row = vim.api.nvim_win_get_cursor(win)[1]
     local line = vim.api.nvim_buf_get_lines(buf, row - 1, row, false)[1]
     local on = line:match(H.on)
-    local n, m = line:find(H.on, 1, true)
+    local n, m
     print(vim.inspect({ n, m }))
     if on then
       line = line:gsub(H.on, H.off)
+      n, m = line:find(H.off, 1, true)
     else
       line = line:gsub(H.off, H.on)
+      n, m = line:find(H.on, 1, true)
     end
     vim.api.nvim_set_option_value('modifiable', true, { scope = 'local', buf = buf })
     vim.api.nvim_buf_set_lines(buf, row - 1, row, false, { line })
     local ns_id = vim.api.nvim_get_namespaces()['pdh.rfc']
-    if on then
-      vim.api.nvim_buf_set_extmark(buf, ns_id, row - 1, 1, { end_line = row - 1, end_col = 2, hl_group = 'Float' })
-    else
-      vim.api.nvim_buf_set_extmark(buf, ns_id, row - 1, 1, { end_line = row - 1, end_col = 2, hl_group = 'Character' })
+    if on and n then
+      vim.api.nvim_buf_set_extmark(
+        buf,
+        ns_id,
+        row - 1,
+        n - 1,
+        { end_line = row - 1, end_col = m - 1, hl_group = 'Float' }
+      )
+    elseif n then
+      vim.api.nvim_buf_set_extmark(
+        buf,
+        ns_id,
+        row - 1,
+        n - 1,
+        { end_line = row - 1, end_col = m - 1, hl_group = 'Character' }
+      )
     end
     vim.api.nvim_set_option_value('modifiable', false, { scope = 'local', buf = buf })
     -- print(vim.inspect({ buf, row, col, char, line }))
   end
 
   local function enter()
+    -- choices accepted
     local win = vim.api.nvim_get_current_win()
     local buf = vim.api.nvim_win_get_buf(win)
     local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-    vim.api.nvim_win_close(win, true)
-    vim.api.nvim_buf_delete(buf, { force = true })
-
     print(vim.inspect({ 'enter', lines }))
+    vim.api.nvim_win_close(win, true) -- this also deletes the (scratch) buffer
+    -- vim.api.nvim_buf_delete(buf, { force = true })
   end
 
   local what = { f('rfc'), f('std'), f('bcp'), f('ien', false), f('fyi', false) }
@@ -1110,6 +1125,9 @@ function M.pop()
     border = 'rounded', -- rounded is the default
   }
   local buf = vim.api.nvim_create_buf(true, false)
+  vim.api.nvim_set_option_value('buftype', 'nofile', { scope = 'local', buf = buf })
+  vim.api.nvim_set_option_value('bufhidden', 'wipe', { scope = 'local', buf = buf })
+  vim.api.nvim_set_option_value('swapfile', false, { scope = 'local', buf = buf })
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, what)
   vim.api.nvim_buf_set_keymap(buf, 'n', 'q', '<cmd>close!<cr>', {})
   vim.api.nvim_buf_set_keymap(buf, 'n', '<tab>', '', { callback = toggle })
@@ -1121,6 +1139,41 @@ function M.pop()
   vim.api.nvim_buf_set_extmark(buf, ns_id, 3, 1, { end_line = 3, end_col = 2, hl_group = 'Float' })
 
   vim.api.nvim_open_win(buf, true, win_cfg)
+end
+
+function M.snacky()
+  -- popup using snacks.win
+  local m = snacks.win({
+    wo = {
+      cursorcolumn = false,
+      cursorline = true,
+      cursorlineopt = 'both',
+      colorcolumn = '',
+      fillchars = 'eob: ,lastline:…',
+      list = false,
+      listchars = 'extends:…,tab:  ',
+      number = false,
+      relativenumber = false,
+      signcolumn = 'no',
+      spell = false,
+      winbar = '',
+      statuscolumn = '',
+      wrap = false,
+      sidescrolloff = 0,
+      ---
+    },
+    noautocommands = true,
+    style = 'minimal',
+    title = { { 'Series', 'Constant' } },
+    footer = { { 'tab=toggle', 'Keyword' }, { ' enter=accept', 'Keyword' } },
+    footer_pos = 'right',
+    border = 'rounded',
+    text = { 'this is the initial text', 'see?' },
+    height = 5,
+    width = 30,
+  })
+
+  -- print(vim.inspect(m))
 end
 
 vim.keymap.set('n', '<space>r', ":lua require'pdh.rfc'.reload()<cr>")
