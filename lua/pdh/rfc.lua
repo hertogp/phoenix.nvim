@@ -87,8 +87,8 @@ local H = {
   -- fallbacks if M.config fails for some reason
   top = 'ietf.org', -- subdir under topdir for ietf documents
   sep = '│', -- separator for local index lines: series|id|text
-  on = '', --' ', , 
-  off = '', -- ' ', , ,
+  on = '●', --- ',  ,  , 
+  off = '○', -- ',  ,  ,  ,
 
   URL_PATTERNS = {
     -- { series = { doc-type = pattern } }
@@ -1177,34 +1177,27 @@ function M.snacky()
   end
 
   local m = snacks.win({
+    -- snacks.win options, hit <space>H when on an option, or:
+    -- * `:h snacks-win-config`
+    -- * `:h vim.wo` and `:h vim.bo`
+    -- * `:h option-list`, and `:h option-summary`
+    -- * `:h nvim_open_win`
+    -- * `:h special-buffers`
     wo = {
-      cursorcolumn = false,
-      cursorline = true,
-      cursorlineopt = 'both',
-      colorcolumn = '',
-      fillchars = 'eob: ,lastline:…',
-      list = false,
-      listchars = 'extends:…,tab:  ',
-      number = false,
-      relativenumber = false,
-      signcolumn = 'no',
-      spell = false,
-      winbar = '',
-      statuscolumn = '',
-      wrap = false,
-      sidescrolloff = 0,
-      ---
+      -- override `:h snacks-win-styles-minimal` options
+      cursorline = true, --
+      listchars = '',
     },
     fixbuf = true,
     noautocommands = true,
-    style = 'minimal',
-    title = { { 'Series', 'Constant' } },
-    footer = { { 'tab/enter', 'Keyword' }, { ' q(uit)', 'Constant' } },
+    style = 'minimal', -- see `:h snacks-win-styles-minimal`
+    title = { { 'Select series', 'Constant' } },
+    footer = { { '?:keymap', 'Keyword' } },
     footer_pos = 'right',
     border = 'rounded',
     text = { f('rfc'), f('std'), f('bcp'), f('fyi', false), f('ien', false) },
     height = 5,
-    width = 30,
+    width = 14,
     keys = {
       ['<space>'] = { toggle, desc = 'toggle' },
       ['<esc>'] = 'close',
@@ -1214,8 +1207,8 @@ function M.snacky()
 
   -- add highlight for on/off icons
   vim.api.nvim_win_call(m.win, function()
-    vim.fn.matchadd('Comment', H.off)
-    vim.fn.matchadd('DiagnosticOk', H.on)
+    vim.fn.matchadd('Special', H.off)
+    vim.fn.matchadd('Special', H.on)
   end)
 
   -- print(vim.inspect(m))
