@@ -87,8 +87,8 @@ local H = {
   -- fallbacks if M.config fails for some reason
   top = 'ietf.org', -- subdir under topdir for ietf documents
   sep = '│', -- separator for local index lines: series|id|text
-  on = ' ', --' ', , 
-  off = ' ', -- ' ', , ,
+  on = '', --' ', , 
+  off = '', -- ' ', , ,
 
   URL_PATTERNS = {
     -- { series = { doc-type = pattern } }
@@ -1143,6 +1143,39 @@ end
 
 function M.snacky()
   -- popup using snacks.win
+  local function f(t, on)
+    local state = on == nil and H.on or on and H.on or H.off
+    return (' %s  %s %s'):format(state, H.sep, t)
+  end
+
+  local cycles = {
+    series = { H.on, H.off },
+    document = { Itms.ICONS[true], Itms.ICONS[false] },
+  }
+  local function c_next(t, v)
+    -- return next index n t for given v
+    local max = #t
+    for idx, val in ipairs(t) do
+      if v == val then
+        -- cycle back to first entry if needed
+        return t[idx < max and idx + 1 or 1]
+      end
+    end
+    return nil
+  end
+
+  local function toggle(obj)
+    -- print(vim.inspect(obj))
+    local lnr = vim.api.nvim_win_get_cursor(obj.win)[1]
+    local line = obj:line(lnr)
+    local old = line:match(H.on) or line:match(H.off) -- find frst on/off icon
+    local new = c_next(cycles.series, old) -- find its successor
+    if new then
+      line = line:gsub(old, new)
+      vim.api.nvim_buf_set_lines(obj.buf, lnr - 1, lnr, false, { line })
+    end
+  end
+
   local m = snacks.win({
     wo = {
       cursorcolumn = false,
@@ -1162,16 +1195,28 @@ function M.snacky()
       sidescrolloff = 0,
       ---
     },
+    fixbuf = true,
     noautocommands = true,
     style = 'minimal',
     title = { { 'Series', 'Constant' } },
-    footer = { { 'tab=toggle', 'Keyword' }, { ' enter=accept', 'Keyword' } },
+    footer = { { 'tab/enter', 'Keyword' }, { ' q(uit)', 'Constant' } },
     footer_pos = 'right',
     border = 'rounded',
-    text = { 'this is the initial text', 'see?' },
+    text = { f('rfc'), f('std'), f('bcp'), f('fyi', false), f('ien', false) },
     height = 5,
     width = 30,
+    keys = {
+      ['<space>'] = { toggle, desc = 'toggle' },
+      ['<esc>'] = 'close',
+      ['?'] = 'toggle_help',
+    },
   })
+
+  -- add highlight for on/off icons
+  vim.api.nvim_win_call(m.win, function()
+    vim.fn.matchadd('Comment', H.off)
+    vim.fn.matchadd('DiagnosticOk', H.on)
+  end)
 
   -- print(vim.inspect(m))
 end
