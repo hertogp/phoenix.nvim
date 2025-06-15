@@ -257,7 +257,9 @@ function Idx:errata()
     if ok and rv and rv.status == 200 then
       local lines = vim.split(rv.body, '[\r\n]', { trimempty = true })
       for _, n in ipairs(lines) do
-        if n and #n > 0 then Idx.ERRATA[('rfc%d'):format(n)] = true end
+        if n and #n > 0 then
+          Idx.ERRATA[('rfc%d'):format(n)] = true
+        end
       end
       local dir = vim.fs.dirname(fname)
       vim.fn.mkdir(dir, 'p')
@@ -309,7 +311,9 @@ function Idx.fetch(series)
     -- return a parsed accumulated entry line (if any) or nil upon failure
     local nr, title = string.match(line, '^(%d+)%s+(.*)')
     nr = tonumber(nr) -- eleminate any leading zero's
-    if nr ~= nil then return { series, nr, title } end
+    if nr ~= nil then
+      return { series, nr, title }
+    end
     return nil -- so it actually won't add the entry
   end
 
@@ -581,7 +585,9 @@ function Itms:from(series)
   -- refill
   Idx:from(series) -- { {series, nr, text}, .. }
 
-  if #Idx == 0 then return nil end
+  if #Idx == 0 then
+    return nil
+  end
 
   for idx, entry in ipairs(Idx) do
     table.insert(self, Itms.new(idx, entry))
@@ -679,9 +685,13 @@ function Itms.set_tags(item)
   -- fix item.formats value (keep only the known ext labels, if any)
   local seen = {}
   for _, fmt in ipairs(Itms.FORMATS) do
-    if item.format:match(fmt) then seen[#seen + 1] = fmt end
+    if item.format:match(fmt) then
+      seen[#seen + 1] = fmt
+    end
   end
-  if #seen > 0 then item.format = table.concat(seen, ', ') end
+  if #seen > 0 then
+    item.format = table.concat(seen, ', ')
+  end
 
   -- extract date
   local date = item.text:match('%s%u%l%l%l-%s-%d%d%d%d%.?')
@@ -789,7 +799,9 @@ local Act = {
 function Act.actions.fetch(picker, curr_item)
   -- curr_item == picker.list:current()
   local items = picker.list.selected
-  if #items == 0 then items = { curr_item } end
+  if #items == 0 then
+    items = { curr_item }
+  end
   local notices = { '# Fetch:\n' }
 
   for n, item in ipairs(items) do
@@ -817,7 +829,9 @@ function Act.actions.inspect(picker, item)
   local lines = { '\n# ' .. item.docid:upper(), '\n\n## Item fields\n\n```lua\n{\n' }
   local keys = {}
   for k, _ in pairs(item) do
-    if not k:match('^_') then keys[#keys + 1] = k end
+    if not k:match('^_') then
+      keys[#keys + 1] = k
+    end
   end
   table.sort(keys)
 
@@ -833,7 +847,9 @@ end
 function Act.actions.remove(picker, curr_item)
   -- curr_item == picker.list:current() ?= picker:current()
   local items = picker.list.selected
-  if #items == 0 then items = { curr_item } end
+  if #items == 0 then
+    items = { curr_item }
+  end
   local notices = { '# Remove:\n' }
 
   for n, item in ipairs(items) do
@@ -866,7 +882,9 @@ end
 ---@param item table the current item at the time of the keypress
 function Act.actions.visit_info(_, item)
   local url = H.url('info', item.docid, 'html')
-  if url then vim.cmd(('!open %s'):format(url)) end
+  if url then
+    vim.cmd(('!open %s'):format(url))
+  end
 end
 
 --- Visits the html page of the current item
@@ -874,7 +892,9 @@ end
 ---@param item table the current item at the time of the keypress
 function Act.actions.visit_page(_, item)
   local url = H.url('document', item.docid, 'html')
-  if url then vim.cmd(('!open %s'):format(url)) end
+  if url then
+    vim.cmd(('!open %s'):format(url))
+  end
 end
 
 --- Visits the errate page (if any) of the current (rfc) item
@@ -882,7 +902,9 @@ end
 ---@param item table the current item at the time of the keypress
 function Act.actions.visit_errata(_, item)
   local url = H.url('errata', item.docid, '')
-  if url then vim.cmd(('!open %s'):format(url)) end
+  if url then
+    vim.cmd(('!open %s'):format(url))
+  end
 end
 
 --- Open the current item, either is neovim (txt) or via `open` for other formats
@@ -898,7 +920,9 @@ function Act.confirm(picker, item)
     -- edit in nvim
     vim.cmd(M.config.edit .. ' ' .. item.file)
     local ft = M.config.filetype['txt']
-    if ft then vim.cmd('set ft=' .. ft) end
+    if ft then
+      vim.cmd('set ft=' .. ft)
+    end
   elseif item.file then
     -- TODO: Brave browser can't access .local/data files ..
     vim.cmd('!open ' .. item.file)
@@ -954,7 +978,9 @@ function M.search(series)
   -- TODO:
   -- [ ] check if indices need refreshing ..
 
-  if #Itms < 1 then Itms:from(series) end
+  if #Itms < 1 then
+    Itms:from(series)
+  end
 
   return snacks.picker({
     items = Itms,
@@ -978,7 +1004,9 @@ function M.select()
   vim.ui.select(choices, {
     prompt = 'Select extension to download',
   }, function(choice)
-    if choice == nil then choice = 'cancelled' end
+    if choice == nil then
+      choice = 'cancelled'
+    end
   end)
 end
 
@@ -1172,8 +1200,26 @@ function M.snacky()
     local new = c_next(cycles.series, old) -- find its successor
     if new then
       line = line:gsub(old, new)
+      vim.api.nvim_set_option_value('modifiable', true, { buf = obj.buf })
       vim.api.nvim_buf_set_lines(obj.buf, lnr - 1, lnr, false, { line })
+      vim.api.nvim_set_option_value('modifiable', false, { buf = obj.buf })
     end
+  end
+
+  local icon2state = { [H.on] = true, [H.off] = false } -- TODO move to H(elper)
+  local function confirm(obj)
+    -- parse obj lines (ICON|series) into table<series,boolean>
+    local series = {}
+    for _, line in ipairs(obj:lines()) do
+      local parts = vim.split(line, H.sep, { plain = true, trimempty = true })
+      local icon, item = unpack(vim.tbl_map(vim.trim, parts))
+
+      if H.FNAME_PATTERNS[item] then
+        series[item] = icon2state[icon]
+      end
+    end
+    obj:close()
+    print(vim.inspect({ 'confirm', series }))
   end
 
   local m = snacks.win({
@@ -1187,6 +1233,9 @@ function M.snacky()
       -- override `:h snacks-win-styles-minimal` options
       cursorline = true, --
       listchars = '',
+    },
+    bo = {
+      modifiable = false,
     },
     fixbuf = true,
     noautocommands = true,
@@ -1202,6 +1251,7 @@ function M.snacky()
       ['<space>'] = { toggle, desc = 'toggle' },
       ['<esc>'] = 'close',
       ['?'] = 'toggle_help',
+      ['<enter>'] = { confirm, desc = 'accept' },
     },
   })
 
