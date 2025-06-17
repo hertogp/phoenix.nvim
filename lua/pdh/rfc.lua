@@ -1281,6 +1281,9 @@ end
 --- local funcs for new way of curl/read'ing items ---
 ------------------------------------------------------
 
+---@param doctype doctype
+---@param docid string
+---@param ext string
 local function download(doctype, docid, ext)
   -- returns (possibly empty) list of body lines
   local series = docid:match('^%D+'):lower()
@@ -1295,8 +1298,10 @@ local function download(doctype, docid, ext)
     return {}
   end
 end
+
 local function read_items(fname)
   -- read data file and return list of items or nil,err
+  -- local ttl = (M.config.ttl or 0) + vim.fn.getftime(fname) - vim.fn.localtime()
   local t, err = loadfile(fname, 'bt')
   if t then
     return t()
@@ -1321,12 +1326,26 @@ end
 
 local function curl_items(series)
   -- download & parse items for an rfc,std,bcp,ien or fyi index
-  local tags = function(item)
-    -- extract tags from item's text field
-    -- (Status: _), ..., (Obsoletes _) (Obsoleted by _), ...
-    -- for RFC's that are not issued, there won't be a status. Others donot have a status
-    local tags = {
-      -- ensure these tags are present with a default value
+
+  local parse_item = function(accumulated)
+    -- parse an accumulated line "nr text" into an item
+    local nr, title = accumulated:match('^(%d+)%s+(.*)')
+    if nr == nil then
+      return nil
+    end
+
+    --
+    local item = {
+      score = 50,
+      text = title, -- we'll extract tags later
+      title = ('%s%s'):format(series, nr):upper(), -- used by snack as preview win title
+      -- extra fields to search on using > field:term in search prompt
+      errata = 'tbd',
+      docid = ('%s%d'):format(series, nr),
+      name = ('%s%d'):format(series, nr):upper(),
+      series = series:lower(),
+    }
+    local tags = { -- required set of TAGS to extract from `text`
       obsoletes = 'n/a',
       obsoleted_by = 'n/a',
       updates = 'n/a',
@@ -1335,17 +1354,12 @@ local function curl_items(series)
       status = 'n/a',
       format = '', -- empty string means no format(s) listed/found
       doi = 'n/a',
-      -- these two are not `()`-constructs
       authors = 'n/a',
       date = 'n/a',
     }
+    item = vim.tbl_extend('error', item, tags) -- ensure tags are present and unique in item
 
-    -- ensure all known tags, with their defaults, are present in item
-    for k, v in pairs(tags) do
-      item[k] = v
-    end
-
-    -- extract (<tag> ... )-constructs
+    -- TAGS from 'text', consume the known ()-constructs
     for part in string.gmatch(item.text, '%(([^)]+)%)') do
       -- lowercase so we can match on keys in tags
       local prepped = part:lower():gsub('%s+by', '_by', 1):gsub(':', '', 1)
@@ -1391,27 +1405,7 @@ local function curl_items(series)
         break
       end
     end
-
     return item
-  end
-
-  local parse_item = function(line)
-    -- parse an accumulated line "nr text" into an item
-    local nr, title = line:match('^(%d+)%s+(.*)')
-    if nr ~= nil then
-      -- TODO return tags({ ...}) and add tags above as local func as well
-      return tags({
-        score = 50,
-        text = title, -- we'll extract tags later
-        title = ('%s%s'):format(series, nr):upper(), -- used by snack as preview win title
-        -- extra fields to search on using > field:term in search prompt
-        errata = 'tbd',
-        docid = ('%s%d'):format(series, nr),
-        name = ('%s%d'):format(series, nr):upper(),
-        series = series:lower(),
-      })
-    end
-    return nil -- so it actually won't add the entry
   end
 
   -- download and parse the index of items for series
@@ -1438,11 +1432,6 @@ local function curl_items(series)
   end
   -- don't forget the last entry
   items[#items + 1] = parse_item(acc)
-
-  -- TODO: set errate here if series == 'rfc' ?
-  -- 1. download errata
-  -- 2. for each item, set item.errata to "yes" or "no"
-  -- ensure item.errata is only added for rfc-items
 
   return items
 end
