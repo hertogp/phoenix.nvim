@@ -584,7 +584,6 @@ function Itms:from(series)
   for i = 1, cnt do
     Itms[i] = nil
   end
-
   -- refill
   Idx:from(series) -- { {series, nr, text}, .. }
 
@@ -1584,6 +1583,21 @@ function M.head()
   -- end)
 end
 
+function M:search2(series)
+  curl_items(series, Itms)
+
+  return snacks.picker({
+    items = Itms,
+
+    format = Itms.format,
+    preview = Itms.preview,
+    actions = Act.actions,
+    confirm = Act.confirm,
+    win = Act.win,
+
+    layout = { fullscreen = true },
+  })
+end
 vim.keymap.set('n', '<space>r', ":lua require'pdh.rfc'.reload()<cr>")
 
 return M
