@@ -121,8 +121,8 @@ local H = {
     -- { series = { doc-type = { pattern } }
     rfc = {
       document = '<data>/<top>/<series>/<docid>.<ext>',
-      index = '<cache>/<top>/<series>-index.txt',
-      errata_index = '<cache>/<top>/<series>-errata.txt',
+      index = '<cache>/<top>/<series>-index.<ext>',
+      errata_index = '<cache>/<top>/<series>-errata.<ext>',
     },
     std = {
       document = '<data>/<top>/<series>/<docid>.<ext>',
@@ -183,12 +183,15 @@ function H.dir(spec)
   return assert(path, ('invalid directory specification %s'):format(vim.inspect(spec)))
 end
 
+---@alias doctype 'document'|'index'|'errata_index' Last one is rfc specific
+---@alias urltype 'document'|'index'|'errata_index'|'errata'|'info' Last three are rfc specific
+
 ---Translate document type, id and extension to a local filename (or die trying)
----@param type string type of document (index, document, info, ..)
+---@param doctype doctype type of document (index, document, info, ..)
 ---@param docid string unique document name (<series><nr>)
 ---@param ext string file extension
 ---@return string path full file path for doc-type and docid or bust!
-function H.fname(type, docid, ext)
+function H.fname(doctype, docid, ext)
   local series = docid:match('%D+'):lower()
   local fname_parts = {
     cache = H.dir(M.config.cache),
@@ -200,17 +203,17 @@ function H.fname(type, docid, ext)
   }
 
   assert(H.FNAME_PATTERNS[series], ('fname: series %s is not valid'):format(series))
-  assert(H.FNAME_PATTERNS[series][type], ('fname: type %s not valid for %s series'):format(type, series))
-  local pattern = H.FNAME_PATTERNS[series][type]
+  assert(H.FNAME_PATTERNS[series][doctype], ('fname: type %s not valid for %s series'):format(doctype, series))
+  local pattern = H.FNAME_PATTERNS[series][doctype]
   local fname = pattern:gsub('<(.-)>', fname_parts)
   return fname
 end
 
----@param type string type of document (index, document, errata, info or errata_index)
+---@param urltype urltype type of document (index, document, errata, info or errata_index)
 ---@param docid string unique document name (<series><nr>) or (sub)series
 ---@param ext string
 ---@return string|nil url the url for given `docid` and `ext`
-function H.url(type, docid, ext)
+function H.url(urltype, docid, ext)
   -- docid is <series>-index or <series><nr>
 
   local url = nil
@@ -222,7 +225,7 @@ function H.url(type, docid, ext)
     ext = ext,
   }
   if H.URL_PATTERNS[series] then
-    local pattern = H.URL_PATTERNS[series][type]
+    local pattern = H.URL_PATTERNS[series][urltype]
     if pattern then
       url = pattern:gsub('<(.-)>', url_parts) -- '<(%S+)> won't work?
     end
@@ -1028,9 +1031,13 @@ function M.toggle()
 end
 --
 function M.test()
-  -- test popup to:
-  -- * select 1 or more series
-  -- * change config items
+  -- test plenary.popup:
+  -- * new option winborder -> can't use plenary's border (second window behind popup window)
+  --   with winborder enables (global opt), inner window vim-border overwrites
+  --   plenary's border.  Plenary's border window also gets the vim-border
+  --   making it all look weird.  So workaround is:
+  --   + don't use plenary's border
+  --   + use winborder plus nvim_win_set_config op plenary's popup window
   local popup = require 'plenary'.popup
   local function f(t)
     return H.on .. H.sep .. t
@@ -1052,7 +1059,6 @@ function M.test()
   -- see `:!open https://github.com/nvim-telescope/telescope.nvim/blob/b4da76be54691e854d3e0e02c36b0245f945c2c7/lua/telescope/actions/init.lua#L1383C3-L1397C4`
   local opts = {
     -- show title, it won't show since border win and popup win overlap exactly
-    -- show title
     focusable = true,
     border = false, -- border is drawn in a second window of itself (with its own border)
     -- title crap above
@@ -1082,6 +1088,11 @@ function M.test()
 end
 
 function M.pop()
+  -- rewrite:
+  -- * buffer lines are formatted bufvar entries
+  -- * use buffer var to hold options to toggle as data {option, true/false}
+  -- * use format func to display and toggle
+  -- * no need to parse buffer upon accept (var is current state as reflected by buf lines)
   local function f(t, on)
     local state = on == nil and H.on or on and H.on or H.off
     return (' %s%s %s'):format(state, H.sep, t)
@@ -1171,6 +1182,9 @@ end
 
 function M.snacky()
   -- popup using snacks.win
+  -- todo:
+  --  * attach { {option, value}, ..} to buffer, entries are displayed in window
+  --  * use format func to display the entries: no need to parse lines afterwards
   local function f(t, on)
     local state = on == nil and H.on or on and H.on or H.off
     return (' %s  %s %s'):format(state, H.sep, t)
@@ -1262,6 +1276,196 @@ function M.snacky()
   end)
 
   -- print(vim.inspect(m))
+end
+
+--- local funcs for new way of curl/read'ing items ---
+------------------------------------------------------
+
+local function download(doctype, docid, ext)
+  -- returns (possibly empty) list of body lines
+  local series = docid:match('^%D+'):lower()
+  local url = H.url(doctype, series, ext)
+  local accept = Itms.ACCEPT[ext]
+  local ok, rv = pcall(plenary.curl.get, { url = url, accept = accept })
+
+  if ok and rv and rv.status == 200 then
+    return vim.split(rv.body, '[\r\n\f]', { trimempty = false })
+  else
+    vim.notify('[warn] download failed: [' .. rv.status .. '] ' .. url, vim.log.levels.ERROR)
+    return {}
+  end
+end
+local function read_items(fname)
+  -- read data file and return list of items or nil,err
+  local t, err = loadfile(fname, 'bt')
+  if t then
+    return t()
+  else
+    vim.print(vim.inspect({ 'error', err }))
+    return nil, err
+  end
+end
+
+local function save_items(fname, items)
+  -- save to items to file such that it can be read by read_items
+  -- returns 0 on success, -1 on failure
+  local lines = { '-- autogenerated by rfc.lua, do not edit', '', 'return {' }
+  for _, item in ipairs(items) do
+    -- vim.inspect inserts \0's, must use %c to replace ('\0' doesn't work(?)
+    lines[#lines + 1] = vim.inspect(item):gsub('%c%s*', ' ') .. ','
+  end
+  lines[#lines + 1] = '}'
+
+  return vim.fn.writefile(lines, fname)
+end
+
+local function curl_items(series)
+  -- download & parse items for an rfc,std,bcp,ien or fyi index
+  local tags = function(item)
+    -- extract tags from item's text field
+    -- (Status: _), ..., (Obsoletes _) (Obsoleted by _), ...
+    -- for RFC's that are not issued, there won't be a status. Others donot have a status
+    local tags = {
+      -- ensure these tags are present with a default value
+      obsoletes = 'n/a',
+      obsoleted_by = 'n/a',
+      updates = 'n/a',
+      updated_by = 'n/a',
+      also = 'n/a',
+      status = 'n/a',
+      format = '', -- empty string means no format(s) listed/found
+      doi = 'n/a',
+      -- these two are not `()`-constructs
+      authors = 'n/a',
+      date = 'n/a',
+    }
+
+    -- ensure all known tags, with their defaults, are present in item
+    for k, v in pairs(tags) do
+      item[k] = v
+    end
+
+    -- extract (<tag> ... )-constructs
+    for part in string.gmatch(item.text, '%(([^)]+)%)') do
+      -- lowercase so we can match on keys in tags
+      local prepped = part:lower():gsub('%s+by', '_by', 1):gsub(':', '', 1)
+      local k, v = string.match(prepped, '^([^%s]+)%s+(.*)$')
+      if k and v and tags[k] then
+        item[k] = v -- v = v:gsub('%s+', '')
+        -- `part` yielded a tagged value, so remove its first occurrence
+        item.text = string.gsub(item.text, '%s?%(' .. part .. '%)', '', 1)
+      end
+    end
+
+    -- fix item.formats value (keep only the known ext labels, if any)
+    local seen = {}
+    for _, fmt in ipairs(Itms.FORMATS) do
+      if item.format:match(fmt) then
+        seen[#seen + 1] = fmt
+      end
+    end
+    if #seen > 0 then
+      item.format = table.concat(seen, ', ')
+    end
+
+    -- extract date
+    local date = item.text:match('%s%u%l%l%l-%s-%d%d%d%d%.?')
+    if date then
+      item.date = vim.trim(date):gsub('%.$', '')
+      item.text = string.gsub(item.text, date, '', 1)
+    end
+
+    -- extract authors
+    local authors = item.text:match('%s%u%.%u?%.?%s.*%.')
+    if authors and #authors > 0 then
+      item.text = item.text:gsub(authors, '', 1)
+      item.authors = authors:gsub('^%s', ''):gsub('%.+$', ''):gsub('%s%s+', ' ')
+    end
+
+    -- set file field (if any) to first, local, file found for this docid
+    -- item.file = nil -- nothing found yet
+    for _, ext in ipairs(Itms.FORMATS) do
+      local fname = H.fname('document', item.docid, ext)
+      if fname and vim.fn.filereadable(fname) == 1 then
+        item.file = fname
+        break
+      end
+    end
+
+    return item
+  end
+
+  local parse_item = function(line)
+    -- parse an accumulated line "nr text" into an item
+    local nr, title = line:match('^(%d+)%s+(.*)')
+    if nr ~= nil then
+      -- TODO return tags({ ...}) and add tags above as local func as well
+      return tags({
+        score = 50,
+        text = title, -- we'll extract tags later
+        title = ('%s%s'):format(series, nr):upper(), -- used by snack as preview win title
+        -- extra fields to search on using > field:term in search prompt
+        errata = 'tbd',
+        docid = ('%s%d'):format(series, nr),
+        name = ('%s%d'):format(series, nr):upper(),
+        series = series:lower(),
+      })
+    end
+    return nil -- so it actually won't add the entry
+  end
+
+  -- download and parse the index of items for series
+  local input = download('index', series, 'txt')
+  local items = {}
+
+  -- assemble lines per item and parse to an item
+  local acc = '' -- accumulator, becomes 'nr text'/document, to be parsed as item
+  local max = series == 'ien' and 3 or 1 -- allow for leading ws in ien index
+  for _, line in ipairs(input) do
+    local start = string.match(line, '^(%s*)%d+%s+%S')
+    if start and #start < max then
+      -- starter line: parse current, start new
+      items[#items + 1] = parse_item(acc)
+      acc = vim.trim(line) -- trim leading ws(!) for parse()
+    elseif #acc > 0 and string.match(line, '^%s+%S') then
+      -- continuation line: accumulate
+      acc = acc .. ' ' .. vim.trim(line)
+    elseif #acc > 0 then
+      -- neither a starter, nor continuation: parse current, restart
+      items[#items + 1] = parse_item(acc)
+      acc = ''
+    end
+  end
+  -- don't forget the last entry
+  items[#items + 1] = parse_item(acc)
+
+  -- TODO: set errate here if series == 'rfc' ?
+  -- 1. download errata
+  -- 2. for each item, set item.errata to "yes" or "no"
+  -- ensure item.errata is only added for rfc-items
+
+  return items
+end
+
+function M.head()
+  -- test checking if file changed remotely
+  -- saved items in the form of "return { {...}, {...} ..}, so loadfile
+  local fname = H.fname('index', 'rfc', 'lua.dta')
+
+  -- load items from index lua data file
+  local items, err = read_items(fname)
+  if err then
+    vim.notify('error reading items:' .. err)
+  end
+
+  -- save items to file in lua data format that is loadfile'able
+  if save_items(fname, items) ~= 0 then
+    print('error saving items to ' .. fname)
+  end
+
+  -- testing download
+  local itemz = curl_items('bcp')
+  print(vim.inspect({ #itemz, itemz }))
 end
 
 vim.keymap.set('n', '<space>r', ":lua require'pdh.rfc'.reload()<cr>")

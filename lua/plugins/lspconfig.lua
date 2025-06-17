@@ -41,12 +41,6 @@ return {
 
     config = function()
       -- LSP's, installed separately from neovim, provide Neovim with features like:
-      --  - Go to definition
-      --  - Find references
-      --  - Autocompletion
-      --  - Symbol Search
-      --  - and more!
-      --
       -- See `:help lsp-vs-treesitter` for the overview & interaction of the two.
 
       --  This function gets run when an LSP attaches to a particular buffer.

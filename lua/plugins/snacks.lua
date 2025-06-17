@@ -206,20 +206,6 @@ return {
       desc = 'Help on <cword>',
     },
     {
-      '<space>s',
-      function()
-        Snacks.picker.lsp_symbols()
-      end,
-      desc = 'LSP: Find symbol',
-    },
-    {
-      '<space>S',
-      function()
-        Snacks.picker.lsp_workspace_symbols()
-      end,
-      desc = 'LSP: Find workspace symbol',
-    },
-    {
       '<space>k',
       function()
         Snacks.picker.keymaps()
@@ -403,6 +389,20 @@ return {
 
     -- LSP
     {
+      '<space>s',
+      function()
+        Snacks.picker.lsp_symbols()
+      end,
+      desc = 'LSP: Find symbol',
+    },
+    {
+      '<space>S',
+      function()
+        Snacks.picker.lsp_workspace_symbols()
+      end,
+      desc = 'LSP: Find workspace symbol',
+    },
+    {
       'gd',
       function()
         Snacks.picker.lsp_definitions()
@@ -432,7 +432,7 @@ return {
       desc = 'LSP: Goto Implementation',
     },
     {
-      'gy',
+      'gt',
       function()
         Snacks.picker.lsp_type_definitions()
       end,
