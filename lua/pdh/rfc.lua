@@ -1284,6 +1284,7 @@ end
 ---@param doctype doctype
 ---@param docid string
 ---@param ext string
+---@return string[] lines a, possibly empty, list of strings
 local function download(doctype, docid, ext)
   -- returns (possibly empty) list of body lines
   local series = docid:match('^%D+'):lower()
@@ -1294,7 +1295,7 @@ local function download(doctype, docid, ext)
   if ok and rv and rv.status == 200 then
     return vim.split(rv.body, '[\r\n\f]', { trimempty = false })
   else
-    vim.notify('[warn] download failed: [' .. rv.status .. '] ' .. url, vim.log.levels.ERROR)
+    vim.notify(('[warn] download failed: [%s] %s'):format(rv.status, vim.inspect(url)), vim.log.levels.ERROR)
     return {}
   end
 end
@@ -1326,26 +1327,31 @@ end
 
 local function curl_items(series)
   -- download & parse items for an rfc,std,bcp,ien or fyi index
+  series = series:lower()
+  local errata = {}
+  for _, id in ipairs(download('errata_index', series, 'txt')) do
+    errata[('%s%d'):format(series, id)] = 'yes'
+  end
 
   local parse_item = function(accumulated)
     -- parse an accumulated line "nr text" into an item
     local nr, title = accumulated:match('^(%d+)%s+(.*)')
     if nr == nil then
-      return nil
+      return nil -- prevents adding botched items to final list
     end
 
-    --
+    local docid = ('%s%d'):format(series, nr)
     local item = {
       score = 50,
       text = title, -- we'll extract tags later
       title = ('%s%s'):format(series, nr):upper(), -- used by snack as preview win title
       -- extra fields to search on using > field:term in search prompt
-      errata = 'tbd',
-      docid = ('%s%d'):format(series, nr),
-      name = ('%s%d'):format(series, nr):upper(),
-      series = series:lower(),
+      errata = errata[docid] or 'no',
+      docid = docid,
+      name = docid:upper(),
+      series = series,
     }
-    local tags = { -- required set of TAGS to extract from `text`
+    local tags = { -- defined separately in order to filter on ()-constructs
       obsoletes = 'n/a',
       obsoleted_by = 'n/a',
       updates = 'n/a',
@@ -1360,6 +1366,7 @@ local function curl_items(series)
     item = vim.tbl_extend('error', item, tags) -- ensure tags are present and unique in item
 
     -- TAGS from 'text', consume the known ()-constructs
+    -- TODO: bcp9 (Format: bytes) is not pickup on, still in item.text
     for part in string.gmatch(item.text, '%(([^)]+)%)') do
       -- lowercase so we can match on keys in tags
       local prepped = part:lower():gsub('%s+by', '_by', 1):gsub(':', '', 1)
@@ -1396,8 +1403,7 @@ local function curl_items(series)
       item.authors = authors:gsub('^%s', ''):gsub('%.+$', ''):gsub('%s%s+', ' ')
     end
 
-    -- set file field (if any) to first, local, file found for this docid
-    -- item.file = nil -- nothing found yet
+    -- set file? field to first file found for this docid (if any)
     for _, ext in ipairs(Itms.FORMATS) do
       local fname = H.fname('document', item.docid, ext)
       if fname and vim.fn.filereadable(fname) == 1 then
@@ -1453,7 +1459,7 @@ function M.head()
   end
 
   -- testing download
-  local itemz = curl_items('bcp')
+  local itemz = curl_items('rfc')
   print(vim.inspect({ #itemz, itemz }))
 end
 
