@@ -1280,17 +1280,114 @@ end
 
 --- local funcs for new way of curl/read'ing items ---
 ------------------------------------------------------
+local PATTERNS = {
+  -- see `:!open https://www.rfc-editor.org/rfc/` for the various documents
+  url = {
+    rfc = {
+      index = '<base>/<series>/<series>-index.<ext>',
+      document = '<base>/<series>/<docid>.<ext>',
+      errata_index = '<base>/rfc/RFCs_for_errata.<ext>',
+      errata = '<base>/errata/<docid>',
+      info = '<base>/info/<docid>',
+    },
+    std = {
+      index = '<base>/<series>/<series>-index.<ext>',
+      document = '<base>/<series>/<docid>.<ext>',
+    },
+    bcp = {
+      index = '<base>/<series>/<series>-index.<ext>',
+      document = '<base>/<series>/<docid>.<ext>',
+    },
+    ien = {
+      index = '<base>/<series>/<series>-index.<ext>',
+      document = '<base>/<series>/<docid>.<ext>',
+    },
+    fyi = {
+      index = '<base>/<series>/<series>-index.<ext>',
+      document = '<base>/<series>/<docid>.<ext>',
+    },
+  },
+  file = {
+    rfc = {
+      document = '<data>/<top>/<series>/<docid>.<ext>',
+      index = '<cache>/<top>/<series>-index.<ext>',
+      errata_index = '<cache>/<top>/<series>-errata.<ext>',
+    },
+    std = {
+      document = '<data>/<top>/<series>/<docid>.<ext>',
+      index = '<cache>/<top>/<series>-index.txt',
+    },
+    bcp = {
+      document = '<data>/<top>/<series>/<docid>.<ext>',
+      index = '<cache>/<top>/<series>-index.txt',
+    },
+    ien = {
+      document = '<data>/<top>/<series>/<docid>.<ext>',
+      index = '<cache>/<top>/<series>-index.txt',
+    },
+    fyi = {
+      document = '<data>/<top>/<series>/<docid>.<ext>',
+      index = '<cache>/<top>/<series>-index.txt',
+    },
+  },
+}
+
+local ACCEPT = {
+  -- http header values for accept
+  txt = 'text/plain',
+  html = 'text/html',
+  xml = 'application/xml',
+  pdf = 'applicaiton/pdf',
+  ps = 'applicaiton/ps',
+}
+
+---get local filename for given `doctype`, `docid` and `ext`
+---@param doctype doctype type of document (index, document, info, ..)
+---@param docid string unique document name (<series><nr>)
+---@param ext string file extension
+---@return string path full file path for doc-type and docid or bust!
+local function get_fname(doctype, docid, ext)
+  local series = docid:match('%D+'):lower()
+  local fname_parts = {
+    cache = H.dir(M.config.cache), -- TODO make dirname
+    data = H.dir(M.config.data),
+    series = series,
+    docid = docid,
+    top = M.config.top or H.top, -- TODO rename top to subdir which is a better fit
+    ext = ext,
+  }
+
+  assert(PATTERNS.file[series], ('[error] unknown series `%s`'):format(series))
+  assert(PATTERNS.file[series][doctype], ('[error] doctype `%s` not valid for series `%s`'):format(doctype, series))
+  return PATTERNS.file[series][doctype]:gsub('<(.-)>', fname_parts)
+end
+
+---get the rfc-editor document url for given `urltype`, `docid` and `ext`
+---@param urltype urltype type of document (index, document, errata, info or errata_index)
+---@param docid string unique document name (<series><nr>) within a (sub)series
+---@param ext string
+---@return string|nil url the url for given `docid` and `ext`
+local function get_url(urltype, docid, ext)
+  local series = docid:match('^%D+'):lower()
+  local url_parts = {
+    base = 'https://www.rfc-editor.org',
+    docid = docid,
+    series = series,
+    ext = ext,
+  }
+  assert(PATTERNS.url[series], ('[error] unknown series `%s`'):format(series))
+  assert(PATTERNS.url[series][urltype], ('[error] urltype `%s` not valid for series `%s`'):format(urltype, series))
+  return PATTERNS.url[series][urltype]:gsub('<(.-)>', url_parts) -- '<(%S+)> won't work?
+end
 
 ---@param doctype doctype
 ---@param docid string
 ---@param ext string
 ---@return string[] lines a, possibly empty, list of strings
 local function download(doctype, docid, ext)
-  -- returns (possibly empty) list of body lines
   local series = docid:match('^%D+'):lower()
-  local url = H.url(doctype, series, ext)
-  local accept = Itms.ACCEPT[ext]
-  local ok, rv = pcall(plenary.curl.get, { url = url, accept = accept })
+  local url = get_url(doctype, series, ext)
+  local ok, rv = pcall(plenary.curl.get, { url = url, accept = ACCEPT[ext] })
 
   if ok and rv and rv.status == 200 then
     return vim.split(rv.body, '[\r\n\f]', { trimempty = false })
@@ -1300,24 +1397,28 @@ local function download(doctype, docid, ext)
   end
 end
 
-local function read_items(fname)
-  -- read data file and return list of items or nil,err
+---@param fname string file to get items from
+---@param items table a list of picker items
+---@return table items list of (more) items
+local function read_items(fname, items)
   -- local ttl = (M.config.ttl or 0) + vim.fn.getftime(fname) - vim.fn.localtime()
   local t, err = loadfile(fname, 'bt')
   if t then
-    return t()
-  else
-    vim.print(vim.inspect({ 'error', err }))
-    return nil, err
+    for _, item in ipairs(t()) do
+      item.idx = #items + 1 -- position of item in items
+      items[#items + 1] = item
+    end
   end
+  return items
 end
 
-local function save_items(fname, items)
-  -- save to items to file such that it can be read by read_items
-  -- returns 0 on success, -1 on failure
+---@param items table a list of picker items
+---@param fname string to save items to
+---@return number result 0 if succesful, -1 upon failure
+local function save_items(items, fname)
   local lines = { '-- autogenerated by rfc.lua, do not edit', '', 'return {' }
   for _, item in ipairs(items) do
-    -- vim.inspect inserts \0's, must use %c to replace ('\0' doesn't work(?)
+    -- vim.inspect inserts \0's, use %c to replace it since '\0' doesn't work(?)
     lines[#lines + 1] = vim.inspect(item):gsub('%c%s*', ' ') .. ','
   end
   lines[#lines + 1] = '}'
@@ -1325,12 +1426,21 @@ local function save_items(fname, items)
   return vim.fn.writefile(lines, fname)
 end
 
-local function curl_items(series)
-  -- download & parse items for an rfc,std,bcp,ien or fyi index
+---get items from the series' index at the rfc-editor website
+---@param series series
+---@param items? table
+---@return snacks.picker.Item[] items an updated list of snacks.picker.Item's
+local function curl_items(series, items)
+  items = items or {}
   series = series:lower()
+
+  -- locals
   local errata = {}
-  for _, id in ipairs(download('errata_index', series, 'txt')) do
-    errata[('%s%d'):format(series, id)] = 'yes'
+  if series == 'rfc' then
+    -- only the rfc series actually has an errata index
+    for _, id in ipairs(download('errata_index', series, 'txt')) do
+      errata[('%s%d'):format(series, id)] = 'yes'
+    end
   end
 
   local parse_item = function(accumulated)
@@ -1416,7 +1526,6 @@ local function curl_items(series)
 
   -- download and parse the index of items for series
   local input = download('index', series, 'txt')
-  local items = {}
 
   -- assemble lines per item and parse to an item
   local acc = '' -- accumulator, becomes 'nr text'/document, to be parsed as item
@@ -1448,19 +1557,31 @@ function M.head()
   local fname = H.fname('index', 'rfc', 'lua.dta')
 
   -- load items from index lua data file
-  local items, err = read_items(fname)
+  local items, err = read_items(fname, {})
   if err then
     vim.notify('error reading items:' .. err)
   end
 
   -- save items to file in lua data format that is loadfile'able
-  if save_items(fname, items) ~= 0 then
+  if save_items(items, fname) ~= 0 then
     print('error saving items to ' .. fname)
   end
 
   -- testing download
-  local itemz = curl_items('rfc')
+  local itemz = curl_items('fyi', {})
   print(vim.inspect({ #itemz, itemz }))
+
+  -- testing filepattern
+  print(vim.inspect({ 'url', get_url('index', 'bcp', 'psi') }))
+  -- hmm
+  -- vim.ui.select({ 'tabs', 'spaces' }, {
+  --   prompt = 'Select tabs or spaces:',
+  --   format_item = function(item)
+  --     return "I'd like to choose " .. item
+  --   end,
+  -- }, function(choice)
+  --   print(vim.inspect({ 'choice', choice }))
+  -- end)
 end
 
 vim.keymap.set('n', '<space>r', ":lua require'pdh.rfc'.reload()<cr>")
