@@ -92,129 +92,14 @@ Easily search, download and read ietf rfc's.
 --[[ DEPENDENCIES ]]
 
 ---@param name string
----@return any dependency the required dependency or go bust
+---@return any dependency the required dependency
 local function dependency(name)
   local ok, var = pcall(require, name)
   assert(ok, ('[error] missing dependency: '):format(name), vim.log.levels.ERROR)
   return var
 end
-
--- check all dependencies before bailing (if applicable)
 local plenary = dependency('plenary')
 local snacks = dependency('snacks')
-
--- function M.select()
---   local choices = Itms.FORMATS
---   for idx, v in ipairs(choices) do
---     v = v .. '|' .. ' ' .. H.fname('document', 'rfc123', v)
---     choices[idx] = v
---   end
---   vim.ui.select(choices, {
---     prompt = 'Select extension to download',
---   }, function(choice)
---     if choice == nil then
---       choice = 'cancelled'
---     end
---   end)
--- end
---
--- function M.snacky()
---   -- popup using snacks.win
---   -- todo:
---   --  * attach { {option, value}, ..} to buffer, entries are displayed in window
---   --  * use format func to display the entries: no need to parse lines afterwards
---   local function f(t, on)
---     local state = on == nil and H.on or on and H.on or H.off
---     return (' %s  %s %s'):format(state, H.sep, t)
---   end
---
---   local cycles = {
---     series = { H.on, H.off },
---     document = { Itms.ICONS[true], Itms.ICONS[false] },
---   }
---   local function c_next(t, v)
---     -- return next index n t for given v
---     local max = #t
---     for idx, val in ipairs(t) do
---       if v == val then
---         -- cycle back to first entry if needed
---         return t[idx < max and idx + 1 or 1]
---       end
---     end
---     return nil
---   end
---
---   local function toggle(obj)
---     -- print(vim.inspect(obj))
---     local lnr = vim.api.nvim_win_get_cursor(obj.win)[1]
---     local line = obj:line(lnr)
---     local old = line:match(H.on) or line:match(H.off) -- find frst on/off icon
---     local new = c_next(cycles.series, old) -- find its successor
---     if new then
---       line = line:gsub(old, new)
---       vim.api.nvim_set_option_value('modifiable', true, { buf = obj.buf })
---       vim.api.nvim_buf_set_lines(obj.buf, lnr - 1, lnr, false, { line })
---       vim.api.nvim_set_option_value('modifiable', false, { buf = obj.buf })
---     end
---   end
---
---   local icon2state = { [H.on] = true, [H.off] = false } -- TODO move to H(elper)
---   local function confirm(obj)
---     -- parse obj lines (ICON|series) into table<series,boolean>
---     local series = {}
---     for _, line in ipairs(obj:lines()) do
---       local parts = vim.split(line, H.sep, { plain = true, trimempty = true })
---       local icon, item = unpack(vim.tbl_map(vim.trim, parts))
---
---       if H.FNAME_PATTERNS[item] then
---         series[item] = icon2state[icon]
---       end
---     end
---     obj:close()
---     print(vim.inspect({ 'confirm', series }))
---   end
---
---   local m = snacks.win({
---     -- snacks.win options, hit <space>H when on an option, or:
---     -- * `:h snacks-win-config`
---     -- * `:h vim.wo` and `:h vim.bo`
---     -- * `:h option-list`, and `:h option-summary`
---     -- * `:h nvim_open_win`
---     -- * `:h special-buffers`
---     wo = {
---       -- override `:h snacks-win-styles-minimal` options
---       cursorline = true, --
---       listchars = '',
---     },
---     bo = {
---       modifiable = false,
---     },
---     fixbuf = true,
---     noautocommands = true,
---     style = 'minimal', -- see `:h snacks-win-styles-minimal`
---     title = { { 'Select series', 'Constant' } },
---     footer = { { '?:keymap', 'Keyword' } },
---     footer_pos = 'right',
---     border = 'rounded',
---     text = { f('rfc'), f('std'), f('bcp'), f('fyi', false), f('ien', false) },
---     height = 5,
---     width = 14,
---     keys = {
---       ['<space>'] = { toggle, desc = 'toggle' },
---       ['<esc>'] = 'close',
---       ['?'] = 'toggle_help',
---       ['<enter>'] = { confirm, desc = 'accept' },
---     },
---   })
---
---   -- add highlight for on/off icons
---   vim.api.nvim_win_call(m.win, function()
---     vim.fn.matchadd('Special', H.off)
---     vim.fn.matchadd('Special', H.on)
---   end)
---
---   -- print(vim.inspect(m))
--- end
 
 --[[ Module ]]
 
@@ -231,8 +116,8 @@ local C = {
     txt = 'rfc',
   },
   sep = '│',
-  on = '●', --- ',  ,  , 
-  off = '○', -- ',  ,  ,  ,
+  -- on = '●', --- ',  ,  , 
+  -- off = '○', -- ',  ,  ,  ,
 }
 --- local funcs for new way of curl/read'ing items ---
 ------------------------------------------------------
@@ -297,12 +182,13 @@ local ACCEPT = {
   ps = 'applicaiton/ps',
 }
 local ICONS = {
-  -- NOTE: add a space after the icon (it is used as-is here)
+  -- used to denote if a file exists locally (true) or not (false)
   [false] = ' ',
   [true] = ' ',
 }
 
-local FORMATS = { -- order is important: first one available (disk/net) is used
+local FORMATS = {
+  -- order is important: first one available (disk/net) is used
   -- see: `:!open https://www.rfc-editor.org/rpc/wiki/doku.php?id=rfc_files_available`
   'txt', -- available for all
   'html', -- available for all and only format for rfc/inline-errata
@@ -375,6 +261,7 @@ end
 ---@return string|nil msg either filename or an err msg
 local function download(doctype, docid, ext, opts)
   -- TODO: only return lines for ext=txt, others just save as requested
+  print('downloading ' .. docid)
   opts = opts or {}
   local series = docid:match('^%D+'):lower()
   local url = get_url(doctype, docid, ext)
@@ -425,7 +312,8 @@ end
 ---@return string|nil err message on why call failed, if applicable
 local function read_items(fname, items)
   local org = #items
-  local t, err = loadfile(fname, 'bt')
+  local t, err = loadfile(fname, 't')
+  vim.print(vim.inspect({ t, err }))
 
   if t == nil or err then
     return nil, err
@@ -467,7 +355,20 @@ local function curl_items(series, accumulator)
   local errata = {}
   if series == 'rfc' then
     -- only the rfc series actually has an errata index
-    for _, id in ipairs(download('errata_index', series, 'txt', { save = true }) or {}) do
+    local fname = get_fname('errata_index', 'rfc', 'txt')
+    local ttl = (C.ttl or 0) + vim.fn.getftime(fname) - vim.fn.localtime()
+    local lines = {}
+    if ttl < 1 then
+      lines = download('errata_index', series, 'txt', { save = true }) or vim.fn.readfile(fname)
+    else
+      lines = vim.fn.readfile(fname)
+      if #lines == 0 then
+        lines = download('errata_index', series, 'txt', { save = true }) or {}
+      end
+    end
+
+    for _, id in ipairs(lines) do
+      -- track which docid's have errata
       errata[('%s%d'):format(series, id)] = 'yes'
     end
   end
@@ -611,7 +512,7 @@ local function load_items(series, items)
     if ttl < 1 then
       added = curl_items(serie, items) or read_items(fname, items) or 0
     else
-      added = read_items(serie, items) or curl_items(serie, items) or 0
+      added = read_items(fname, items) or curl_items(serie, items) or 0
     end
     vim.notify(('added %d items for series %s'):format(added, serie), vim.log.levels.INFO)
   end
