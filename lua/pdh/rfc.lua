@@ -260,10 +260,7 @@ end
 ---@return string[]|nil lines of the file or nil on error
 ---@return string|nil msg either filename or an err msg
 local function download(doctype, docid, ext, opts)
-  -- TODO: only return lines for ext=txt, others just save as requested
-  print('downloading ' .. docid)
   opts = opts or {}
-  local series = docid:match('^%D+'):lower()
   local url = get_url(doctype, docid, ext)
   local ok, rv
   -- save   txt?
@@ -305,15 +302,14 @@ local function download(doctype, docid, ext, opts)
   end
 end
 
-----read items from `fname` for given `series`
+----adds items to the accumulator as read from `fname` for given `series`
 ---@param fname string file to get items from
 ---@param items table a list of picker items
 ---@return number|nil count items added to given `items` or nil on error
 ---@return string|nil err message on why call failed, if applicable
 local function read_items(fname, items)
   local org = #items
-  local t, err = loadfile(fname, 't')
-  vim.print(vim.inspect({ t, err }))
+  local t, err = loadfile(fname, 'bt')
 
   if t == nil or err then
     return nil, err
@@ -340,9 +336,9 @@ local function save_items(items, fname)
   return vim.fn.writefile(lines, fname)
 end
 
----get items from the series' index at the rfc-editor website
+---adds items to the accumulator from the series' index at the rfc-editor website
 ---@param series series
----@param accumulator? table
+---@param accumulator table
 ---@return number|nil count of items added to given `items` or nil on failure
 ---@return string|nil err message why call failed, if applicable
 local function curl_items(series, accumulator)
@@ -483,9 +479,11 @@ local function curl_items(series, accumulator)
 
   -- save items to file
   local fname = get_fname('index', series, 'txt')
+  vim.notify('curl-d ' .. #items .. ' items, saved to ' .. fname, vim.log.levels.INFO)
   save_items(items, fname)
 
   -- add the items to the accumulator
+  -- TODO: add directly to accumulator & calc nr as #accumulator -org_count
   for _, item in ipairs(items) do
     accumulator[#accumulator + 1] = item
   end
@@ -512,6 +510,9 @@ local function load_items(series, items)
     if ttl < 1 then
       added = curl_items(serie, items) or read_items(fname, items) or 0
     else
+      -- local litems, err = read_items(fname, {})
+      -- print(vim.inspect({ 'tt>1, read_items results', serie, litems, err }))
+      -- org
       added = read_items(fname, items) or curl_items(serie, items) or 0
     end
     vim.notify(('added %d items for series %s'):format(added, serie), vim.log.levels.INFO)
