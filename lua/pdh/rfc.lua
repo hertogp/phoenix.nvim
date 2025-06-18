@@ -1,5 +1,39 @@
 --[[
 
+# Error handling:
+
+## lua-result-or-message
+Lua functions may throw lua-errors for exceptional (unexpected) failures, which you can handle with pcall().
+When failure is normal and expected, it's idiomatic to return nil which signals to the caller that failure is
+not "exceptional" and must be handled. This "result-or-message" pattern is expressed as the multi-value return
+type any|nil,nil|string, or in LuaLS notation:
+
+    ---@return any|nil    # result on success, nil on failure.
+    ---@return nil|string # nil on success, error message on failure.
+
+Guidance: use the "result-or-message" pattern for...
+- Functions where failure is expected, especially when communicating with the external world.
+   E.g. HTTP requests or LSP requests often fail because of server problems, even if the caller did everything right.
+- Functions that return a value, e.g. Foo:new().
+- When there is a list of known error codes which can be returned as a third value (like luv-error-handling).
+
+## LIB.UV functions:
+1) A failing luv function will return to the caller an assertable nil, err, name tuple:
+- nil idiomatically indicates failure
+- err is a string with the format {name}: {message}
+  * {name} is the error name provided internally by uv_err_name
+  * {message} is a human-readable message provided internally by uv_strerror
+- name is the same string used to construct err
+
+This tuple is referred to below as the *fail pseudo-type*.
+
+2) When a function is called successfully, it will return either:
+- a value that is relevant to the operation of the function, or
+- the integer 0 to indicate success, or
+- sometimes nothing at all.
+These cases are documented below.
+
+
 Easily search, download and read ietf rfc's.
 - some entry points
   * `:!open https://www.rfc-editor.org/rfc/rfc-index.txt`
@@ -184,6 +218,7 @@ local snacks = dependency('snacks')
 
 --[[ Module ]]
 
+local R = {}
 local C = {
   -- config
   cache = vim.fn.stdpath('cache'), -- store item index files
@@ -291,6 +326,7 @@ local function get_dir(spec)
 
   return assert(path, ('invalid directory specification %s'):format(vim.inspect(spec)))
 end
+
 ---get local filename for given `doctype`, `docid` and `ext`
 ---@param doctype doctype type of document (index, document, info, ..)
 ---@param docid string unique document name (<series><nr>)
@@ -299,7 +335,7 @@ end
 local function get_fname(doctype, docid, ext)
   local series = docid:match('%D+'):lower()
   local fname_parts = {
-    cache = get_dir(C.cache), -- TODO make dirname
+    cache = get_dir(C.cache),
     data = get_dir(C.data),
     series = series,
     docid = docid,
@@ -330,53 +366,80 @@ local function get_url(urltype, docid, ext)
   return PATTERNS.url[series][urltype]:gsub('<(.-)>', url_parts) -- '<(%S+)> won't work?
 end
 
+---download a file, possibly save to disk and return lines, filename? or nil, err
 ---@param doctype doctype
 ---@param docid string
 ---@param ext string
----@param save? boolean whether to save download to disk, default is `false`
----@return string[] lines a, possibly empty, list of strings
----@return string|nil filename where download was saved (if requested)
-local function download(doctype, docid, ext, save)
+---@param opts? table use save=true to also save download to disk
+---@return string[]|nil lines of the file or nil on error
+---@return string|nil msg either filename or an err msg
+local function download(doctype, docid, ext, opts)
+  -- TODO: only return lines for ext=txt, others just save as requested
+  opts = opts or {}
   local series = docid:match('^%D+'):lower()
-  local url = get_url(doctype, series, ext)
-  local ok, rv = pcall(plenary.curl.get, { url = url, accept = ACCEPT[ext] })
+  local url = get_url(doctype, docid, ext)
+  local ok, rv
+  -- save   txt?
+  -- yes    yes -> curl to lines and save lines to file
+  -- yes    no  -> curl to file, return {}, fname
+  -- no     yes -> curl to lines and return lines
+  -- no     no  -> fail
 
-  --TODO: return values are a bit clunky, maybe change to ok, lines, fname?
-  if ok and rv and rv.status == 200 then
-    local fname
-    if save then
-      fname = get_fname(doctype, docid, ext)
-      if vim.fn.writefile(rv.body, fname) == 0 then
-        vim.notify(('[info] %s, %s saved to %s'):format(series, docid, fname), vim.log.levels.INFO)
+  if ('pdf ps'):match(ext) then
+    -- cannot parse these for lines
+    if opts.save then
+      local fname = get_fname(doctype, docid, ext)
+      ok, rv = pcall(plenary.curl.get, { url = url, accept = ACCEPT[ext], output = fname })
+      if not ok then
+        return nil, rv
       else
-        vim.notify(('[error] %s, %s write failed for %s'):format(series, docid, fname), vim.log.levels.INFO)
-        fname = nil
+        return {}, fname
       end
+    else
+      return nil, ('cannot parse %s.%s, only download it to file'):format(docid, ext)
     end
-    return vim.split(rv.body, '[\r\n\f]', { trimempty = false }), fname
   else
-    vim.notify(('[warn] download failed: [%s] %s'):format(rv.status, vim.inspect(url)), vim.log.levels.ERROR)
-    return {}, nil
+    -- others can be parsed as lines
+    ok, rv = pcall(plenary.curl.get, { url = url, accept = ACCEPT[ext] })
+
+    if ok and rv and rv.status == 200 then
+      local fname = nil
+      local lines = vim.split(rv.body, '[\r\n\f]', { trimempty = false })
+      if opts.save then
+        fname = get_fname(doctype, docid, ext)
+        if vim.fn.writefile(lines, fname) == -1 then
+          fname = nil
+        end
+      end
+      return lines, fname
+    else
+      return nil, ('[error] %s: %s'):format(rv.status, url)
+    end
   end
 end
 
+----read items from `fname` for given `series`
 ---@param fname string file to get items from
 ---@param items table a list of picker items
----@return table items list of (more) items
+---@return number|nil count items added to given `items` or nil on error
+---@return string|nil err message on why call failed, if applicable
 local function read_items(fname, items)
-  -- local ttl = (M.config.ttl or 0) + vim.fn.getftime(fname) - vim.fn.localtime()
+  local org = #items
   local t, err = loadfile(fname, 'bt')
-  if t then
-    for _, item in ipairs(t()) do
-      item.idx = #items + 1 -- position of item in items
-      items[#items + 1] = item
-    end
+
+  if t == nil or err then
+    return nil, err
   end
-  return items
+
+  for _, item in ipairs(t()) do
+    item.idx = #items + 1 -- position of item in items
+    items[#items + 1] = item
+  end
+  return #items - org, nil
 end
 
 ---@param items table a list of picker items
----@param fname string to save items to
+---@param fname string path to use for saving items
 ---@return number result 0 if succesful, -1 upon failure
 local function save_items(items, fname)
   local lines = { '-- autogenerated by rfc.lua, do not edit', '', 'return {' }
@@ -391,17 +454,20 @@ end
 
 ---get items from the series' index at the rfc-editor website
 ---@param series series
----@param items? table
----@return snacks.picker.Item[] items an updated list of snacks.picker.Item's
-local function curl_items(series, items)
-  items = items or {}
+---@param accumulator? table
+---@return number|nil count of items added to given `items` or nil on failure
+---@return string|nil err message why call failed, if applicable
+local function curl_items(series, accumulator)
+  -- after retrieving the items from the net, always save to local file
+  accumulator = accumulator or {}
+  local items = {}
   series = series:lower()
 
   -- locals
   local errata = {}
   if series == 'rfc' then
     -- only the rfc series actually has an errata index
-    for _, id in ipairs(download('errata_index', series, 'txt')) do
+    for _, id in ipairs(download('errata_index', series, 'txt', { save = true }) or {}) do
       errata[('%s%d'):format(series, id)] = 'yes'
     end
   end
@@ -488,7 +554,10 @@ local function curl_items(series, items)
   end
 
   -- download and parse the index of items for series
-  local input = download('index', series, 'txt', false)
+  local input, err = download('index', series, 'txt')
+  if input == nil or err then
+    return nil, err -- fail for this series
+  end
 
   -- assemble lines per item and parse to an item
   local acc = '' -- accumulator, becomes 'nr text'/document, to be parsed as item
@@ -511,7 +580,42 @@ local function curl_items(series, items)
   -- don't forget the last entry
   items[#items + 1] = parse_item(acc)
 
-  return items
+  -- save items to file
+  local fname = get_fname('index', series, 'txt')
+  save_items(items, fname)
+
+  -- add the items to the accumulator
+  for _, item in ipairs(items) do
+    accumulator[#accumulator + 1] = item
+  end
+
+  return #items, nil
+end
+
+---@param series series[]
+---@param items table
+---@return number|nil amount of items added to `items` for given series
+---@return string|nil err message why call failed, if applicable
+local function load_items(series, items)
+  --local ttl = (M.config.ttl or 0) + ftime - vim.fn.localtime()
+  local org_count = #items
+  series = series or {}
+  if type(series) == 'string' then
+    series = { series }
+  end
+
+  for _, serie in ipairs(series) do
+    local fname = get_fname('index', serie, 'txt')
+    local ttl = (C.ttl or 0) + vim.fn.getftime(fname) - vim.fn.localtime()
+    local added
+    if ttl < 1 then
+      added = curl_items(serie, items) or read_items(fname, items) or 0
+    else
+      added = read_items(serie, items) or curl_items(serie, items) or 0
+    end
+    vim.notify(('added %d items for series %s'):format(added, serie), vim.log.levels.INFO)
+  end
+  return #items - org_count
 end
 
 ---@param item table
@@ -661,9 +765,7 @@ local W = {
   },
 }
 
-local R = {}
-
---- retrieves one or more item(s) from the rfc-editor
+--- retrieves one or more documents from the rfc-editor
 ---@param picker table current picker in action
 ---@param curr_item table the current item in pickers results window
 function R.fetch(picker, curr_item)
@@ -677,10 +779,13 @@ function R.fetch(picker, curr_item)
   for n, item in ipairs(items) do
     for _, ext in ipairs(FORMATS) do
       -- download first available format
-      local _, fname = download(item.series, item.docid, ext, true)
-      if fname then
+      local ok, fname = download('document', item.docid, ext, { save = true })
+      if ok and fname then
         item.file = fname
+        notices[#notices + 1] = ('- (%d/%s) %s.%s - success'):format(n, #items, item.docid, ext)
         break
+      else
+        notices[#notices + 1] = ('- (%d/%s) %s.%s - failed!'):format(n, #items, item.docid, ext)
       end
     end
 
@@ -689,9 +794,6 @@ function R.fetch(picker, curr_item)
       picker.list:unselect(item)
       picker.list:update({ force = true })
       picker.preview:show(picker, { force = true })
-      notices[#notices + 1] = ('- (%d/%s) %s - success'):format(n, #items, item.docid)
-    else
-      notices[#notices + 1] = ('- (%d/%s) %s - failed!'):format(n, #items, item.docid)
     end
   end
   vim.notify(table.concat(notices, '\n'), vim.log.levels.INFO)
@@ -815,7 +917,9 @@ function R.search(series)
     R[ix] = nil
   end
 
-  curl_items(series, R)
+  if load_items(series, R) < 1 then
+    vim.notify('[error] no items for series')
+  end
 
   return snacks.picker({
     items = R,
