@@ -178,8 +178,8 @@ local ACCEPT = {
   txt = 'text/plain',
   html = 'text/html',
   xml = 'application/xml',
-  pdf = 'applicaiton/pdf',
-  ps = 'applicaiton/ps',
+  pdf = 'application/pdf',
+  ps = 'application/ps',
 }
 local ICONS = {
   -- used to denote if a file exists locally (true) or not (false)
@@ -260,34 +260,21 @@ end
 ---@return string[]|nil lines of the file or nil on error
 ---@return string|nil msg either filename or an err msg
 local function download(doctype, docid, ext, opts)
+  -- test cases:
+  -- rfc14 will be not found (only .json exists)
+  -- ien15.pdf
   opts = opts or {}
   local url = get_url(doctype, docid, ext)
-  local ok, rv
-  -- save   txt?
-  -- yes    yes -> curl to lines and save lines to file
-  -- yes    no  -> curl to file, return {}, fname
-  -- no     yes -> curl to lines and return lines
-  -- no     no  -> fail
+  local ok, rv, fname
 
-  if ('pdf ps'):match(ext) then
-    -- cannot parse these for lines
-    if opts.save then
-      local fname = get_fname(doctype, docid, ext)
-      ok, rv = pcall(plenary.curl.get, { url = url, accept = ACCEPT[ext], output = fname })
-      if not ok then
-        return nil, rv
-      else
-        return {}, fname
-      end
-    else
-      return nil, ('cannot parse %s.%s, only download it to file'):format(docid, ext)
-    end
-  else
-    -- others can be parsed as lines
-    ok, rv = pcall(plenary.curl.get, { url = url, accept = ACCEPT[ext] })
+  print('download url ' .. url)
 
-    if ok and rv and rv.status == 200 then
-      local fname = nil
+  if ext == 'txt' then
+    rv = plenary.curl.get({ url = url, accept = ACCEPT[ext] })
+    -- rv = plenary.curl.get({ url = url })
+
+    if rv and rv.status == 200 then
+      fname = nil
       local lines = vim.split(rv.body, '[\r\n\f]', { trimempty = false })
       if opts.save then
         fname = get_fname(doctype, docid, ext)
@@ -295,11 +282,52 @@ local function download(doctype, docid, ext, opts)
           fname = nil
         end
       end
+      print(' - result is ' .. vim.inspect({ 'lines:', #lines, 'fname', fname }))
       return lines, fname
+    elseif rv then
+      print(' - result not ok: ' .. vim.inspect({ 'ok', ok, 'status', rv.status }))
+      return nil, ('[error] %s: %s'):format(rv.status, url)
     else
+      print(' - result not ok: ' .. vim.inspect({ 'ok', ok, 'rv', type(rv) }))
+      return nil, ('[error] timeout? %s'):format(url)
+    end
+  else
+    -- ok, rv = pcall(plenary.curl.get, { url = url, accept = ACCEPT[ext], output = fname })
+    fname = get_fname(doctype, docid, ext)
+    rv = plenary.curl.get({ url = url, accept = ACCEPT[ext], output = fname })
+    if rv and rv.status == 200 then
+      return {}, fname -- list of lines is empty since it was saved to disk
+    else
+      vim.fn.delete(fname) -- remove 404 pages and the like, file content is not a valid document
       return nil, ('[error] %s: %s'):format(rv.status, url)
     end
   end
+
+  -- print('download called for ' .. url)
+  --
+  -- if ('pdf ps'):match(ext) then
+  --   -- cannot parse these for lines
+  --   if opts.save then
+  --     local fname = get_fname(doctype, docid, ext)
+  --     print('1) download net->file ' .. fname)
+  --     ok, rv = pcall(plenary.curl.get, { url = url, accept = ACCEPT[ext], output = fname })
+  --     print('1.1) download net->file result ' .. vim.inspect({ ok, rv }))
+  --
+  --     if not ok then
+  --       -- TODO: ok might be {true, rv with rv.status=404!, in which case the
+  --       -- downloaded file needs to be removed again (it's a html 404 page)
+  --       return nil, rv
+  --     else
+  --       return {}, fname
+  --     end
+  --   else
+  --     print('1.2) download net->parse, no can do for ' .. url)
+  --     return nil, ('cannot parse %s.%s, only download it to file'):format(docid, ext)
+  --   end
+  -- else
+  --   -- others can be parsed as lines
+  --   print('2) download and parse ' .. url)
+  -- end
 end
 
 ----adds items to the accumulator as read from `fname` for given `series`
@@ -317,19 +345,34 @@ local function read_items(fname, items)
 
   for _, item in ipairs(t()) do
     item.idx = #items + 1 -- position of item in items
+    -- set file? field to first file found for this docid (if any)
+    -- this local status info is set when reading items from the index
+    -- of when fetching/deleting items via the picker
+    item.file = nil -- just to be sure
+    for _, ext in ipairs(FORMATS) do
+      local fname = get_fname('document', item.docid, ext)
+      if fname and vim.fn.filereadable(fname) == 1 then
+        item.file = fname
+        break
+      end
+    end
     items[#items + 1] = item
   end
   return #items - org, nil
 end
 
+--- saves items gelaned from an index to disk for reuse as long as ttl allows
 ---@param items table a list of picker items
 ---@param fname string path to use for saving items
 ---@return number result 0 if succesful, -1 upon failure
 local function save_items(items, fname)
   local lines = { '-- autogenerated by rfc.lua, do not edit', '', 'return {' }
   for _, item in ipairs(items) do
+    local file = item.file
+    item.file = nil -- remove local state information
     -- vim.inspect inserts \0's, use %c to replace it since '\0' doesn't work(?)
     lines[#lines + 1] = vim.inspect(item):gsub('%c%s*', ' ') .. ','
+    item.file = file -- restore it, since tables are passed by reference
   end
   lines[#lines + 1] = '}'
 
@@ -477,15 +520,18 @@ local function curl_items(series, accumulator)
   -- don't forget the last entry
   items[#items + 1] = parse_item(acc)
 
-  -- save items to file
-  local fname = get_fname('index', series, 'txt')
-  vim.notify('curl-d ' .. #items .. ' items, saved to ' .. fname, vim.log.levels.INFO)
-  save_items(items, fname)
-
   -- add the items to the accumulator
   -- TODO: add directly to accumulator & calc nr as #accumulator -org_count
   for _, item in ipairs(items) do
     accumulator[#accumulator + 1] = item
+  end
+
+  -- save items to file
+  local fname = get_fname('index', series, 'txt')
+  if save_items(items, fname) == 0 then
+    vim.notify(('[info] curl-d %d %s-items, saved to %s'):format(#items, series, fname), vim.log.levels.INFO)
+  else
+    vim.notify(('[error] curl-d %d %s-items, NOT saved to %s'):format(#items, series, fname), vim.log.levels.ERROR)
   end
 
   return #items, nil
@@ -506,16 +552,23 @@ local function load_items(series, items)
   for _, serie in ipairs(series) do
     local fname = get_fname('index', serie, 'txt')
     local ttl = (C.ttl or 0) + vim.fn.getftime(fname) - vim.fn.localtime()
-    local added
+    local cnt, err
     if ttl < 1 then
-      added = curl_items(serie, items) or read_items(fname, items) or 0
+      cnt, err = curl_items(serie, items)
+      if err then
+        cnt, err = read_items(fname, items) -- use file on disk as fallback
+      end
     else
-      -- local litems, err = read_items(fname, {})
-      -- print(vim.inspect({ 'tt>1, read_items results', serie, litems, err }))
-      -- org
-      added = read_items(fname, items) or curl_items(serie, items) or 0
+      cnt, err = read_items(fname, items)
+      if err then
+        cnt, err = curl_items(serie, items) -- try the net as fallback
+      end
     end
-    vim.notify(('added %d items for series %s'):format(added, serie), vim.log.levels.INFO)
+    if err and err then
+      vim.notify('Error loading items for ' .. series .. ' : ' .. err, vim.log.levels.ERROR)
+    else
+      vim.notify(('added %d items for series %s'):format(cnt, serie), vim.log.levels.INFO)
+    end
   end
   return #items - org_count
 end
@@ -687,7 +740,7 @@ function R.fetch(picker, curr_item)
         notices[#notices + 1] = ('- (%d/%s) %s.%s - success'):format(n, #items, item.docid, ext)
         break
       else
-        notices[#notices + 1] = ('- (%d/%s) %s.%s - failed!'):format(n, #items, item.docid, ext)
+        notices[#notices + 1] = ('- (%d/%s) %s.%s - failed! %s'):format(n, #items, item.docid, ext, vim.inspect(fname))
       end
     end
 
