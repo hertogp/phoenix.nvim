@@ -51,8 +51,9 @@ Easily search, download and read ietf rfc's.
 
 --[[ ALIAS ]]
 
+---@alias docid string unique document name {series}{nr} across all series
 ---@alias series "rfc" | "bcp" | "std" | "fyi" | "ien"
----@alias doctype 'document'|'index'|'errata_index' Last one is rfc specific
+---@alias doctype 'document'|'index'|'errata_index' document types used by the rfc-editor
 ---@alias urltype 'document'|'index'|'errata_index'|'errata'|'info' Last three are rfc specific
 
 --[[ DEPENDENCIES ]]
@@ -70,6 +71,9 @@ local snacks = dependency('snacks')
 --[[ Module ]]
 
 local M = {} -- module to be returned
+
+--[[ LOCALS ]]
+
 local C = {
   -- user configurable
   series = { 'rfc', 'std', 'bcp' }, -- default for series to search
@@ -169,27 +173,29 @@ local FORMATS = {
   'ps',
 }
 
---- find root dir or use cfg.top, fallback to stdpath data dir
----@param spec string|table a top dir relative to Rfc-root dir or list root dir markers, eg. {'.git'}
----@return string path full path to rfc-top directory (/rfc-root/rfc-top) (or go bust)
-local function get_dir(spec)
+--[[ HELPERS ]]
+
+--- get normalized path for given `path_spec`, raises on error
+---@param path_spec string|table a path or list of directory markers
+---@return string path full path to a directory (/rfc-root/rfc-top)
+local function get_dir(path_spec)
   local path
 
-  if type(spec) == 'table' then
+  if type(path_spec) == 'table' then
     -- find root dir based on markers in cfg.data
-    path = vim.fs.root(0, spec)
-  elseif type(spec) == 'string' then
-    path = vim.fs.normalize(spec)
+    path = vim.fs.root(0, path_spec)
+  elseif type(path_spec) == 'string' then
+    path = vim.fs.normalize(path_spec)
   end
 
-  return assert(path, ('invalid directory specification %s'):format(vim.inspect(spec)))
+  return assert(path, ('invalid directory path_specification %s'):format(vim.inspect(path_spec)))
 end
 
----get local filename for given `doctype`, `docid` and `ext`
+---get local filename for given `doctype`, `docid` and `ext`, raises on error
 ---@param doctype doctype type of document (index, document, info, ..)
 ---@param docid string unique document name (<series><nr>)
 ---@param ext string file extension
----@return string path full file path for doc-type and docid or bust!
+---@return string path full file path for doc-type and docid
 local function get_fname(doctype, docid, ext)
   local series = docid:match('%D+'):lower()
   local fname_parts = {
@@ -201,6 +207,8 @@ local function get_fname(doctype, docid, ext)
     ext = ext,
   }
 
+  --TODO: may return url, nil | nil, err just like get_url?
+
   assert(PATTERNS.file[series], ('[error] unknown series `%s`'):format(series))
   assert(PATTERNS.file[series][doctype], ('[error] doctype `%s` not valid for series `%s`'):format(doctype, series))
   return PATTERNS.file[series][doctype]:gsub('<(.-)>', fname_parts)
@@ -208,9 +216,10 @@ end
 
 ---get the rfc-editor document url for given `urltype`, `docid` and `ext`
 ---@param urltype urltype type of document (index, document, errata, info or errata_index)
----@param docid string unique document name (<series><nr>) within a (sub)series
----@param ext string
----@return string|nil url the url for given `docid` and `ext`
+---@param docid docid unique document name (<series><nr>) within a series
+---@param ext string file extension to use when downloading
+---@return string|nil url the url for given `docid` and `ext`, nil on error
+---@return string|nil err message or nil on success
 local function get_url(urltype, docid, ext)
   local series = docid:match('^%D+'):lower()
   local url_parts = {
@@ -219,43 +228,50 @@ local function get_url(urltype, docid, ext)
     series = series,
     ext = ext,
   }
-  assert(PATTERNS.url[series], ('[error] unknown series `%s`'):format(series))
-  assert(PATTERNS.url[series][urltype], ('[error] urltype `%s` not valid for series `%s`'):format(urltype, series))
-  return PATTERNS.url[series][urltype]:gsub('<(.-)>', url_parts) -- '<(%S+)> won't work?
+  if PATTERNS.url[series] then
+    if PATTERNS.url[series][urltype] then
+      return PATTERNS.url[series][urltype]:gsub('<(.-)>', url_parts), nil -- '<(%S+)> won't work?
+    else
+      return nil, ('invalid urltype `%s`'):format(vim.inspect(urltype))
+    end
+  else
+    return nil, ('invalid series `%s`'):format(vim.inspect(series))
+  end
 end
 
----download a file, possibly save to disk and return lines, filename? or nil, err
----@param doctype doctype
----@param docid string
----@param ext string
----@param opts? table use save=true to also save download to disk
----@return string[]|nil lines of the file or nil on error
----@return string|nil msg either filename or an err msg
+---download a file and save to disk, returns body lines only for txt files, nil on error
+---@param doctype doctype type of rfc-editor document
+---@param docid string unique document name (<series><nr>)
+---@param ext string file extension
+---@param opts? table use `{save=true}` for txt files, to also save it to disk
+---@return string[]|nil lines of the file (empty, except for txt files) or nil on error
+---@return string|nil msg the download filename or an err msg
 local function download(doctype, docid, ext, opts)
   -- NOTE:
   -- 1) compressed=false was added to avoid curl timeout (doesn't understand encoding type).
   --    see: `:!open https://community.cloudflare.com/t/r2-not-removing-aws-chunked-from-content-encoding/786494/3`
   --    docs are served by aws servers, content-encoding=aws-chunked used for upload, which is AWS specific
-  --    and not understood by curl
-  -- Other test cases:
-  -- rfc14 will be not found (only .json exists)
-  -- ien15.pdf (only format available)
+  --    and appears as content-encoding type in the response header when curl'ing an rfc (since 2025-06-16 or so)
+  -- 2) document test cases:
+  --   * rfc14 will be not found (only .json exists)
+  --   * ien15.pdf (only format available)
   opts = opts or {}
-  local url = get_url(doctype, docid, ext)
+  local url, err = get_url(doctype, docid, ext)
   local rv, fname
+
+  if err then
+    return nil, err
+  end
 
   if ext == 'txt' then
     rv = plenary.curl.get({ url = url, compressed = false, accept = ACCEPT[ext] })
-    -- rv = plenary.curl.get({ url = url })
 
     if rv and rv.status == 200 then
       fname = nil
       local lines = vim.split(rv.body, '[\r\n\f]', { trimempty = false })
       if opts.save then
         fname = get_fname(doctype, docid, ext)
-        if vim.fn.writefile(lines, fname) == -1 then
-          fname = nil
-        end
+        fname = vim.fn.writefile(lines, fname) == 0 and fname or nil
       end
       return lines, fname
     elseif rv then
@@ -273,39 +289,13 @@ local function download(doctype, docid, ext, opts)
       return nil, ('[error] %s: %s'):format(rv.status, url)
     end
   end
-
-  -- print('download called for ' .. url)
-  --
-  -- if ('pdf ps'):match(ext) then
-  --   -- cannot parse these for lines
-  --   if opts.save then
-  --     local fname = get_fname(doctype, docid, ext)
-  --     print('1) download net->file ' .. fname)
-  --     ok, rv = pcall(plenary.curl.get, { url = url, accept = ACCEPT[ext], output = fname })
-  --     print('1.1) download net->file result ' .. vim.inspect({ ok, rv }))
-  --
-  --     if not ok then
-  --       -- TODO: ok might be {true, rv with rv.status=404!, in which case the
-  --       -- downloaded file needs to be removed again (it's a html 404 page)
-  --       return nil, rv
-  --     else
-  --       return {}, fname
-  --     end
-  --   else
-  --     print('1.2) download net->parse, no can do for ' .. url)
-  --     return nil, ('cannot parse %s.%s, only download it to file'):format(docid, ext)
-  --   end
-  -- else
-  --   -- others can be parsed as lines
-  --   print('2) download and parse ' .. url)
-  -- end
 end
 
-----adds items to the accumulator as read from `fname` for given `series`
----@param fname string file to get items from
+--- add items to the accumulator `items`, as read from the cached index file `fname`
+---@param fname string filename of index file to get items
 ---@param items table a list of picker items
 ---@return number|nil count items added to given `items` or nil on error
----@return string|nil err message on why call failed, if applicable
+---@return string|nil err nil on success, error message otherwise
 local function read_items(fname, items)
   local org = #items
   local t, err = loadfile(fname, 'bt')
@@ -315,7 +305,6 @@ local function read_items(fname, items)
   end
 
   for _, item in ipairs(t()) do
-    item.idx = #items + 1 -- position of item in items
     -- set file? field to first file found for this docid (if any)
     item.file = nil -- no file found (yet)
     for _, ext in ipairs(FORMATS) do
@@ -325,53 +314,51 @@ local function read_items(fname, items)
         break
       end
     end
+    item.idx = #items + 1 -- position of item in items
     items[#items + 1] = item
   end
   return #items - org, nil
 end
 
---- saves items gelaned from an index to disk for reuse as long as ttl allows
+--- save items to an index file on disk, items should belong to only 1 series
 ---@param items table a list of picker items
 ---@param fname string path to use for saving items
 ---@return number result 0 if succesful, -1 upon failure
 local function save_items(items, fname)
-  local lines = { '-- autogenerated by rfc.lua, do not edit', '', 'return {' }
+  local lines = { '-- autogenerated (rfc.lua), do not edit', '', 'return {' }
   for _, item in ipairs(items) do
     -- temporarily remove fields not part of the index information
-    local file = item.file
-    local idx = item.idx
-    local errata = item.errata
-    item.file = nil
-    item.idx = nil
-    item.errata = nil
-    lines[#lines + 1] = vim.inspect(item):gsub('%c%s*', ' ') .. ',' -- gsub('\0..') won't work
-    item.file = file -- restore it, since tables are passed by reference
-    item.idx = idx
-    item.errata = errata
+    local file, idx = item.file, item.idx
+    item.file, item.idx = nil, nil
+
+    lines[#lines + 1] = vim.inspect(item):gsub('%c%s*', ' ') .. ',' -- dodgy, but works
+
+    item.file, item.idx = file, idx
   end
   lines[#lines + 1] = '}'
 
   return vim.fn.writefile(lines, fname)
 end
 
----adds items to the accumulator from the series' index at the rfc-editor website
----@param series series
----@param accumulator table
----@return number|nil count of items added to given `items` or nil on failure
+---add items to the accumulator (and cache) from the remote rfc-editor index for given `series`
+---@param series series a single series whose items are retrieved from rfc-editor
+---@param accumulator table list of picker items
+---@return number|nil count of items added to given `accumulator` or nil on failure
 ---@return string|nil err message why call failed, if applicable
 local function curl_items(series, accumulator)
-  -- after retrieving the items from the net, always save to local file
+  -- after retrieving the items from the net, always save to local cache file
   accumulator = accumulator or {}
   local items = {}
   series = series:lower()
 
-  -- locals
+  -- load the list of rfc numbers for which errata exist
   local errata = {}
   if series == 'rfc' then
     -- only the rfc series actually has an errata index
     local fname = get_fname('errata_index', 'rfc', 'txt')
-    local ttl = (C.ttl or 0) + vim.fn.getftime(fname) - vim.fn.localtime()
+    local ttl = C.ttl + vim.fn.getftime(fname) - vim.fn.localtime()
     local lines = {}
+
     if ttl < 1 then
       lines = download('errata_index', series, 'txt', { save = true }) or vim.fn.readfile(fname)
     else
@@ -387,11 +374,11 @@ local function curl_items(series, accumulator)
     end
   end
 
-  local parse_item = function(accumulated)
+  local parse_item = function(index_line)
     -- parse an accumulated line "nr text" into an item
-    local nr, title = accumulated:match('^(%d+)%s+(.*)')
+    local nr, title = index_line:match('^(%d+)%s+(.*)')
     if nr == nil then
-      return nil -- prevents adding botched items to final list
+      return nil -- prevents adding botched items to the accumulator
     end
 
     local docid = ('%s%d'):format(series, nr)
@@ -405,29 +392,29 @@ local function curl_items(series, accumulator)
       name = docid:upper(),
       series = series,
     }
-    local tags = { -- defined separately in order to filter on ()-constructs
+    local tags = { -- defined separately in order to filter on ()-constructs found in doc-title text
       obsoletes = 'n/a',
       obsoleted_by = 'n/a',
       updates = 'n/a',
       updated_by = 'n/a',
       also = 'n/a',
       status = 'n/a',
-      format = '', -- empty string means no format(s) listed/found
+      format = '', -- none found (yet)
       doi = 'n/a',
       authors = 'n/a',
       date = 'n/a',
     }
     item = vim.tbl_extend('error', item, tags) -- ensure tags are present and unique in item
 
-    -- TAGS from 'text', consume the known ()-constructs
-    -- TODO: bcp9 (Format: bytes) is not pickup on, still in item.text
+    -- get TAGS from 'text', consume the known ()-constructs
+    -- BUG: bcp9 (Format: bytes) is not picked up on, still in item.text
     for part in string.gmatch(item.text, '%(([^)]+)%)') do
       -- lowercase so we can match on keys in tags
       local prepped = part:lower():gsub('%s+by', '_by', 1):gsub(':', '', 1)
       local k, v = string.match(prepped, '^([^%s]+)%s+(.*)$')
       if k and v and tags[k] then
-        item[k] = v -- v = v:gsub('%s+', '')
-        -- `part` yielded a tagged value, so remove its first occurrence
+        item[k] = v
+        -- remove matched `part` from doc-title text
         item.text = string.gsub(item.text, '%s?%(' .. part .. '%)', '', 1)
       end
     end
@@ -512,12 +499,12 @@ local function curl_items(series, accumulator)
   return #items, nil
 end
 
----@param series series[]
----@param items table
----@return number|nil amount of items added to `items` for given series
+---add cached items from disk for given `series` to `items`
+---@param series series[] list of series for which items are to be added
+---@param items table receives the items for given `series`
+---@return number|nil count of items added to `items` for given `series`
 ---@return string|nil err message why call failed, if applicable
 local function load_items(series, items)
-  --local ttl = (M.config.ttl or 0) + ftime - vim.fn.localtime()
   local org_count = #items
   series = series or {}
   if type(series) == 'string' then
@@ -526,7 +513,7 @@ local function load_items(series, items)
 
   for _, serie in ipairs(series) do
     local fname = get_fname('index', serie, 'txt')
-    local ttl = (C.ttl or 0) + vim.fn.getftime(fname) - vim.fn.localtime()
+    local ttl = C.ttl + vim.fn.getftime(fname) - vim.fn.localtime()
     local cnt, err
     if ttl < 1 then
       cnt, err = curl_items(serie, items)
@@ -548,10 +535,10 @@ local function load_items(series, items)
   return #items - org_count
 end
 
----@param item table
----@return table[] parts of the line to display in results list window for `item`
+---format function passed to picker to update an item in the result list window
+---@param item table the item to display in the list window
+---@return table[] parts list of line parts to display { {text, hl_group}, ..}
 local function item_format(item)
-  -- format an item to display in picker list -> { {text, hl_group}, ..}
   -- `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/format.lua`
   local icon = item.file and ICONS.file.present or ICONS.file.missing
   local hl_item = (item.file and 'SnacksPickerGitStatusAdded') or 'SnacksPickerGitStatusUntracked'
@@ -566,18 +553,15 @@ local function item_format(item)
   }
 end
 
---- returns `title`, `ft`, `lines` for use in a preview
---- (used when no local file is present to be previewd)
----@param item table An item of the picker result list
----@return string title The title for an item
----@return string ft The filetype to use when previewing
----@return string[] lines The lines to display when previewing
+---returns `title`, `ft`, `lines` to fill the preview window,
+---used when local file cannot be previewed (missing or non-txt file)
+---@param item table an item of the picker result list
+---@return string title the title for the preview window border
+---@return string ft the filetype to use when previewing content given by `lines`
+---@return string[] lines the lines to display in the preview window
 local function item_details(item)
-  -- called when item not locally available
   local title = tostring(item.title)
   local ft = 'markdown'
-  -- local cache = vim.fs.joinpath(vim.fn.fnamemodify(M.config.cache, ':p:~:.'), M.config.top, '/')
-  -- local data = vim.fs.joinpath(vim.fn.fnamemodify(M.config.data, ':p:~:.'), M.config.top, '/')
   local cache = vim.fs.joinpath(C.cache, C.subdir, '/')
   local data = vim.fs.joinpath(C.data, C.subdir, '/')
   local file = item.file or '*n/a*'
@@ -627,6 +611,7 @@ local function item_details(item)
   return title, ft, lines
 end
 
+---update the preview window, function is passed to the picker
 ---@param ctx table picker object
 local function item_preview(ctx)
   -- called when ctx.item becomes the current one in the results list
@@ -638,6 +623,7 @@ local function item_preview(ctx)
     picker.preview:set_title(title)
     picker.preview:highlight({ ft = ft })
   end
+
   if ctx.item.file and ctx.item.file:match('%.txt$') then
     -- preview ourselves, since snacks trips over any formfeeds in the txt-file
     -- REVIEW: this reads the file every time, could cache that in _preview?
@@ -665,8 +651,9 @@ local function item_preview(ctx)
 end
 
 local W = {
+  -- passed to picker as the `win` option
   list = {
-    -- picker list window showing results
+    -- keybindings for picker list window showing results
     keys = {
       ['F'] = { 'fetch', mode = { 'n' } },
       ['R'] = { 'remove', mode = { 'n' } },
@@ -679,7 +666,7 @@ local W = {
   },
 
   input = {
-    -- picker input window where search is typed
+    -- keybindings for picker input window where search is typed
     keys = {
       ['F'] = { 'fetch', mode = { 'n' } },
       ['R'] = { 'remove', mode = { 'n' } },
@@ -692,8 +679,8 @@ local W = {
   },
 }
 
---- retrieves one or more documents from the rfc-editor
----@param picker table current picker in action
+---retrieve one or more documents from the rfc-editor, update the item.file field(s)
+---@param picker table the current picker
 ---@param curr_item table the current item in pickers results window
 function M.fetch(picker, curr_item)
   -- curr_item == picker.list:current()
@@ -726,7 +713,7 @@ function M.fetch(picker, curr_item)
   vim.notify(table.concat(notices, '\n'), vim.log.levels.INFO)
 end
 
---- sets the preview window contents to a dump of the item table
+---set the preview window contents to a dump of the item table
 ---@param picker table current picker in action
 ---@param item table the current item in pickers results window
 function M.inspect(picker, item)
@@ -753,6 +740,9 @@ function M.inspect(picker, item)
   picker.preview:highlight({ ft = 'markdown' })
 end
 
+---remove files associated with current item or selection of items
+---@param picker table current picker in action
+---@param curr_item table the current item in pickers results window
 function M.remove(picker, curr_item)
   -- curr_item == picker.list:current() ?= picker:current()
   -- remove local item.file's for 1 or more items
@@ -787,7 +777,7 @@ function M.remove(picker, curr_item)
   vim.notify(table.concat(notices, '\n'), vim.log.levels.INFO)
 end
 
---- Visits the info page of the current item
+---visit the rfc-editor *info* page of the current item
 ---@param _ table
 ---@param item table the current item at the time of the keypress
 function M.visit_info(_, item)
@@ -797,7 +787,7 @@ function M.visit_info(_, item)
   end
 end
 
---- Visits the html page of the current item
+---visit the ref-editor *html* page of the current item
 ---@param _ table
 ---@param item table the current item at the time of the keypress
 function M.visit_page(_, item)
@@ -807,7 +797,8 @@ function M.visit_page(_, item)
   end
 end
 
---- Visits the errate page (if any) of the current (rfc) item
+---TODO: where is the errata in the item?
+---visit the rfc-editor *errate* page (if any) of the current (rfc) item
 ---@param _ table
 ---@param item table the current item at the time of the keypress
 function M.visit_errata(_, item)
@@ -817,7 +808,7 @@ function M.visit_errata(_, item)
   end
 end
 
---- Open the current item, either is neovim (txt) or via `open` for other formats
+---open the current item, either in neovim (txt) or via `open` for other formats
 ---@param picker table
 ---@param item table the current item at the time of the keypress
 ---@return 0|nil ok  -- 0 for success, nil for error
@@ -847,6 +838,8 @@ function M.confirm(picker, item)
   return 0
 end
 
+---search items for given `series`
+---@param series series|series[] search a series or list of thereof
 function M.search(series)
   -- TODO:
   -- [ ] only remove series not listed in series
@@ -877,6 +870,7 @@ function M.search(series)
   })
 end
 
+---setup and return the configuration
 ---@param opts? table configuration options with (new) values
 ---@return table opts the effective configuration after setup
 function M.setup(opts)
