@@ -1,39 +1,5 @@
 --[[
 
-# Error handling:
-
-## lua-result-or-message
-Lua functions may throw lua-errors for exceptional (unexpected) failures, which you can handle with pcall().
-When failure is normal and expected, it's idiomatic to return nil which signals to the caller that failure is
-not "exceptional" and must be handled. This "result-or-message" pattern is expressed as the multi-value return
-type any|nil,nil|string, or in LuaLS notation:
-
-    ---@return any|nil    # result on success, nil on failure.
-    ---@return nil|string # nil on success, error message on failure.
-
-Guidance: use the "result-or-message" pattern for...
-- Functions where failure is expected, especially when communicating with the external world.
-   E.g. HTTP requests or LSP requests often fail because of server problems, even if the caller did everything right.
-- Functions that return a value, e.g. Foo:new().
-- When there is a list of known error codes which can be returned as a third value (like luv-error-handling).
-
-## LIB.UV functions:
-1) A failing luv function will return to the caller an assertable nil, err, name tuple:
-- nil idiomatically indicates failure
-- err is a string with the format {name}: {message}
-  * {name} is the error name provided internally by uv_err_name
-  * {message} is a human-readable message provided internally by uv_strerror
-- name is the same string used to construct err
-
-This tuple is referred to below as the *fail pseudo-type*.
-
-2) When a function is called successfully, it will return either:
-- a value that is relevant to the operation of the function, or
-- the integer 0 to indicate success, or
-- sometimes nothing at all.
-These cases are documented below.
-
-
 Easily search, download and read ietf rfc's.
 - some entry points
   * `:!open https://www.rfc-editor.org/rfc/rfc-index.txt`
@@ -103,24 +69,24 @@ local snacks = dependency('snacks')
 
 --[[ Module ]]
 
-local R = {}
+local M = {} -- module to be returned
 local C = {
   -- config
-  cache = vim.fn.stdpath('cache'), -- store item index files
-  data = vim.fn.stdpath('data'), -- path or markers
-  subdir = 'ietf.org',
-  ttl = 4 * 3600, -- time-to-live [second], before downloading again
-  edit = 'tabedit ',
-  filetype = {
-    -- files openen with `edit` may have their ft set
-    txt = 'rfc',
+  series = { 'rfc', 'std', 'bcp' }, -- default for search with no series specified
+  cache = vim.fn.stdpath('cache'), -- path to to top of store for rfc-editor index files
+  data = vim.fn.stdpath('data'), -- path or markers, path to top of store for rfc-editor documents
+  subdir = 'ietf.org', -- plugin subdir under cache and/or data path
+  ttl = 24 * 3600, -- time-to-live [second], before downloading again
+  edit = {
+    -- default command to open document is `!open`
+    txt = 'tabedit', -- open txt documents in a new tab
   },
-  sep = '│',
-  -- on = '●', --- ',  ,  , 
-  -- off = '○', -- ',  ,  ,  ,
+  filetype = {
+    txt = 'rfc', -- set filetype to rfc when opening in nvim
+  },
+  sep = '│', -- used to separate columns in picker results (list) window
 }
---- local funcs for new way of curl/read'ing items ---
-------------------------------------------------------
+
 local PATTERNS = {
   -- see `:!open https://www.rfc-editor.org/rfc/` for the various documents
   url = {
@@ -185,16 +151,18 @@ local ICONS = {
   -- used to denote if a file exists locally (true) or not (false)
   [false] = ' ',
   [true] = ' ',
+  -- on = '●', --- ',  ,  , 
+  -- off = '○', -- ',  ,  ,  ,
 }
 
 local FORMATS = {
   -- order is important: first one available (disk/net) is used
   -- see: `:!open https://www.rfc-editor.org/rpc/wiki/doku.php?id=rfc_files_available`
-  'txt', -- available for all
+  'txt', -- available for all rfc,bcp,std and most/some of the fyi and ien documents
   'html', -- available for all and only format for rfc/inline-errata
-  'xml', -- available from rfc8650 and onwards
-  'pdf',
-  'ps', -- a few rfc's are available only in postscript
+  'xml', -- available from rfc8650 and onwards (rfc only)
+  'pdf', -- available from rfc8650 and onwards, sometimes the only format for old stuff
+  'ps', -- a few documents are available only in postscript
 }
 
 --- find root dir or use cfg.top, fallback to stdpath data dir
@@ -260,8 +228,12 @@ end
 ---@return string[]|nil lines of the file or nil on error
 ---@return string|nil msg either filename or an err msg
 local function download(doctype, docid, ext, opts)
-  -- NOTE: compressed=false was added to avoid curl timeout (doesn't understand encoding type).
-  -- test cases:
+  -- NOTE:
+  -- 1) compressed=false was added to avoid curl timeout (doesn't understand encoding type).
+  --    see: `:!open https://community.cloudflare.com/t/r2-not-removing-aws-chunked-from-content-encoding/786494/3`
+  --    docs are served by aws servers, content-encoding=aws-chunked used for upload, which is AWS specific
+  --    and not understood by curl
+  -- Other test cases:
   -- rfc14 will be not found (only .json exists)
   -- ien15.pdf (only format available)
   opts = opts or {}
@@ -288,7 +260,6 @@ local function download(doctype, docid, ext, opts)
       return nil, ('[error] timeout? %s'):format(url)
     end
   else
-    -- ok, rv = pcall(plenary.curl.get, { url = url, accept = ACCEPT[ext], output = fname })
     fname = get_fname(doctype, docid, ext)
     rv = plenary.curl.get({ url = url, compressed = false, accept = ACCEPT[ext], output = fname })
     if rv and rv.status == 200 then
@@ -577,7 +548,8 @@ local function item_format(item)
   local exists = item.file and true or false -- (vim.fn.filereadable(item.file) == 1)
   local icon = ICONS[exists]
   local hl_item = (exists and 'SnacksPickerGitStatusAdded') or 'SnacksPickerGitStatusUntracked'
-  local name = ('%-' .. (3 + #(tostring(#R))) .. 's'):format(item.name)
+  -- need access to M, hence the declaration at top-of-file
+  local name = ('%-' .. (3 + #(tostring(#M))) .. 's'):format(item.name)
   local ret = {
     { icon, hl_item },
     { C.sep, 'SnacksWinKeySep' },
@@ -719,7 +691,7 @@ local W = {
 --- retrieves one or more documents from the rfc-editor
 ---@param picker table current picker in action
 ---@param curr_item table the current item in pickers results window
-function R.fetch(picker, curr_item)
+function M.fetch(picker, curr_item)
   -- curr_item == picker.list:current()
   local items = picker.list.selected
   if #items == 0 then
@@ -753,7 +725,7 @@ end
 --- sets the preview window contents to a dump of the item table
 ---@param picker table current picker in action
 ---@param item table the current item in pickers results window
-function R.inspect(picker, item)
+function M.inspect(picker, item)
   -- set preview to show item table
   -- local lines = { '# ' .. item.docid:upper(), ' \r\n', ' \r\n', '## Details', '\n', '```luai\n', '\n', '{' }
   local lines = { '\n# ' .. item.docid:upper(), '\n\n## Item fields\n\n```lua\n{\n' }
@@ -777,7 +749,7 @@ function R.inspect(picker, item)
   picker.preview:highlight({ ft = 'markdown' })
 end
 
-function R.remove(picker, curr_item)
+function M.remove(picker, curr_item)
   -- curr_item == picker.list:current() ?= picker:current()
   -- remove local item.file's for 1 or more items
   local items = picker.list.selected
@@ -814,7 +786,7 @@ end
 --- Visits the info page of the current item
 ---@param _ table
 ---@param item table the current item at the time of the keypress
-function R.visit_info(_, item)
+function M.visit_info(_, item)
   local url = get_url('info', item.docid, 'html')
   if url then
     vim.cmd(('!open %s'):format(url))
@@ -824,7 +796,7 @@ end
 --- Visits the html page of the current item
 ---@param _ table
 ---@param item table the current item at the time of the keypress
-function R.visit_page(_, item)
+function M.visit_page(_, item)
   local url = get_url('document', item.docid, 'html')
   if url then
     vim.cmd(('!open %s'):format(url))
@@ -834,7 +806,7 @@ end
 --- Visits the errate page (if any) of the current (rfc) item
 ---@param _ table
 ---@param item table the current item at the time of the keypress
-function R.visit_errata(_, item)
+function M.visit_errata(_, item)
   local url = get_url('errata', item.docid, '')
   if url then
     vim.cmd(('!open %s'):format(url))
@@ -844,45 +816,60 @@ end
 --- Open the current item, either is neovim (txt) or via `open` for other formats
 ---@param picker table
 ---@param item table the current item at the time of the keypress
-function R.confirm(picker, item)
+---@return 0|nil ok  -- 0 for success, nil for error
+---@return string|nil err? nil if succesfull, error message otherwise
+function M.confirm(picker, item)
   picker:close()
+
   if not item.file then
-    R.fetch(picker, item)
+    M.fetch(picker, item)
   end
 
-  if item.file and item.file:lower():match('%.txt$') then
-    -- edit in nvim
-    vim.cmd(C.edit .. ' ' .. item.file)
-    local ft = C.filetype['txt']
-    if ft then
-      vim.cmd('set ft=' .. ft)
-    end
-  elseif item.file then
-    -- TODO: Brave browser can't access .local/data files ..
-    vim.cmd('!open ' .. item.file)
+  if not item.file then
+    local msg = ('[error] Could not retrieve %s'):format(item.docid)
+    vim.notify(msg, vim.log.levels.ERROR)
+    return nil, msg
   end
+
+  local ext = item.file:lower():match('%.([^.]+)$')
+  local cmd = C.edit[ext] or '!open '
+  local ft = C.filetype[ext]
+
+  local x = vim.cmd(cmd .. ' ' .. item.file)
+  print(vim.inspect({ 'confirm cmd result', x, 'ext', ext, 'cmd', cmd, 'ft', ft }))
+
+  if ft then
+    vim.cmd('set ft=' .. ft)
+  end
+  return 0
 end
 
-function R.search(series)
-  for ix, _ in ipairs(R) do
-    R[ix] = nil
+function M.search(series)
+  -- TODO:
+  -- [ ] only remove series not listed in series
+  -- [ ] only add series not already present in R
+  for ix, _ in ipairs(M) do
+    M[ix] = nil
   end
 
-  if load_items(series, R) < 1 then
-    vim.notify('[error] no items for series')
+  series = series or C.series
+  if type(series) == 'string' then
+    series = { series }
+  end
+
+  if load_items(series, M) < 1 then
+    vim.notify('[error] no items for series', vim.log.levels.ERROR)
   end
 
   return snacks.picker({
-    items = R,
-
+    items = M,
     format = item_format,
     preview = item_preview,
-    actions = R,
-    confirm = R.confirm,
+    actions = M,
+    confirm = M.confirm,
     win = W,
-
     layout = { fullscreen = true },
   })
 end
 
-return R
+return M
