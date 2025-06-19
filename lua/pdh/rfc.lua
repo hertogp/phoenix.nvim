@@ -260,17 +260,16 @@ end
 ---@return string[]|nil lines of the file or nil on error
 ---@return string|nil msg either filename or an err msg
 local function download(doctype, docid, ext, opts)
+  -- NOTE: compressed=false was added to avoid curl timeout (doesn't understand encoding type).
   -- test cases:
   -- rfc14 will be not found (only .json exists)
-  -- ien15.pdf
+  -- ien15.pdf (only format available)
   opts = opts or {}
   local url = get_url(doctype, docid, ext)
-  local ok, rv, fname
-
-  print('download url ' .. url)
+  local rv, fname
 
   if ext == 'txt' then
-    rv = plenary.curl.get({ url = url, accept = ACCEPT[ext] })
+    rv = plenary.curl.get({ url = url, compressed = false, accept = ACCEPT[ext] })
     -- rv = plenary.curl.get({ url = url })
 
     if rv and rv.status == 200 then
@@ -282,19 +281,16 @@ local function download(doctype, docid, ext, opts)
           fname = nil
         end
       end
-      print(' - result is ' .. vim.inspect({ 'lines:', #lines, 'fname', fname }))
       return lines, fname
     elseif rv then
-      print(' - result not ok: ' .. vim.inspect({ 'ok', ok, 'status', rv.status }))
       return nil, ('[error] %s: %s'):format(rv.status, url)
     else
-      print(' - result not ok: ' .. vim.inspect({ 'ok', ok, 'rv', type(rv) }))
       return nil, ('[error] timeout? %s'):format(url)
     end
   else
     -- ok, rv = pcall(plenary.curl.get, { url = url, accept = ACCEPT[ext], output = fname })
     fname = get_fname(doctype, docid, ext)
-    rv = plenary.curl.get({ url = url, accept = ACCEPT[ext], output = fname })
+    rv = plenary.curl.get({ url = url, compressed = false, accept = ACCEPT[ext], output = fname })
     if rv and rv.status == 200 then
       return {}, fname -- list of lines is empty since it was saved to disk
     else

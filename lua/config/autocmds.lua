@@ -39,6 +39,7 @@ local EasyQuitTable = {
   ['loclist'] = true,
   ['prompt'] = true,
   ['oil'] = true,
+  ['rfc'] = true,
   [''] = false,
 }
 
