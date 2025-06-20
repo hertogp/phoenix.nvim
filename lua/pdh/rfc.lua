@@ -89,8 +89,6 @@ local C = {
   filetype = {
     txt = 'rfc', -- set filetype to rfc when opening in nvim
   },
-  -- private config, TODO: keep here?
-  sep = '│', -- used to separate columns in picker results (list) window
 }
 
 local PATTERNS = {
@@ -187,8 +185,11 @@ local function get_dir(path_spec)
   elseif type(path_spec) == 'string' then
     path = vim.fs.normalize(path_spec)
   end
+  print(vim.inspect({ 'isdir', path, vim.fn.isdirectory(path or '') }))
 
-  return assert(path, ('invalid directory path_specification %s'):format(vim.inspect(path_spec)))
+  assert(path, ('invalid directory: %s'):format(vim.inspect(path_spec)))
+  assert(vim.fn.isdirectory(path) == 1, ('[error] not a directory: %s'):format(vim.inspect(path)))
+  return path
 end
 
 ---get local filename for given `doctype`, `docid` and `ext`, raises on error
@@ -199,8 +200,8 @@ end
 local function get_fname(doctype, docid, ext)
   local series = docid:match('%D+'):lower()
   local fname_parts = {
-    cache = get_dir(C.cache),
-    data = get_dir(C.data),
+    cache = C.cache,
+    data = C.data,
     series = series,
     docid = docid,
     subdir = C.subdir,
@@ -540,14 +541,15 @@ end
 ---@return table[] parts list of line parts to display { {text, hl_group}, ..}
 local function item_format(item)
   -- `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/format.lua`
+  local sep = '│'
   local icon = item.file and ICONS.file.present or ICONS.file.missing
   local hl_item = (item.file and 'SnacksPickerGitStatusAdded') or 'SnacksPickerGitStatusUntracked'
   local name = ('%-' .. (3 + #(tostring(#M))) .. 's'):format(item.name)
   return {
     { icon, hl_item },
-    { C.sep, 'SnacksWinKeySep' },
+    { sep, 'SnacksWinKeySep' },
     { name, hl_item },
-    { C.sep, 'SnacksWinKeySep' },
+    { sep, 'SnacksWinKeySep' },
     { item.text, '' },
     { ' ' .. item.date, 'SnacksWinKeySep' },
   }
@@ -565,15 +567,18 @@ local function item_details(item)
   local cache = vim.fs.joinpath(C.cache, C.subdir, '/')
   local data = vim.fs.joinpath(C.data, C.subdir, '/')
   local file = item.file or '*n/a*'
+  local errata = item.series == 'rfc' and item.errata or '-'
   local fmt2cols = '   %-15s%s'
   local fmt2path = '   %-15s%s' -- prevent strikethrough's use `%s` (if using ~ in path)
   local url
+
   local ext = vim.split(item.format, ',%s*')[1] -- for (possible) url
   if #ext == 0 then
     url = get_url('document', item.docid, 'txt') .. ' (*maybe*)'
   else
     url = get_url('document', item.docid, ext)
   end
+
   local lines = {
     '',
     ('# %s'):format(item.name),
@@ -597,6 +602,7 @@ local function item_details(item)
     fmt2cols:format('OBSOLETED by', item.obsoleted_by:upper()),
     fmt2cols:format('UPDATES', item.updates:upper()),
     fmt2cols:format('UPDATED by', item.updated_by:upper()),
+    fmt2cols:format('ERRATA', errata),
     '',
     '',
     '### PATH',
@@ -883,7 +889,7 @@ function M.setup(opts)
 
   -- C.series
   local series = {}
-  for _, serie in ipairs(opts.series) do
+  for _, serie in ipairs(opts.series or {}) do
     if PATTERNS.url[serie] then
       series[#series + 1] = serie -- PATTERNS.url specifies url's for known `series`
     else
