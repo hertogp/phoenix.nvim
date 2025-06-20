@@ -31,14 +31,8 @@ Search, download and read ietf rfc's.
      `-info/           rfc<nr> (no extension)                            : rfc,   inf(o)
      `-inline-errata/  rfc<nr>.html (only html)                          : rfc,   err
 
-    So per series:
-    - rfc: idx, doc, inf(o), err(ata), err(ata)-idx
-    - bcp: idx, doc
-    - std: idx, doc
-    - ien: idx, doc
-    - fyi: idx, doc
-
   * also subdirs: rfc/{bcp, std, ien, fyi} with <docid>.ext and series-index.txt
+
   * terminology:
     - streams - producers of documents: https://www.rfc-editor.org/faq/#streamcat
       Document stream = IETF, IRTF, IAB, Independent
@@ -76,7 +70,7 @@ local C = {
   series = { 'rfc', 'std', 'bcp' }, -- series to search
   cache = vim.fn.stdpath('cache'), -- path for rfc-editor index files
   data = vim.fn.stdpath('data'), -- path (or markers), for rfc-editor documents
-  subdir = 'ietf.org', -- plugin subdir under cache and/or data path
+  subdir = 'rfc-editor', -- plugin subdir under cache and/or data path
   ttl = 24 * 3600, -- ttl in seconds, before downloading again
   edit = {
     -- default is to :Open <fname>
@@ -463,13 +457,13 @@ local function curl_items(series, accumulator)
 
   -- assemble lines per item and parse to an item
   local acc = '' -- accumulator, becomes 'nr text'/document, to be parsed as item
-  local max = series == 'ien' and 3 or 1 -- allow for leading ws in ien index
+  local max = series == 'ien' and 3 or 1 -- allow for leading wspace in ien index
   for _, line in ipairs(input) do
     local start = string.match(line, '^(%s*)%d+%s+%S')
     if start and #start < max then
       -- starter line: parse current, start new
       items[#items + 1] = parse_item(acc)
-      acc = vim.trim(line) -- trim leading ws(!) for parse()
+      acc = vim.trim(line) -- trim leading wspace(!) for parse()
     elseif #acc > 0 and string.match(line, '^%s+%S') then
       -- continuation line: accumulate
       acc = acc .. ' ' .. vim.trim(line)

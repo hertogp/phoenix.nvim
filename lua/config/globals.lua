@@ -118,15 +118,16 @@ end
 PKG_RELOAD = function()
   local bname = vim.fn.bufname('%')
   local pkg
+  -- buffer name is either lua/../name/init.lua or lua/../name.lua
   if bname:match('init.lua$') then
     pkg = vim.fs.dirname(bname)
   else
-    pkg = bname
+    pkg = bname:gsub('%.lua$', '', 1)
   end
+  -- pkg = pgk:gsub('.+/lua/', '', 1)
   local rootdir = Project_root(0)
   local luadir = vim.fs.joinpath(rootdir, 'lua')
   pkg = vim.fs.relpath(luadir, pkg):gsub('/', '.')
-  print(vim.inspect({ rootdir, luadir, bname, pkg }))
   RELOAD(pkg)
   return require(pkg)
 end

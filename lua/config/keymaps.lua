@@ -33,6 +33,8 @@ imap('jj', '<esc>', 'escape to normal mode')
 nmap('R', '<c-r>', '[R]edo')
 imap('<c-s>', '<esc><cmd>SaveKeepPos<cr>', 'save file, keep position')
 nmap('<c-s>', '<cmd>SaveKeepPos<cr>', 'save file, keep position')
+nmap('<space>c', ":lua require'pdh.snacks'.codespell(0)<cr>", 'check spelling in buf')
+nmap('<space>C', ":lua require'pdh.snacks'.codespell()<cr>", 'check spelling in dir')
 
 -- function kyes
 nmap('<f5>', ':redraw!', 'redraw screen')
