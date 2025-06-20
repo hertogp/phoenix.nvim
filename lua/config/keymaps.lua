@@ -68,7 +68,7 @@ nmap('<c-p>', '<c-w>p', 'goto window, previous')
 --[[ leader keys ]]
 nmap('<leader>ev', '<cmd>edit ~/.config/nvim/init.lua<cr>', 'edit nvim init.lua')
 nmap('<leader>sv', '<cmd>source ~/.config/nvim/init.lua<cr>', 'source nvim init.lua')
-nmap('<leader><leader>x', '<cmd>write|source %<cr>', 'save & source buffer')
+nmap('<leader><leader>x', ':lua PKG_RELOAD()<cr>', 'reload package of current buffer')
 nmap('<leader><leader>X', '<cmd>write|source %<cr>', 'save & source buffer')
 nmap('<space>x', ':lua Vim_run_cmd()<cr>', 'run a vim cmd (`:cmd ..`) on current line')
 nmap('<space>X', ':lua Vim_run_cmd({insert=true})<cr>', 'run a vim cmd (`:cmd ..`) and insert result')

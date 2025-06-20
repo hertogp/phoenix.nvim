@@ -115,6 +115,22 @@ R = function(name)
   return require(name)
 end
 
+PKG_RELOAD = function()
+  local bname = vim.fn.bufname('%')
+  local pkg
+  if bname:match('init.lua$') then
+    pkg = vim.fs.dirname(bname)
+  else
+    pkg = bname
+  end
+  local rootdir = Project_root(0)
+  local luadir = vim.fs.joinpath(rootdir, 'lua')
+  pkg = vim.fs.relpath(luadir, pkg):gsub('/', '.')
+  print(vim.inspect({ rootdir, luadir, bname, pkg }))
+  RELOAD(pkg)
+  return require(pkg)
+end
+
 function Project_root(bufnr)
   -- used by a.o. ~/.config/nvim/lua/pdh/telescope.lua (maybe keep it local there?)
   -- get the project's root directory for a given buffer or from cwd
