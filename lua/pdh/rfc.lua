@@ -75,16 +75,15 @@ local M = {} -- module to be returned
 --[[ LOCALS ]]
 
 local C = {
-  -- user configurable
-  series = { 'rfc', 'std', 'bcp' }, -- default for series to search
-  cache = vim.fn.stdpath('cache'), -- path to to top of store for rfc-editor index files
-  data = vim.fn.stdpath('data'), -- path or markers, path to top of store for rfc-editor documents
+  series = { 'rfc', 'std', 'bcp' }, -- series to search
+  cache = vim.fn.stdpath('cache'), -- path for rfc-editor index files
+  data = vim.fn.stdpath('data'), -- path (or markers), for rfc-editor documents
   subdir = 'ietf.org', -- plugin subdir under cache and/or data path
-  ttl = 24 * 3600, -- time-to-live [second], before downloading again
+  ttl = 24 * 3600, -- ttl in seconds, before downloading again
   edit = {
-    -- default command to open document is `!open`
+    -- default is to :Open <fname>
     txt = 'tabedit', -- open txt documents in a new tab
-    pdf = 'Open', -- shell out (same result as default !open)
+    pdf = 'Open', -- shell out to host system
   },
   filetype = {
     txt = 'rfc', -- set filetype to rfc when opening in nvim
@@ -503,67 +502,50 @@ end
 ---add cached items from disk for given `series` to `items`
 ---@param series series[] list of series for which items are to be added
 ---@param items table receives the items for given `series`
----@return number|nil count of items added to `items` for given `series`
----@return string|nil err message why call failed, if applicable
+---@return number count of items added to `items` for given `series`
+---@return string[]|nil err message(s) on which series failed, if any, nil otherwise
 local function load_items(series, items)
-  local org_count = #items
   series = series or {}
   if type(series) == 'string' then
     series = { series }
   end
 
+  local count = 0
+  local warnings = {}
+
   for _, serie in ipairs(series) do
     local fname = get_fname('index', serie, 'txt')
     local ttl = C.ttl + vim.fn.getftime(fname) - vim.fn.localtime()
-    local cnt, err
+    local cnt, warn
+
     if ttl < 1 then
-      cnt, err = curl_items(serie, items)
-      if err then
-        cnt, err = read_items(fname, items) -- use file on disk as fallback
+      -- read from network, fallback to cache
+      cnt, warn = curl_items(serie, items)
+      if warn then
+        cnt, warn = read_items(fname, items)
       end
     else
-      cnt, err = read_items(fname, items)
-      if err then
-        cnt, err = curl_items(serie, items) -- try the net as fallback
+      -- read from cache, fallback to network
+      cnt, warn = read_items(fname, items)
+      if warn then
+        cnt, warn = curl_items(serie, items)
       end
     end
-    if err and err then
-      vim.notify('Error loading items for ' .. series .. ' : ' .. err, vim.log.levels.ERROR)
+    if warn then
+      warnings[#warnings + 1] = ('[warn] no items found for %s (%s)'):format(series, warn)
     else
-      vim.notify(('added %d items for series %s'):format(cnt, serie), vim.log.levels.INFO)
+      count = count + cnt
     end
   end
-  return #items - org_count
+
+  return count, #warnings > 0 and warnings or nil
 end
 
----format function passed to picker to update an item in the result list window
----@param item table the item to display in the list window
----@return table[] parts list of line parts to display { {text, hl_group}, ..}
-local function item_format(item)
-  -- `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/format.lua`
-  local sep = '│'
-  local icon = item.file and ICONS.file.present or ICONS.file.missing
-  local hl_item = (item.file and 'SnacksPickerGitStatusAdded') or 'SnacksPickerGitStatusUntracked'
-  local name = ('%-' .. (3 + #(tostring(#M))) .. 's'):format(item.name)
-  return {
-    { icon, hl_item },
-    { sep, 'SnacksWinKeySep' },
-    { name, hl_item },
-    { sep, 'SnacksWinKeySep' },
-    { item.text, '' },
-    { ' ' .. item.date, 'SnacksWinKeySep' },
-  }
-end
-
----returns `title`, `ft`, `lines` to fill the preview window,
----used when local file cannot be previewed (missing or non-txt file)
+---returns item info as markdown lines to fill the preview window,
+---used when no local file is present or a non-text file
 ---@param item table an item of the picker result list
----@return string title the title for the preview window border
----@return string ft the filetype to use when previewing content given by `lines`
 ---@return string[] lines the lines to display in the preview window
-local function item_details(item)
-  local title = tostring(item.title)
-  local ft = 'markdown'
+local function item_markdown(item)
   local cache = vim.fs.joinpath(C.cache, C.subdir, '/')
   local data = vim.fs.joinpath(C.data, C.subdir, '/')
   local file = item.file or '*n/a*'
@@ -579,7 +561,7 @@ local function item_details(item)
     url = get_url('document', item.docid, ext)
   end
 
-  local lines = {
+  return {
     '',
     ('# %s'):format(item.name),
     '',
@@ -613,8 +595,27 @@ local function item_details(item)
     '',
     fmt2path:format('URL', url),
   }
+end
 
-  return title, ft, lines
+--[[ SNACKS callbacks ]]
+
+---format function passed to picker to update an item in the result list window
+---@param item table the item to display in the list window
+---@return table[] parts list of line parts to display { {text, hl_group}, ..}
+local function item_format(item)
+  -- `:!open https://github.com/folke/snacks.nvim/blob/main/lua/snacks/picker/format.lua`
+  local sep = '│'
+  local icon = item.file and ICONS.file.present or ICONS.file.missing
+  local hl_item = (item.file and 'SnacksPickerGitStatusAdded') or 'SnacksPickerGitStatusUntracked'
+  local name = ('%-' .. (3 + #(tostring(#M))) .. 's'):format(item.name)
+  return {
+    { icon, hl_item },
+    { sep, 'SnacksWinKeySep' },
+    { name, hl_item },
+    { sep, 'SnacksWinKeySep' },
+    { item.text, '' },
+    { ' ' .. item.date, 'SnacksWinKeySep' },
+  }
 end
 
 ---update the preview window, function is passed to the picker
@@ -630,18 +631,19 @@ local function item_preview(ctx)
     picker.preview:highlight({ ft = ft })
   end
 
+  local title = ctx.item.docid:upper()
+  local ft = 'rfc' -- assume file contents will be previewed
+  local ok, lines
+
   if ctx.item.file and ctx.item.file:match('%.txt$') then
     -- preview ourselves, since snacks trips over any formfeeds in the txt-file
     -- REVIEW: this reads the file every time, could cache that in _preview?
-    local ok, lines = pcall(vim.fn.readfile, ctx.item.file)
-    local title, ft
+    ok, lines = pcall(vim.fn.readfile, ctx.item.file)
 
     if not ok then
-      -- fallback to preview item itself (ft will be markdown)
-      title, ft, lines = item_details(ctx.item)
-    else
-      title = ctx.item.docid:upper()
-      ft = 'rfc' -- since we're looking at the text itself
+      -- fallback to preview item as markdown
+      lines = item_markdown(ctx.item)
+      ft = 'markdown'
     end
     _set(ctx, title, lines, ft)
   elseif ctx.item._preview then
@@ -650,11 +652,14 @@ local function item_preview(ctx)
     _set(ctx, m.title, m.lines, m.ft)
   else
     -- use item._preview: since item.preview={text="..", ..} means text will be split every time
-    local title, ft, lines = item_details(ctx.item)
+    lines = item_markdown(ctx.item)
+    ft = 'markdown'
     _set(ctx, title, lines, ft)
     ctx.item._preview = { title = title, ft = ft, lines = lines } -- remember for next time
   end
 end
+
+--[[ SNACKS keymaps ]]
 
 local W = {
   -- passed to picker as the `win` option
@@ -833,7 +838,7 @@ function M.confirm(picker, item)
   end
 
   local ext = item.file:lower():match('%.([^.]+)$')
-  local cmd = C.edit[ext] or '!open '
+  local cmd = C.edit[ext] or 'Open'
   local ft = C.filetype[ext]
 
   vim.cmd(cmd .. ' ' .. item.file)
@@ -859,10 +864,10 @@ function M.search(series)
     series = { series }
   end
 
-  local n, err = load_items(series, M)
-  if err or (n and n < 1) then
-    vim.notify(('[error] no items found (%s)'):format(err), vim.log.levels.ERROR)
-    return n, err
+  local _, warnings = load_items(series, M)
+  if warnings then
+    local msgs = table.concat(warnings, '\n- ')
+    vim.notify(('# Warning(s)\n- %s'):format(msgs), vim.log.levels.WARN)
   end
 
   return snacks.picker({
