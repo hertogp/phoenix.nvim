@@ -1,6 +1,6 @@
 --[[
 
-Easily search, download and read ietf rfc's.
+Search, download and read ietf rfc's.
 - some entry points
   * `:!open https://www.rfc-editor.org/rfc/rfc-index.txt`
   * `:!open https://www.rfc-editor.org/rfc/rfc-ref.txt`
@@ -68,11 +68,9 @@ end
 local plenary = dependency('plenary')
 local snacks = dependency('snacks')
 
---[[ Module ]]
+--[[ LOCALS ]]
 
 local M = {} -- module to be returned
-
---[[ LOCALS ]]
 
 local C = {
   series = { 'rfc', 'std', 'bcp' }, -- series to search
@@ -246,7 +244,7 @@ end
 ---@param opts? table use `{save=true}` for txt files, to also save it to disk
 ---@return string[]|nil lines of the file (empty, except for txt files) or nil on error
 ---@return string|nil msg the download filename or an err msg
-local function download(doctype, docid, ext, opts)
+local function get_doc(doctype, docid, ext, opts)
   -- NOTE:
   -- 1) compressed=false was added to avoid curl timeout (doesn't understand encoding type).
   --    see: `:!open https://community.cloudflare.com/t/r2-not-removing-aws-chunked-from-content-encoding/786494/3`
@@ -291,6 +289,8 @@ local function download(doctype, docid, ext, opts)
   end
 end
 
+--[[ ITEM handlers ]]
+
 --- add items to the accumulator `items`, as read from the cached index file `fname`
 ---@param fname string filename of index file to get items
 ---@param items table a list of picker items
@@ -331,7 +331,7 @@ local function save_items(items, fname)
     local file, idx = item.file, item.idx
     item.file, item.idx = nil, nil
 
-    lines[#lines + 1] = vim.inspect(item):gsub('%c%s*', ' ') .. ',' -- dodgy, but works
+    lines[#lines + 1] = vim.inspect(item):gsub('%c%s*', ' ') .. ',' -- works, but dodgy
 
     item.file, item.idx = file, idx
   end
@@ -340,7 +340,7 @@ local function save_items(items, fname)
   return vim.fn.writefile(lines, fname)
 end
 
----add items to the accumulator (and cache) from the remote rfc-editor index for given `series`
+---add items to the accumulator (and cache) from the remote rfc-editor index for given (single) `series`
 ---@param series series a single series whose items are retrieved from rfc-editor
 ---@param accumulator table list of picker items
 ---@return number|nil count of items added to given `accumulator` or nil on failure
@@ -360,11 +360,11 @@ local function curl_items(series, accumulator)
     local lines = {}
 
     if ttl < 1 then
-      lines = download('errata_index', series, 'txt', { save = true }) or vim.fn.readfile(fname)
+      lines = get_doc('errata_index', series, 'txt', { save = true }) or vim.fn.readfile(fname)
     else
       lines = vim.fn.readfile(fname)
       if #lines == 0 then
-        lines = download('errata_index', series, 'txt', { save = true }) or {}
+        lines = get_doc('errata_index', series, 'txt', { save = true }) or {}
       end
     end
 
@@ -410,7 +410,7 @@ local function curl_items(series, accumulator)
     -- BUG: bcp9 (Format: bytes) is not picked up on, still in item.text
     for part in string.gmatch(item.text, '%(([^)]+)%)') do
       -- lowercase so we can match on keys in tags
-      local prepped = part:lower():gsub('%s+by', '_by', 1):gsub(':', '', 1)
+      local prepped = part:lower():gsub('%s+by%s', '_by ', 1):gsub(':', '', 1)
       local k, v = string.match(prepped, '^([^%s]+)%s+(.*)$')
       if k and v and tags[k] then
         item[k] = v
@@ -426,8 +426,9 @@ local function curl_items(series, accumulator)
         seen[#seen + 1] = fmt
       end
     end
+    item.format = '' -- ditch the garbage
     if #seen > 0 then
-      item.format = table.concat(seen, ', ')
+      item.format = table.concat(seen, ', ') -- keep what was seen
     end
 
     -- extract date
@@ -456,7 +457,7 @@ local function curl_items(series, accumulator)
   end
 
   -- download and parse the index of items for series
-  local input, err = download('index', series, 'txt')
+  local input, err = get_doc('index', series, 'txt')
   if input == nil or err then
     return nil, err -- fail for this series
   end
@@ -662,7 +663,7 @@ end
 --[[ SNACKS keymaps ]]
 
 local W = {
-  -- passed to picker as the `win` option
+  -- picker win option
   list = {
     -- keybindings for picker list window showing results
     keys = {
@@ -690,33 +691,35 @@ local W = {
   },
 }
 
+--[[ Module ]]
+
 ---retrieve one or more documents from the rfc-editor, update the item.file field(s)
 ---@param picker table the current picker
----@param curr_item table the current item in pickers results window
-function M.fetch(picker, curr_item)
+---@param item table the current item in pickers results window
+function M.fetch(picker, item)
   -- curr_item == picker.list:current()
   local items = picker.list.selected
   if #items == 0 then
-    items = { curr_item }
+    items = { item }
   end
   local notices = { '# Fetch:\n' }
 
-  for n, item in ipairs(items) do
+  for n, itm in ipairs(items) do
     for _, ext in ipairs(FORMATS) do
       -- download first available format
-      local ok, fname = download('document', item.docid, ext, { save = true })
+      local ok, fname = get_doc('document', itm.docid, ext, { save = true })
       if ok and fname then
-        item.file = fname
-        notices[#notices + 1] = ('- (%d/%s) %s.%s - success'):format(n, #items, item.docid, ext)
+        itm.file = fname
+        notices[#notices + 1] = ('- (%d/%s) %s.%s - success'):format(n, #items, itm.docid, ext)
         break
       else
-        notices[#notices + 1] = ('- (%d/%s) %s.%s - failed! %s'):format(n, #items, item.docid, ext, vim.inspect(fname))
+        notices[#notices + 1] = ('- (%d/%s) %s.%s - failed! %s'):format(n, #items, itm.docid, ext, vim.inspect(fname))
       end
     end
 
-    if item.file then
-      item._preview = nil
-      picker.list:unselect(item)
+    if itm.file then
+      itm._preview = nil
+      picker.list:unselect(itm)
       picker.list:update({ force = true })
       picker.preview:show(picker, { force = true })
     end
@@ -753,37 +756,37 @@ end
 
 ---remove files associated with current item or selection of items
 ---@param picker table current picker in action
----@param curr_item table the current item in pickers results window
-function M.remove(picker, curr_item)
+---@param item table the current item in pickers results window
+function M.remove(picker, item)
   -- curr_item == picker.list:current() ?= picker:current()
   -- remove local item.file's for 1 or more items
   local items = picker.list.selected
   if #items == 0 then
-    items = { curr_item }
+    items = { item }
   end
   local notices = { '# Remove:\n' }
 
-  for n, item in ipairs(items) do
+  for n, itm in ipairs(items) do
     local result
-    if item.file and vim.fn.filereadable(item.file) == 1 then
-      local rv = vim.fn.delete(item.file)
+    if itm.file and vim.fn.filereadable(itm.file) == 1 then
+      local rv = vim.fn.delete(itm.file)
       if rv == 0 then
         result = 'removed'
-        item.file = nil
+        itm.file = nil
       else
         -- keep unreadable item.file
         result = 'failed!'
       end
-    elseif item.file then
+    elseif itm.file then
       result = 'not found'
-      item.file = nil -- file was not there
+      itm.file = nil -- file was not there
     else
       result = 'item.file not set'
     end
-    picker.list:unselect(item) -- whether selected or not ..
+    picker.list:unselect(itm) -- whether selected or not ..
     picker.list:update({ force = true })
     picker.preview:show(picker, { force = true })
-    notices[#notices + 1] = ('- (%d/%s) %s - %s'):format(n, #items, item.docid, result)
+    notices[#notices + 1] = ('- (%d/%s) %s - %s'):format(n, #items, itm.docid, result)
   end
   vim.notify(table.concat(notices, '\n'), vim.log.levels.INFO)
 end
