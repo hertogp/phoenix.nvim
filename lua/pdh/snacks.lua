@@ -24,7 +24,7 @@ local function codespell_fix(picker, current)
           vim.api.nvim_buf_set_lines(bufnr, lnum - 1, lnum, false, { new_line })
           item.line = ('%s -- applied'):format(item.line)
         else
-          item.line = ('%s -- skipped'):format(item.line)
+          item.line = ('%s -- skipped (noop: buffer has unsaved changes?)'):format(item.line)
         end
       else
         item.line = ('%s -- not found'):format(item.line)
@@ -52,7 +52,7 @@ function M.codespell(bufnr)
   -- * codespell is external and checks the files on disk, not buffer contents
   --   => buffers with unsaved changes may be off in linenrs
   -- * keymaps.lua sets <space>c/C to codespell current buffer file/directory
-  -- * testcase: succesful ==> successful
+  -- * testcase: successful ==> successful
   local target = vim.api.nvim_buf_get_name(bufnr or 0)
   target = bufnr and target or vim.fs.dirname(target) -- a file or a directory
 
