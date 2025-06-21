@@ -6,7 +6,7 @@
 -- sf = surround find (moves cursor right)
 -- sF = surround Find (moves cursor left)
 -- sh = surround highlight
--- sn = surround neighbor adjecent lines to consider
+-- sn = surround neighbor adjacent lines to consider
 return {
   'echasnovski/mini.surround',
   version = false,

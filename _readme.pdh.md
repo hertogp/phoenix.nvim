@@ -158,7 +158,7 @@ From: [queries](from: https://tree-sitter.github.io/tree-sitter/using-parsers/qu
          object: (call_expression)))
   ```
 
-#### Contraints
+#### Constraints
 
 - constrain a pattern to match only when lacking a node by *negation* _(!)_
 
@@ -169,7 +169,7 @@ From: [queries](from: https://tree-sitter.github.io/tree-sitter/using-parsers/qu
   ```
   This would match a class declaration with no parameters.
 
-- match *anonymous* nodes by their name in qoutes
+- match *anonymous* nodes by their name in quotes
 
   ```
   (binary_expression
@@ -317,7 +317,7 @@ From: [queries](from: https://tree-sitter.github.io/tree-sitter/using-parsers/qu
   would match any of the Javascript builtin variables
 
 - `#is?` or `#is-not?` used to assert a capture is (not) of certain type
-  not used alot
+  not used a lot
 
   ```
   ((identifier) @variable.builtin

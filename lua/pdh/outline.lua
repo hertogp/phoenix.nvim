@@ -18,7 +18,7 @@ TODO's
 [?] add lsp sym(bols) handler -> using vim.lsp.buf.document_symbol()
       * also see :FzfLua lsp_document_symbols (aka <space>s)
 [?] have only 1 otl window at all times (:topleft vnew | wincmd H | wincmd =)
-    - configurable, left or right, always has entire heigt of window
+    - configurable, left or right, always has entire height of window
     - multiple windows can have otl active
     - active window is displayed in otl window (shuttle works)
       * when moving to another window that has no otl -> otl stays the same
