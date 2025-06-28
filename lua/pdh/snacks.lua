@@ -34,7 +34,7 @@ local M = {}
 
 --]]
 
---[[ HELPERS ]]
+--[[ SPELLING ]]
 
 local function codespell_fix(picker, current)
   -- apply a fix suggested by codespell
@@ -81,56 +81,7 @@ local function codespell_fix(picker, current)
   end
 end
 
-local function mythes_read()
-  local sep = '|'
-  local fname = '/usr/share/mythes/th_en_US_v2.dat'
-  local fh = io.open(fname, 'r')
-  assert(fh, ('could not open file %s'):format(fname))
-  local encoding = fh:read('l') -- 1st line is encoding
-
-  -- process remainder of the file
-  local line = fh:read('l')
-  local names = {}
-  while line do
-    -- process entry line: word|<num>
-    local name, entries = unpack(vim.split(line, sep, { plain = true }))
-    local max = tonumber(entries)
-    local meanings = {}
-
-    -- process member lines: (pos)|syn1|syn2 (annotation)| ...
-    for _ = 1, max do
-      local member = fh:read('l')
-      local annotations = {
-        ['(antonym)'] = '(a)',
-        ['(generic term)'] = '(g)',
-        ['(related term)'] = '(r)',
-        ['(similar term)'] = '(s)',
-      }
-      meanings[#meanings + 1] = member:gsub('%b()', annotations):gsub(sep, ' ', 1):gsub(sep, ', ')
-    end
-
-    -- record thesaurus entry
-    names[name] = meanings
-
-    -- loop
-    line = fh:read('l')
-  end
-  fh:close()
-
-  print('encoding ' .. encoding)
-  for _, k in ipairs({ 'simple', 'easy', 'folly', "'s gravenhage", 'foolishness', 'zymurgy', 'hedge' }) do
-    print(('%s (%d)'):format(k, #names[k]))
-    -- print(vim.inspect(names[k]))
-    -- names[k] = list of meanings, each a table
-    for nr, meaning in ipairs(names[k]) do
-      print(('%2s. %s'):format(nr, meaning))
-    end
-    print(' ')
-    print(' ')
-  end
-end
-
-function M.soundex(str)
+local function soundex(str)
   -- `:Open https://en.wikipedia.org/wiki/Soundex`
   -- `:Open https://rosettacode.org/wiki/Soundex#Lua`
   -- Using this algorithm,
@@ -173,49 +124,7 @@ function M.soundex(str)
     return (rv .. '0000'):sub(1, 4)
   end
 end
---[[ SNACKS ]]
-
---- run codespell on buffer or directory, fill qflist and run snacks.qflist()
---- @param bufnr? number buffer number, if `nil` codespell buffer's directory
-function M.codespell(bufnr)
-  -- notes:
-  -- * `:Open https://github.com/codespell-project/codespell`
-  -- * keymaps.lua sets <space>c/C to codespell current buffer file/directory
-  -- * testcase: succesful ==> successful
-  local target = vim.api.nvim_buf_get_name(bufnr or 0)
-  target = bufnr and target or vim.fs.dirname(target) -- a file or a directory
-
-  local function on_exit(obj)
-    local lines = vim.split(obj.stdout, '\n', { trimempty = true })
-    local results = {}
-    for _, line in ipairs(lines) do
-      local parts = vim.split(line, '%s*:%s*')
-      results[#results + 1] = { filename = parts[1], lnum = parts[2], text = parts[3], type = 'w' }
-    end
-
-    if #results > 0 then
-      -- on_exit is a 'fast event' context -> schedule vim.fn.xxx
-      vim.schedule(function()
-        vim.fn.setqflist(results)
-
-        require 'snacks.picker'.qflist({
-          win = {
-            input = { keys = { f = { 'codespell_fix', mode = { 'n' } } } },
-            list = { keys = { f = { 'codespell_fix', mode = { 'n' } } } },
-          },
-          actions = { codespell_fix = codespell_fix },
-        })
-      end)
-    else
-      vim.notify('codespell found no spelling errors', vim.log.levels.INFO)
-    end
-  end
-
-  -- run the cmd
-  vim.system({ 'codespell', '-d', target }, { text = true }, on_exit)
-end
-
---[[ UTIL ]]
+--[[ THESAURUS ]]
 
 local Mythes = {
   cfg = {
@@ -223,9 +132,35 @@ local Mythes = {
     dta = '/usr/share/mythes/th_en_US_v2.dat',
   },
 
-  fh = {
-    -- idx resp. dta  will be filehandles
-    -- see Mythes.{open, close}
+  fh = {}, -- placeholder for filehandle placeholders for idx & dat files
+
+  actions = {
+    -- part of picker's options
+    -- snacks' keystroke handlers linked to by win={..}
+
+    alt_enter = function(picker, item)
+      -- initiate a new thesaurus search
+      local word = item and item.word or picker.matcher.pattern
+
+      picker.input:set('', word) -- reset input pattern, input prompt to word
+      picker.opts.search = word
+      picker:find({ refresh = true })
+    end,
+
+    enter = function()
+      vim.notify('enter was pressed')
+    end,
+  },
+
+  win = {
+    -- part of picker's options
+    -- snack's win config linking keystrokes to action handler functions by name
+    input = {
+      keys = {
+        ['<M-CR>'] = { 'alt_enter', mode = { 'n', 'i' } },
+        ['<CR>'] = { 'enter', mode = { 'n', 'i' } },
+      },
+    },
   },
 }
 
@@ -298,7 +233,7 @@ end
 ---@return string|nil error message or nil for no error
 function Mythes.idx_search(word, matchp)
   local file = Mythes.fh.idx
-  local line, offset -- non-nil offset signals success
+  local line
   local p0, p1, err = 0, file:seek('end', 0)
   if err then
     return nil, 0, err
@@ -309,7 +244,7 @@ function Mythes.idx_search(word, matchp)
     local oldpos = file:seek('set', pos)
 
     _ = file:read('*l') -- discard (remainder) of current line
-    line = file:read('*l') -- read next available (full) line
+    line = file:read('*l') -- read next available line
 
     --  p0..[discard\nline\n]..p1 --
 
@@ -357,7 +292,6 @@ end
 function Mythes.close()
   -- close any open Mythes filehandles
   -- TODO: handle close() return values ok, exit?, code?
-  -- vim.print(vim.inspect({ 'close idx, dt', Mythes.fh.idx, Mythes.fh.dta }))
   if Mythes.fh.idx then
     Mythes.fh.idx:close()
     Mythes.fh.idx = nil
@@ -446,7 +380,6 @@ function Mythes.search(word)
   item.word = word -- the original word searched for (term is what was found)
   item.words = words -- all (unique) synonyms as plain words in a sorted list
 
-  -- vim.print(vim.inspect({ 'words', item.words }))
   return item, err
 end
 
@@ -459,62 +392,67 @@ function Mythes.trace(word)
     local saw, offset = line:match('^([^|]+)|(%d+)')
     local fuz = vim.fn.matchfuzzypos({ saw }, sword)
     nr = nr + 1
-    seen[saw] = { nr, tonumber(offset), fuz and fuz[3] or 0, M.soundex(saw) }
+    seen[saw] = { nr, tonumber(offset), fuz and fuz[3] or 0, soundex(saw) }
     print(vim.inspect('saw ' .. saw))
     return Mythes.match_exactp(line, sword)
   end
 
   local line, offset = Mythes.idx_search(word, trace)
 
-  -- print(vim.inspect({ word, line, offset, seen }))
+  print(vim.inspect({ word, line, offset, seen }))
 
   Mythes.close()
 end
 
----augment item with additional fields for previewing given `item`
----@param item table item to be previewed
-function Mythes.preview(item)
+---augment picker.item with additional fields for previewing
+function Mythes.preview(picker)
+  -- part of picker's options
   -- set item.{title, lines, ft} to be used in update of preview window
-  -- item has keys:
-  -- word string org search term
-  -- term string term found
-  -- syns list: { {(pos), syn1, syn2, .. }
-  -- words unique list of words in the syns list
-  -- nb: caller needs to check if preview needs (re)doing
 
+  local item = picker.item
   local column = '%-30s'
-  item.title = item.text
-  item.ft = 'markdown'
-  local lines = { '', '# ' .. item.term, '' }
-  -- ## subsections per meaning/synset
-  for _, synset in ipairs(item.syns) do
-    local line = ''
-    for n, elm in ipairs(synset) do
-      -- elm = elm:gsub('%s+term%)', ')') -- reduce noisy (... term)
-      elm = elm:gsub('%s%b()', function(m)
-        return ' (' .. string.sub(m, 3, 3) .. ')'
-      end) -- reduce noisy (... term)
-      if n == 1 then
-        lines[#lines + 1] = ''
-        lines[#lines + 1] = '## [' .. elm:match('%((.-)%)') .. ']'
-        lines[#lines + 1] = ''
-      else
-        if #line == 0 then
-          line = string.format(column, elm)
-        elseif #line < 75 then
-          line = line .. string.format(column, elm)
+
+  if item.lines == nil then
+    -- update item
+    item.title = item.text
+    item.ft = 'markdown'
+    local lines = { '', '# ' .. item.term, '' }
+    -- ## subsections per meaning/synset
+    for _, synset in ipairs(item.syns) do
+      local line = ''
+      for n, elm in ipairs(synset) do
+        elm = elm:gsub('%s%b()', function(m)
+          -- %s helps avoid matching (pos) of the first elm in synset
+          return ' (' .. string.sub(m, 3, 3) .. ')'
+        end) -- reduce noisy (... term) -> (.)
+        if n == 1 then
+          lines[#lines + 1] = ''
+          lines[#lines + 1] = '## [' .. elm:match('%((.-)%)') .. ']'
+          lines[#lines + 1] = ''
         else
-          lines[#lines + 1] = line
-          line = string.format(column, elm)
+          if #line == 0 then
+            line = column:format(elm)
+          elseif #line < 75 then
+            line = line .. column:format(elm)
+          else
+            lines[#lines + 1] = line
+            line = column:format(elm)
+          end
         end
       end
+      lines[#lines + 1] = line
     end
-    lines[#lines + 1] = line
+    item.lines = lines
   end
-  item.lines = lines
+
+  -- update preview window
+  picker.preview:set_lines(item.lines)
+  picker.preview:set_title(item.title)
+  picker.preview:highlight({ ft = item.ft })
 end
 
 function Mythes.format(item, _)
+  -- part of picker's options
   -- ignores picker argument
   -- returns a list of: { {text, hl_group}, .. }
   -- this gets called to format an item for display in the list window.
@@ -527,6 +465,7 @@ function Mythes.format(item, _)
 end
 
 function Mythes.finder(opts, ctx)
+  -- part of picker's options
   -- callback to find items, matcher will select from this list
   -- MUST return a (possibly empty) list
 
@@ -557,66 +496,88 @@ function Mythes.finder(opts, ctx)
 end
 
 function Mythes.transform(item)
+  -- part of picker's options
   -- called when populating the list
   return item -- noop for now
+end
+
+function Mythes.confirm(args)
+  vim.print(vim.inspect(args))
+end
+
+--[[ SNACKS ]]
+
+--- run codespell on buffer or directory, fill qflist and run snacks.qflist()
+--- @param bufnr? number buffer number, if `nil` codespell buffer's directory
+function M.codespell(bufnr)
+  -- notes:
+  -- * `:Open https://github.com/codespell-project/codespell`
+  -- * keymaps.lua sets <space>c/C to codespell current buffer file/directory
+  -- * testcase: succesful ==> successful
+  local target = vim.api.nvim_buf_get_name(bufnr or 0)
+  target = bufnr and target or vim.fs.dirname(target) -- a file or a directory
+
+  local function on_exit(obj)
+    local lines = vim.split(obj.stdout, '\n', { trimempty = true })
+    local results = {}
+    for _, line in ipairs(lines) do
+      local parts = vim.split(line, '%s*:%s*')
+      results[#results + 1] = { filename = parts[1], lnum = parts[2], text = parts[3], type = 'w' }
+    end
+
+    if #results > 0 then
+      -- on_exit is a 'fast event' context -> schedule vim.fn.xxx
+      vim.schedule(function()
+        vim.fn.setqflist(results)
+
+        require 'snacks.picker'.qflist({
+          win = {
+            input = { keys = { f = { 'codespell_fix', mode = { 'n' } } } },
+            list = { keys = { f = { 'codespell_fix', mode = { 'n' } } } },
+          },
+          actions = { codespell_fix = codespell_fix },
+        })
+      end)
+    else
+      vim.notify('codespell found no spelling errors', vim.log.levels.INFO)
+    end
+  end
+
+  -- run the cmd
+  vim.system({ 'codespell', '-d', target }, { text = true }, on_exit)
 end
 
 function M.thesaurus(word, opts)
   opts = opts or {}
 
-  local function preview(picker)
-    -- callback to update the preview window's title, ft and lines
-    -- called each time a new item in the list window becomes the current one
-
-    local item = picker.item
-    if item.lines == nil then
-      Mythes.preview(item)
-    end
-    -- update preview window
-    picker.preview:set_lines(item.lines)
-    picker.preview:set_title(item.title)
-    picker.preview:highlight({ ft = item.ft })
+  local providers = {
+    -- TODO: move to a field in M
+    default = Mythes,
+    mythes = Mythes,
+    wordnet = nil, -- TODO: add wordnet thesaurus to the mix
+    datamuse = nil, -- TODO: see `:Open https://www.datamuse.com/api/#md`
+    dictionaryapi = nil, -- TODO: see `:Open https://dictionaryapi.dev/`
+    -- example: `:Open https://api.dictionaryapi.dev/api/v2/entries/en/happy`
+    webster = nil, -- TODO: see `:Open https://www.dictionaryapi.com/` .. maybe, requires registerd API key
+  }
+  local p = providers[(opts.source or 'default'):lower()]
+  if p == nil then
+    vim.notify('provider not found: ' .. opts.source)
   end
-
-  local actions = {
-    -- keystroke handlers linked to by win={..}
-
-    alt_enter = function(picker, item)
-      -- initiate a new thesaurus search
-      local word = item and item.word or picker.matcher.pattern
-
-      picker.input:set('', word) -- reset input pattern, input prompt to word
-      picker.opts.search = word
-      picker:find({ refresh = true })
-    end,
-
-    enter = function()
-      vim.notify('enter was pressed')
-    end,
-  }
-
-  local win = {
-    -- config linking keystrokes to action handler functions by name
-    input = {
-      keys = {
-        ['<M-CR>'] = { 'alt_enter', mode = { 'n', 'i' } },
-        ['<CR>'] = { 'enter', mode = { 'n', 'i' } },
-      },
-    },
-  }
 
   local picker_opts = {
     title = 'Search Thesaurus',
     search = word:lower(),
-    preview = preview,
-    format = Mythes.format,
-    finder = Mythes.finder,
+    preview = (p or {}).preview,
+    format = (p or {}).format,
+    finder = (p or {}).finder,
+    transform = (p or {}).transform,
+    win = (p or {}).win,
+    actions = (p or {}).actions,
+    confirm = (p or {}).confirm,
     float = true,
-    transform = Mythes.transform,
-    win = win,
-    actions = actions,
   }
-  -- return require 'snacks.picker'.pick(opts)
+  -- 'snacks.picker'.pick(opts) is overloading picker itself
   return require 'snacks'.picker(picker_opts)
 end
 
@@ -630,6 +591,8 @@ function M.test(what, term)
     local stats = Mythes._test()
     local tdelta = vim.fn.reltimestr(vim.fn.reltime(t0))
     vim.print(vim.inspect({ tdelta, stats }))
+  elseif what == 'Mythes' then
+    vim.print(vim.inspect(what))
   else
     return 'unknown ' .. what
   end
