@@ -408,7 +408,7 @@ end
 --- searches Mythes thesaurus `word`, returns a table with term found and list of items with synonym-lists or empty table
 --- if table.term is nil, nothing was found. if err is also nil, nothing went wrong
 ---@param word string word for searching the thesaurus
----@return table item { term = word_found, syns = { {(pos), syn1, syn2,..}, ..} } or {}
+---@return table|nil item { term = word_found, syns = { {(pos), syn1, syn2,..}, ..} } or nil if not found
 ---@return string|nil error message or nil
 function Mythes.search(word)
   assert(Mythes:open())
@@ -418,11 +418,11 @@ function Mythes.search(word)
   -- search idx for `word` to get entry line
   line, _, err = Mythes.idx_search(word, Mythes.match_exactp) -- ignore offset into idx
   if line == nil or err then
-    return {}, err
+    return nil, err
   end
   local offset = tonumber(line:match('|(%d+)$'))
   if offset == nil then
-    return {}, '[error] dta offset not found on idx line'
+    return nil, '[error] dta offset not found on idx line'
   end
 
   -- read dta entry
@@ -430,20 +430,20 @@ function Mythes.search(word)
   assert(Mythes.close())
 
   -- get all the synonyms as a list of unique words
+  word = word:lower()
   local words = { [word] = true }
   for _, synset in ipairs(item.syns) do
     for _, synonym in ipairs(synset) do
-      words[synonym:gsub('%s*%b()%s*', '')] = true
+      words[synonym:gsub('%s*%b()%s*', ''):lower()] = true
     end
   end
-  words[''] = nil
+  words[''] = nil -- (pos) in synset ends up as key '', so remove here
   words = vim.tbl_keys(words)
-  table.sort(words) -- sorts in-place
+  table.sort(words) -- sorts in-place(!)
 
-  -- item = { term=word-found, syns = { {(pos), sun1, syn2, ..}, ..}
-  -- add snacks required `text` and some thesaurus specific fields
-  item.text = word -- used by snack's matcher when filtering the list via the input window
-  item.word = word -- the original word searched for
+  -- item = { term=word-found, syns = { {(pos), sun1, syn2, ..}, ..}, so add some fields
+  item.text = word -- mandatory: used by snack's matcher when filtering the list of items
+  item.word = word -- the original word searched for (term is what was found)
   item.words = words -- all (unique) synonyms as plain words in a sorted list
 
   -- vim.print(vim.inspect({ 'words', item.words }))
@@ -471,37 +471,41 @@ function Mythes.trace(word)
   Mythes.close()
 end
 
+---augment item with additional fields for previewing given `item`
 ---@param item table item to be previewed
 function Mythes.preview(item)
-  -- add members to item if not present already
-  -- ft:filetype     for preview window
-  -- lines:string[]  for preview window content
-  -- title:string    for preview window title
-  -- where item has:
+  -- set item.{title, lines, ft} to be used in update of preview window
+  -- item has keys:
   -- word string org search term
   -- term string term found
   -- syns list: { {(pos), syn1, syn2, .. }
-  -- caller needs to check if preview needs (re)doing
+  -- words unique list of words in the syns list
+  -- nb: caller needs to check if preview needs (re)doing
 
+  local column = '%-30s'
   item.title = item.text
   item.ft = 'markdown'
   local lines = { '', '# ' .. item.term, '' }
+  -- ## subsections per meaning/synset
   for _, synset in ipairs(item.syns) do
     local line = ''
     for n, elm in ipairs(synset) do
-      elm = elm:gsub('%s+term%)', ')') -- reduce noisy (... term)
+      -- elm = elm:gsub('%s+term%)', ')') -- reduce noisy (... term)
+      elm = elm:gsub('%s%b()', function(m)
+        return ' (' .. string.sub(m, 3, 3) .. ')'
+      end) -- reduce noisy (... term)
       if n == 1 then
         lines[#lines + 1] = ''
-        lines[#lines + 1] = '## ' .. elm:match('%((.-)%)')
+        lines[#lines + 1] = '## [' .. elm:match('%((.-)%)') .. ']'
         lines[#lines + 1] = ''
       else
         if #line == 0 then
-          line = elm
+          line = string.format(column, elm)
         elseif #line < 75 then
-          line = line .. ', ' .. elm
+          line = line .. string.format(column, elm)
         else
-          lines[#lines + 1] = line .. ','
-          line = elm
+          lines[#lines + 1] = line
+          line = string.format(column, elm)
         end
       end
     end
@@ -510,89 +514,79 @@ function Mythes.preview(item)
   item.lines = lines
 end
 
+function Mythes.format(item, _)
+  -- ignores picker argument
+  -- returns a list of: { {text, hl_group}, .. }
+  -- this gets called to format an item for display in the list window.
+
+  assert(item and item.text and item.syns, 'malformed item: ' .. vim.inspect(item))
+  return {
+    { ('%-20s | '):format(item.text), 'Special' },
+    { #item.syns .. ' meanings', 'Comment' },
+  }
+end
+
+function Mythes.finder(opts, ctx)
+  -- callback to find items, matcher will select from this list
+  -- MUST return a (possibly empty) list
+
+  local item, err = Mythes.search(opts.search)
+
+  if err then
+    vim.notify('error! ' .. err)
+    return {}
+  end
+
+  if item == nil or item.term == nil then
+    vim.notify('nothing found for ' .. opts.search, vim.log.levels.ERROR)
+    return {} -- clears the entire list
+  end
+
+  -- add the words of item as items as well
+  local items = { item }
+  for _, synword in ipairs(item.words) do
+    local xtra, synerr = Mythes.search(synword)
+    if not synerr and xtra and xtra.word ~= item.word then
+      xtra.word = xtra.word:lower()
+      xtra.term = xtra.term:lower()
+      items[#items + 1] = xtra
+    end
+  end
+
+  return items
+end
+
+function Mythes.transform(item)
+  -- called when populating the list
+  return item -- noop for now
+end
+
 function M.thesaurus(word, opts)
   opts = opts or {}
 
-  local function preview(picker) -- _ is picker
-    -- callback that updates the preview window with title, ft and lines
-    -- each time a new item in the list window becomes the current one.
+  local function preview(picker)
+    -- callback to update the preview window's title, ft and lines
+    -- called each time a new item in the list window becomes the current one
 
     local item = picker.item
     if item.lines == nil then
       Mythes.preview(item)
     end
     -- update preview window
-    picker.preview:reset() -- REVIEW: necessary ?
     picker.preview:set_lines(item.lines)
     picker.preview:set_title(item.title)
     picker.preview:highlight({ ft = item.ft })
-  end
-
-  local function format(item)
-    -- returns a list of: { {text, hl_group}, .. }
-    -- this gets called to format an item for display in the list window.
-
-    if item == nil or item.syns == nil or item.term == nil then
-      -- DEBUG: item.syns doesn't always exist at this point?
-      vim.print(vim.inspect({ 'format', item }))
-    end
-    return {
-      { ('%-20s | '):format(item.text), 'Special' },
-      { #item.syns .. ' meanings', 'Comment' },
-    }
-  end
-
-  local function th_finder(opts, ctx)
-    -- callback to find items, matcher will select from this list
-    -- MUST return a (possibly empty) list
-
-    -- local item, err = Mythes.search(opts.thesaurus.word)
-    local item, err = Mythes.search(opts.search)
-
-    vim.notify('running finder for ' .. opts.search)
-    if err then
-      vim.notify('error! ' .. err)
-      return {}
-    end
-
-    if item.term == nil then
-      vim.notify('nothing found for ' .. opts.search)
-      return {} -- clears the entire list
-    end
-
-    -- add the words of item as items as well
-    local items = { item }
-    for _, synword in ipairs(item.words) do
-      local xtra, synerr = Mythes.search(synword)
-      if not synerr and xtra and xtra.term then
-        xtra.word = xtra.word:lower()
-        xtra.term = xtra.term:lower()
-        items[#items + 1] = xtra
-      end
-    end
-
-    return items
-  end
-
-  local function transform(item)
-    -- vim.print(vim.inspect({ 'transform called for', item }))
-    return item -- noop for now
   end
 
   local actions = {
     -- keystroke handlers linked to by win={..}
 
     alt_enter = function(picker, item)
+      -- initiate a new thesaurus search
       local word = item and item.word or picker.matcher.pattern
 
-      -- use word to initiate new thesaurus search
-      -- picker.opts.thesaurus.word = word
-
-      vim.notify('switching to ' .. word)
       picker.input:set('', word) -- reset input pattern, input prompt to word
       picker.opts.search = word
-
-      -- picker:find({ thesaurus = { word = word } }, nil)
       picker:find({ refresh = true })
     end,
 
@@ -611,24 +605,14 @@ function M.thesaurus(word, opts)
     },
   }
 
-  -- local item, err = Mythes.search(word)
-  -- if err then
-  --   vim.notify('[error] no items: ' .. err)
-  -- end
   local picker_opts = {
-    -- my_options
-    thesaurus = {
-      word = word,
-    },
-    -- picker options
-    -- items = { item },
     title = 'Search Thesaurus',
     search = word:lower(),
     preview = preview,
-    format = format,
-    finder = th_finder,
+    format = Mythes.format,
+    finder = Mythes.finder,
     float = true,
-    transform = transform,
+    transform = Mythes.transform,
     win = win,
     actions = actions,
   }
