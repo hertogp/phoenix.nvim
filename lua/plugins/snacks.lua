@@ -52,6 +52,8 @@ return {
         Snacks.picker.buffers({
           hidden = true,
           nofile = false,
+          current = false, -- easier to goto alternate buffer
+          last_used = true,
           prompt = ' > ',
           on_show = function()
             vim.cmd.stopinsert()
@@ -98,7 +100,7 @@ return {
     {
       '<space>f',
       function()
-        Snacks.picker.files()
+        Snacks.picker.files({ hidden = true })
       end,
       desc = 'Find Files',
     },

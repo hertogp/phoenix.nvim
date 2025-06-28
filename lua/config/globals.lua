@@ -266,11 +266,14 @@ local function show_in_tab(t)
   api.nvim_buf_set_keymap(0, 'n', 'q', '<cmd>close<cr>', { noremap = true, silent = true })
 end
 
+--[[ :Show ]]
+
 api.nvim_create_user_command(
   'Show',
   show_in_tab,
   { complete = 'shellcmd', nargs = '+', desc = 'Show cmd output in a new tab' }
 )
+
 api.nvim_create_user_command('ShowVarsGlobal', 'Show let g:', { desc = 'Show global vars' })
 api.nvim_create_user_command('ShowVarsBuffer', 'Show let b:', { desc = 'Show buffer vars' })
 api.nvim_create_user_command('ShowVarsWindow', 'Show let w:', { desc = 'Show window vars' })
@@ -291,6 +294,12 @@ api.nvim_create_user_command('ShowVimApiInfo', 'Show lua =vim.print(vim.fn.api_i
 api.nvim_create_user_command('ShowVimFn', 'Show lua =vim.api', { desc = 'Show Lua vim.fn table' })
 api.nvim_create_user_command('ShowSysEnv', 'Show lua =vim.fn.environ()', { desc = 'Show shell env' })
 api.nvim_create_user_command('ShowHighlights', 'Show hi', { desc = 'Show highlights (without highlighting)' })
+
+api.nvim_create_user_command(
+  'Notes',
+  "lua require'snacks.picker'.files({cwd='~/notes/'})",
+  { desc = 'Find notes like ,fn' }
+)
 -- vim.spairs is (key) sorted pairs, see below for nice table func additions
 -- https://github.com/premake/premake-core/blob/master/src/base/table.lua
 
@@ -318,6 +327,7 @@ local function save_keep_pos()
   end
 end
 
+--[[ :SaveKeepPos ]]
 api.nvim_create_user_command('SaveKeepPos', save_keep_pos, {})
 
 function Synstack()

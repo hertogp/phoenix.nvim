@@ -9,7 +9,7 @@ date: today
 - [x] two
 - [x] three
 - [-] four
-- [c] cancelled
+- [c] canceled
 
 "~/home/page"
 "~/homepage"
