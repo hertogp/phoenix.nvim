@@ -238,7 +238,7 @@ function Mythes.dta_read(offset)
   assert(Mythes:open())
   local file = Mythes.fh.dta
   local line, err
-  local acc = {}
+  local syns = {} -- synsets found
 
   if file == nil then
     return {}, '[error] dta filehandle not available'
@@ -263,34 +263,34 @@ function Mythes.dta_read(offset)
 
       local synset = vim.split(line, '|', { plain = true, trimempty = true })
       synset = vim.tbl_map(vim.trim, synset)
-      -- add synset {(pos), syn1, syn2,..} to the accumulator list
-      acc[#acc + 1] = synset
+      -- add synset {(pos), syn1, syn2,..} to the synonyms list
+      syns[#syns + 1] = synset
     end
   else
     return {}, '[error] unexpected line at offset: ' .. line
   end
 
-  return { term = term, syns = acc }, nil
+  return { term = term, syns = syns }, nil
 end
 
 ---@param line string current line in the index to evaluate
 ---@param word string word to search for in the index
-function Mythes.idx_match_exact(line, word)
-  local entry = line:match('^[^|]+') -- <entry>|<offset> in dta file
+---@return -1|0|1|nil result -1 go left, 0 found, 1 go right, nil is illegal `line`
+function Mythes.match_exactp(line, word)
+  local entry = line:match('^[^|]+') -- <entry>|<offset in dta file>
 
   if entry == nil then
-    return nil -- aborts the search
-  end
-  if word == entry then
+    return nil
+  elseif entry == word then
     return 0
-  elseif word < entry then
+  elseif entry > word then
     return -1
   else
     return 1
   end
 end
 
----modified binary search for word in an ordered (thesaurus) index
+---binary search for word in an ordered (thesaurus) index
 ---@param word string to search for in the index file
 ---@param matchp fun(line:string, term:string):-1|0|1|nil
 ---@return string|nil entry found in the index for given `word`, nil for not found
@@ -298,7 +298,6 @@ end
 ---@return string|nil error message or nil for no error
 function Mythes.idx_search(word, matchp)
   local file = Mythes.fh.idx
-  assert(file)
   local line, offset -- non-nil offset signals success
   local p0, p1, err = 0, file:seek('end', 0)
   if err then
@@ -319,8 +318,8 @@ function Mythes.idx_search(word, matchp)
       --  term > line, move p0 to \n of last line read
       p0 = file:seek('cur') - 1
     elseif m == -1 then
-      -- term < line, move p1 to start of discard
-      p1 = oldpos
+      -- term < line, move p1 to just before the start of discard
+      p1 = oldpos - 1 -- guarantees that p1 moves left
     elseif m == 0 then
       -- found it, return line, offset and no err msg
       return line, file:seek('cur') - #line - 1, nil
@@ -372,32 +371,66 @@ function Mythes.close()
   return true
 end
 
---- searches Mythes thesaurus `word`, returns, possibly empty, list of items with synonym-lists
+function Mythes._test()
+  -- test we can find all words in the index
+  assert(Mythes:open())
+  local fh = Mythes.fh.idx
+  local stats = {}
+  local line
+  _ = fh:read('*l') -- skip encoding
+  line = fh:read('*l') -- nr of entries
+  local nidx = line
+
+  line = fh:read('*l')
+  local nwords, nerrs, nfound = 0, 0, 0
+  while line do
+    nwords = nwords + 1
+    local word = line:match('^[^|]+')
+    local entry, _, err = Mythes.idx_search(word, Mythes.match_exactp)
+    if err then
+      nerrs = nerrs + 1
+    end
+    if entry then
+      nfound = nfound + 1
+    end
+    line = fh:read('*l')
+  end
+  stats = {
+    nidx = nidx,
+    nwords = nwords,
+    nfound = nfound,
+    notfound = nwords - nfound,
+    nerrs = nerrs,
+  }
+  assert(Mythes.close())
+  return stats
+end
+--- searches Mythes thesaurus `word`, returns a table with term found and list of items with synonym-lists or empty table
+--- if table.term is nil, nothing was found. if err is also nil, nothing went wrong
 ---@param word string word for searching the thesaurus
----@return table item { text = word, synsets = {term, {(pos), syn1, syn2,..}, ..} }
+---@return table item { term = word_found, syns = { {(pos), syn1, syn2,..}, ..} } or {}
 ---@return string|nil error message or nil
 function Mythes.search(word)
   assert(Mythes:open())
-  -- vim.print(vim.inspect({ 'search 1 idx, dta', Mythes.fh.idx, Mythes.fh.dta }))
+
   local line, item, err
 
-  -- read idx entry
-  line, _, err = Mythes.idx_search(word, Mythes.idx_match_exact) -- ignore offset into idx
+  -- search idx for `word` to get entry line
+  line, _, err = Mythes.idx_search(word, Mythes.match_exactp) -- ignore offset into idx
   if line == nil or err then
     return {}, err
   end
-  local offset = line:match('|(%d+)$')
+  local offset = tonumber(line:match('|(%d+)$'))
   if offset == nil then
-    return {}, '[error] idx offset not found on idx line'
+    return {}, '[error] dta offset not found on idx line'
   end
 
   -- read dta entry
-  offset = tonumber(offset)
   item, err = Mythes.dta_read(offset)
   assert(Mythes.close())
 
   -- get all the synonyms as a list of unique words
-  local words = { word = true }
+  local words = { [word] = true }
   for _, synset in ipairs(item.syns) do
     for _, synonym in ipairs(synset) do
       words[synonym:gsub('%s*%b()%s*', '')] = true
@@ -427,7 +460,8 @@ function Mythes.trace(word)
     local fuz = vim.fn.matchfuzzypos({ saw }, sword)
     nr = nr + 1
     seen[saw] = { nr, tonumber(offset), fuz and fuz[3] or 0, M.soundex(saw) }
-    return Mythes.idx_match_exact(line, sword)
+    print(vim.inspect('saw ' .. saw))
+    return Mythes.match_exactp(line, sword)
   end
 
   local line, offset = Mythes.idx_search(word, trace)
@@ -449,7 +483,6 @@ function Mythes.preview(item)
   -- syns list: { {(pos), syn1, syn2, .. }
   -- caller needs to check if preview needs (re)doing
 
-  vim.notify('preview item ' .. item.term)
   item.title = item.text
   item.ft = 'markdown'
   local lines = { '', '# ' .. item.term, '' }
@@ -499,6 +532,10 @@ function M.thesaurus(word, opts)
     -- returns a list of: { {text, hl_group}, .. }
     -- this gets called to format an item for display in the list window.
 
+    if item == nil or item.syns == nil or item.term == nil then
+      -- DEBUG: item.syns doesn't always exist at this point?
+      vim.print(vim.inspect({ 'format', item }))
+    end
     return {
       { ('%-20s | '):format(item.text), 'Special' },
       { #item.syns .. ' meanings', 'Comment' },
@@ -507,21 +544,19 @@ function M.thesaurus(word, opts)
 
   local function th_finder(opts, ctx)
     -- callback to find items, matcher will select from this list
-    -- the Mythes finder, others could include WordNet, online providers etc ..
-    -- vim.notify(vim.inspect({ 'finder', 'word = ' .. opts.thesaurus.word, '#opts', #opts }))
     -- MUST return a (possibly empty) list
-    local item, err = Mythes.search(opts.thesaurus.word)
 
-    -- vim.notify('th_finder for ' .. opts.thesaurus.word)
-    -- vim.notify(vim.inspect(item))
+    -- local item, err = Mythes.search(opts.thesaurus.word)
+    local item, err = Mythes.search(opts.search)
 
+    vim.notify('running finder for ' .. opts.search)
     if err then
       vim.notify('error! ' .. err)
       return {}
     end
 
     if item.term == nil then
-      vim.notify('nothing found for ' .. opts.thesaurus.word)
+      vim.notify('nothing found for ' .. opts.search)
       return {} -- clears the entire list
     end
 
@@ -529,7 +564,9 @@ function M.thesaurus(word, opts)
     local items = { item }
     for _, synword in ipairs(item.words) do
       local xtra, synerr = Mythes.search(synword)
-      if not synerr then
+      if not synerr and xtra and xtra.term then
+        xtra.word = xtra.word:lower()
+        xtra.term = xtra.term:lower()
         items[#items + 1] = xtra
       end
     end
@@ -546,18 +583,17 @@ function M.thesaurus(word, opts)
     -- keystroke handlers linked to by win={..}
 
     alt_enter = function(picker, item)
-      -- vim.notify('switching to ' .. picker.list.filter.pattern)
-      -- vim.notify('switching to ' .. picker.list.matcher.pattern) -- ok
-      -- vim.notify('switching to ' .. picker.filter.pattern) -- not ok
-      -- vim.print(vim.inspect(picker))
-
       local word = item and item.word or picker.matcher.pattern
-      picker.opts.thesaurus.word = word
 
-      vim.notify('switching to ' .. word .. ' maybe patt ' .. picker.matcher.pattern)
+      -- use word to initiate new thesaurus search
+      -- picker.opts.thesaurus.word = word
+
+      vim.notify('switching to ' .. word)
+      picker.input:set('', word) -- reset input pattern, input prompt to word
+      picker.opts.search = word
 
       -- picker:find({ thesaurus = { word = word } }, nil)
-      picker:find({}, nil)
+      picker:find({ refresh = true })
     end,
 
     enter = function()
@@ -575,10 +611,10 @@ function M.thesaurus(word, opts)
     },
   }
 
-  local item, err = Mythes.search(word)
-  if err then
-    vim.notify('[error] no items: ' .. err)
-  end
+  -- local item, err = Mythes.search(word)
+  -- if err then
+  --   vim.notify('[error] no items: ' .. err)
+  -- end
   local picker_opts = {
     -- my_options
     thesaurus = {
@@ -587,6 +623,7 @@ function M.thesaurus(word, opts)
     -- picker options
     -- items = { item },
     title = 'Search Thesaurus',
+    search = word:lower(),
     preview = preview,
     format = format,
     finder = th_finder,
@@ -604,6 +641,11 @@ function M.test(what, term)
     return Mythes.search(term)
   elseif what == 'trace' then
     return Mythes.trace(term)
+  elseif what == 'testall' then
+    local t0 = vim.fn.reltime()
+    local stats = Mythes._test()
+    local tdelta = vim.fn.reltimestr(vim.fn.reltime(t0))
+    vim.print(vim.inspect({ tdelta, stats }))
   else
     return 'unknown ' .. what
   end
