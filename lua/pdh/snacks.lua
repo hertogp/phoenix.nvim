@@ -34,7 +34,7 @@ local M = {}
 
 --]]
 
---[[ SPELLING ]]
+--[[ HELPERS ]]
 
 local function codespell_fix(picker, current)
   -- apply a fix suggested by codespell
@@ -81,26 +81,15 @@ local function codespell_fix(picker, current)
   end
 end
 
+---returns the soundex encoding for given `str`
+---@param str string
+---@return string code soundex encoding for string, 000 means no valid encoding available
 local function soundex(str)
   -- `:Open https://en.wikipedia.org/wiki/Soundex`
   -- `:Open https://rosettacode.org/wiki/Soundex#Lua`
-  -- Using this algorithm,
-  -- "Robert" and "Rupert" return the same string "R163" while
-  -- "Rubin" yields "R150".
-  -- "Ashcraft" and "Ashcroft" both yield "A261".
-  -- "Tymczak" yields "T522" not "T520" (the chars 'z' and 'k' in the name are coded as 2 twice since a vowel lies in between them).
-  -- "Pfister" yields "P236" not "P123" (the first two letters have the same number and are coded once as 'P'), and
-  -- "Honeyman" yields "H555".
-  --
-  -- 0. retain first letter, drop all aeiouyhw letters
-  -- 1. after the first letter, replace consonants with digits:
-  --    a. 2+ letters with same nr, keep first (discard the rest)
-  --    b. 2 letters with same nr with h,w or y in between are encoded as 1 letter (discard 2nd one)
-  --    c. 2 letters with same nr with vowel in between are encoded twice
-  -- 2. replace consonants with digits
-  -- 3. pad right with 0's till width is 4 (1 letter, 3 digits)
-  local d, digits, alpha = '01230120022455012623010202', {}, ('A'):byte()
-  d:gsub('.', function(c)
+  -- implements the later algorithm
+  local dd, digits, alpha = '01230120022455012623010202', {}, ('A'):byte()
+  dd:gsub('.', function(c)
     digits[string.char(alpha)] = c
     alpha = alpha + 1
   end)
@@ -124,7 +113,255 @@ local function soundex(str)
     return (rv .. '0000'):sub(1, 4)
   end
 end
+
+---binary search for word in an ordered (thesaurus) index
+---@param file any filehandle of file to be searched
+---@param word string to search for in the index file
+---@param linexpr string a `string.match` expression to extract word from line for comparison
+---@return string|nil line found in the file for given `word`, nil for not found
+---@return number offset to last line read while searching (so not necessarily matched)
+---@return string|nil error message or nil for no error
+local function binsearch(file, word, linexpr)
+  local line
+  local p0, p1, err = 0, file:seek('end', 0)
+  if err then
+    return nil, 0, err
+  end
+
+  while p0 <= p1 do
+    -- TODO: we only need pos = file:seek('set', math.floor((p0+p1)/2))
+    local pos = math.floor((p0 + p1) / 2)
+    local oldpos = file:seek('set', pos)
+
+    _ = file:read('*l') -- discard (remainder) of current line
+    line = file:read('*l') -- read next available line
+
+    --  p0..[discard\nline\n]..p1 --
+
+    local entry = line:match(linexpr) -- extract compare-word from line in file
+    if entry == nil then
+      return nil, file:seek('cur') - #line - 1, ('[error] expr %s, invalid input %q '):format(linexpr, line)
+    elseif word < entry then
+      -- term < line, move p1 to just before the start of discard
+      p1 = oldpos - 1 -- guarantees that p1 moves left
+    elseif word > entry then
+      --  term > line, move p0 to \n of last line read
+      p0 = file:seek('cur') - 1
+    else
+      -- word == entry, so found it: return line, byteoffset and no error
+      return line, file:seek('cur') - #line - 1, nil
+    end
+  end
+
+  -- nothing found, so return nil, last offset and no err msg
+  return nil, file:seek('cur') - #line - 1, nil
+end
+
 --[[ THESAURUS ]]
+
+--[[ wordnet item:
+
+item for danger = {
+
+
+}
+
+--]]
+
+local Wordnet = {
+  pos = { 'adj', 'adv', 'noun', 'verb' }, -- {index, data}.<pos> file extensions
+  mappos = {
+    a = 'adj',
+    s = 'adj-s', -- adjective satellite (?)
+    v = 'verb',
+    n = 'noun',
+    r = 'adv',
+  },
+  fmt = vim.fs.dirname(vim.fn.stdpath('data')) .. '/wordnet/%s.%s',
+  fh = {
+    -- fh categories below are indexed by pos: 'adj', 'adv' etc..
+    index = {},
+    data = {},
+  },
+}
+
+---parse a line from index.<pos>; returns table or nil if not found
+---@param line string from an index.<pos> file to be parsed
+---@return table|nil table with constituent parts of the index line, nil if not found
+---@return string|nil error message if applicable, nil otherwise
+function Wordnet.parse_idx(line)
+  local rv = {}
+  local parts = vim.split(line, '%s+', { trimempty = true })
+  -- rv.parts = parts -- only needed for debugging
+  rv.term = parts[1] -- should match word which is added later
+  rv.pos = Wordnet.mappos[parts[2]] -- should match pos in for-loop in search
+  -- rv.synset_cnt = tonumber(parts[3]) -- same as #offsets
+  local ptr_cnt = tonumber(parts[4]) -- same as #pointers, may be 0
+  rv.pointers = {} -- kind of pointers that lemma/term has in all the synsets it is in
+  for n = 5, 4 + ptr_cnt do
+    table.insert(rv.pointers, parts[n])
+  end
+  local ix = 5 + ptr_cnt
+  -- rv.sense_cnt = tonumber(parts[ix]) -- same as #offsets, redundant entry
+  rv.tagsense_cnt = tonumber(parts[ix + 1])
+  rv.offsets = {} -- offset into data.<rv.pos> for different senses/meanings of lemma/term
+  for n = ix + 2, #parts do
+    table.insert(rv.offsets, parts[n])
+  end
+
+  -- TODO: perform sanity checks and return nil, msg if things don't add up (?)
+
+  return rv, nil
+end
+
+---parses a data.<pos> line into table
+---@param line string the data.<pos> entry to be parsed
+---@param pos string part-of-speech where `line` came from (data.<pos>)
+---@return table|nil result table with parsed fields; nil on error
+---@return string|nil
+function Wordnet.parse_dta(line, pos)
+  local rv = {
+    words = {}, -- of this synset
+    frames = {}, -- only filled when pos==verb
+    pointers = {}, -- this synset's pointers to other synsets
+  }
+  local data = vim.split(line, '|')
+  local parts = vim.split(data[1], '%s+', { trimempty = true })
+  local gloss = vim.tbl_map(vim.trim, vim.split(data[2], ';%s*'))
+  rv.gloss = gloss -- definition and/or example sentences
+  -- rv.parts = parts -- only needed for debugging
+
+  -- collect fixed fields
+  rv.lex_fnum = parts[2] -- 2-digits, id of dbfile/lexographical-file that contains synset
+  rv.pos = Wordnet.mappos[parts[3]] -- n noun, v verb, a adj, s adj-satellite, r adverb
+  local words_cnt = tonumber(parts[4], 16) -- 2-digit hexnum of words in synset (1 or more)
+
+  -- collect words_count x [word lexid] variable parts
+  local ix = 5
+  for i = ix, ix + 2 * (words_cnt - 1), 2 do
+    table.insert(rv.words, { parts[i], parts[i + 1] })
+  end
+
+  -- collect ptr_count x [{symbol, synset-offset, pos-char, src|tgt hex numbers}, ..]
+  -- these point to other data.<pos> entries whose relation is given by symbol
+  -- (eg. symbol[adj][&]="similar to")
+  ix = 5 + 2 * words_cnt
+  local ptrs_cnt = tonumber(parts[ix]) -- 3-digit nr, is nr of ptrs to other synsets
+  ix = ix + 1
+  for i = ix, ix + (ptrs_cnt - 1) * 4, 4 do
+    local srcnr, dstnr = parts[i + 3]:match('^(%x%x)(%x%x)')
+    srcnr = tonumber(srcnr, 16)
+    dstnr = tonumber(dstnr, 16)
+    table.insert(rv.pointers, {
+      symbol = parts[i],
+      offset = parts[i + 1],
+      pos = Wordnet.mappos[parts[i + 2]] or parts[i + 2],
+      srcnr = srcnr,
+      dstnr = dstnr,
+    })
+  end
+
+  if pos == 'verb' then
+    ix = ix + ptrs_cnt * 4
+    -- collect frame_cnt x ['+' f_num w_num]
+    local frame_cnt = tonumber(parts[ix])
+    if frame_cnt > 0 then
+      ix = ix + 1
+      for i = ix, ix + 3 * (frame_cnt - 1), 3 do
+        -- skip the '+' character preceeding the f_num w_num
+        table.insert(rv.frames, {
+          frame_nr = tonumber(parts[i + 1]),
+          word_nr = tonumber(parts[i + 2], 16),
+        })
+      end
+    end
+  end
+
+  return rv, nil
+end
+
+---reads data entries for given `idx` and adds `.dta` field with parsed results
+---@param idx table pos-specific, parsed, index entry
+---@return true|false success indicator, if true adds parsed data in `idx.dta`
+---@return string|nil error message in case of an error, nil otherwise
+function Wordnet.data(idx)
+  idx.senses = {}
+  for _, offset in ipairs(idx.offsets) do
+    local line, _, err = binsearch(Wordnet.fh.data[idx.pos], offset, '^%S+')
+    if err then
+      return false, '[error getting data] ' .. err
+    elseif line then
+      -- ignore not found
+      local dta = Wordnet.parse_dta(line, idx.pos)
+      table.insert(idx.senses, dta)
+    end
+  end
+
+  return true, nil
+end
+
+---searches the thesaurus for given `word`, returns its item or nil
+---@param word string word or collocation to lookup in the thesaurus
+---@return table|nil item thesaurus results for given `word`, nil if not found
+---@return string|nil error message or nil for no error
+function Wordnet.search(word)
+  Wordnet:open()
+  local item = {}
+  local words = {}
+
+  for _, pos in ipairs(Wordnet.pos) do
+    -- search word in all index.<pos>-files
+    item[pos] = {}
+    local line, _, err = binsearch(Wordnet.fh.index[pos], word, '^%S+')
+
+    if err then
+      return nil, '[error binsearch] ' .. err
+    elseif line then
+      local idx, err_idx = Wordnet.parse_idx(line)
+      if err_idx then
+        return nil, '[error parse_idx] ' .. err_idx
+      elseif idx then
+        idx.word = word
+        Wordnet.data(idx) -- enrich item[pos]-instance
+        item[pos] = idx
+        for _, sense in ipairs(idx.senses) do
+          for _, w in ipairs(sense.words) do
+            local new = w[1]:gsub('%b()$', '')
+            words[new] = true
+          end
+        end
+      else
+        -- nothing found
+        return nil, nil
+      end
+    end
+  end
+  item.words = vim.tbl_keys(words)
+  -- TODO: collect all words from all <pos> entries in 1 list
+
+  Wordnet:close()
+  return item, nil
+end
+
+function Wordnet:open()
+  for _, stem in ipairs({ 'index', 'data' }) do
+    for _, pos in ipairs(self.pos) do
+      if self.fh[stem][pos] == nil then
+        self.fh[stem][pos] = io.open(self.fmt:format(stem, pos))
+        assert(self.fh[stem][pos])
+      end
+    end
+  end
+end
+
+function Wordnet:close()
+  for _, fh in pairs(self.fh) do
+    for _, pos in ipairs(self.pos) do
+      fh[pos]:close()
+      fh[pos] = nil
+    end
+  end
+end
 
 local Mythes = {
   cfg = {
@@ -153,8 +390,8 @@ local Mythes = {
   },
 
   win = {
-    -- part of picker's options
-    -- snack's win config linking keystrokes to action handler functions by name
+    -- part of picker's options, snack's win config:
+    -- linking keystrokes to action handler functions by name
     input = {
       keys = {
         ['<M-CR>'] = { 'alt_enter', mode = { 'n', 'i' } },
@@ -339,7 +576,7 @@ function Mythes._test()
   assert(Mythes.close())
   return stats
 end
---- searches Mythes thesaurus `word`, returns a table with term found and list of items with synonym-lists or empty table
+--- searches Mythes thesaurus `word`, returns an item with 5 fields: term, syns, text, word, words
 --- if table.term is nil, nothing was found. if err is also nil, nothing went wrong
 ---@param word string word for searching the thesaurus
 ---@return table|nil item { term = word_found, syns = { {(pos), syn1, syn2,..}, ..} } or nil if not found
@@ -349,21 +586,23 @@ function Mythes.search(word)
 
   local line, item, err
 
-  -- search idx for `word` to get entry line
-  line, _, err = Mythes.idx_search(word, Mythes.match_exactp) -- ignore offset into idx
+  -- search idx for `word` to get offset to entry line in dat-file
+  line, _, err = Mythes.idx_search(word, Mythes.match_exactp) -- ignores offset into idx
   if line == nil or err then
     return nil, err
   end
+
+  -- pickup offset into dat file
   local offset = tonumber(line:match('|(%d+)$'))
   if offset == nil then
     return nil, '[error] dta offset not found on idx line'
   end
 
-  -- read dta entry
-  item, err = Mythes.dta_read(offset)
+  -- read entry in dat file
+  item, err = Mythes.dta_read(offset) -- item has term, syns fields
   assert(Mythes.close())
 
-  -- get all the synonyms as a list of unique words
+  -- collect words from syns without any (annotations)
   word = word:lower()
   local words = { [word] = true }
   for _, synset in ipairs(item.syns) do
@@ -373,21 +612,27 @@ function Mythes.search(word)
   end
   words[''] = nil -- (pos) in synset ends up as key '', so remove here
   words = vim.tbl_keys(words)
-  table.sort(words) -- sorts in-place(!)
+  table.sort(words) -- sorts in-place
 
-  -- item = { term=word-found, syns = { {(pos), sun1, syn2, ..}, ..}, so add some fields
-  item.text = word -- mandatory: used by snack's matcher when filtering the list of items
+  -- add text, word and words fields
+  item.text = word -- mandatory for snacks: used by the matcher when filtering the list of items
   item.word = word -- the original word searched for (term is what was found)
   item.words = words -- all (unique) synonyms as plain words in a sorted list
+
+  -- item now has: term, word, words & syns field
 
   return item, err
 end
 
+---prints words seen while search for `word`
+---@param word string word to lookup in index file
 function Mythes.trace(word)
   assert(Mythes:open())
 
   local seen = {}
   local nr = 0
+
+  -- closure, updates seen & nr and then uses original match predicate
   local function trace(line, sword)
     local saw, offset = line:match('^([^|]+)|(%d+)')
     local fuz = vim.fn.matchfuzzypos({ saw }, sword)
@@ -452,10 +697,9 @@ function Mythes.preview(picker)
 end
 
 function Mythes.format(item, _)
-  -- part of picker's options
-  -- ignores picker argument
-  -- returns a list of: { {text, hl_group}, .. }
-  -- this gets called to format an item for display in the list window.
+  -- part of picker's options, ignores picker argument
+  -- returns: { {text, hl_group}, .. } to be displayed on 1 line in list window
+  -- this function called to format an item for display in the list window.
 
   assert(item and item.text and item.syns, 'malformed item: ' .. vim.inspect(item))
   return {
@@ -468,7 +712,6 @@ function Mythes.finder(opts, ctx)
   -- part of picker's options
   -- callback to find items, matcher will select from this list
   -- MUST return a (possibly empty) list
-
   local item, err = Mythes.search(opts.search)
 
   if err then
@@ -482,7 +725,7 @@ function Mythes.finder(opts, ctx)
   end
 
   -- add the words of item as items as well
-  local items = { item }
+  local items = { item } -- start with sought item first, stays put in preview window
   for _, synword in ipairs(item.words) do
     local xtra, synerr = Mythes.search(synword)
     if not synerr and xtra and xtra.word ~= item.word then
@@ -496,12 +739,12 @@ function Mythes.finder(opts, ctx)
 end
 
 function Mythes.transform(item)
-  -- part of picker's options
-  -- called when populating the list
+  -- part of picker's options, called when populating the list
   return item -- noop for now
 end
 
 function Mythes.confirm(args)
+  -- default action for <enter>, unless that's been overridden
   vim.print(vim.inspect(args))
 end
 
@@ -513,7 +756,7 @@ function M.codespell(bufnr)
   -- notes:
   -- * `:Open https://github.com/codespell-project/codespell`
   -- * keymaps.lua sets <space>c/C to codespell current buffer file/directory
-  -- * testcase: succesful ==> successful
+  -- * testcase: successful ==> successful
   local target = vim.api.nvim_buf_get_name(bufnr or 0)
   target = bufnr and target or vim.fs.dirname(target) -- a file or a directory
 
@@ -577,7 +820,7 @@ function M.thesaurus(word, opts)
     confirm = (p or {}).confirm,
     float = true,
   }
-  -- 'snacks.picker'.pick(opts) is overloading picker itself
+  -- 'snacks.picker'.pick(opts) is what is called by picker()
   return require 'snacks'.picker(picker_opts)
 end
 
@@ -596,6 +839,84 @@ function M.test(what, term)
   else
     return 'unknown ' .. what
   end
+end
+
+function M.soundex(words, opts)
+  if type(words) == 'table' and words.filename then
+    opts = words
+    words = {}
+  end
+
+  if type(words) == 'string' then
+    words = { words }
+  end
+
+  if words == nil or #words == 0 then
+    words = {}
+    Mythes:open()
+    for line in Mythes.fh.idx:lines() do
+      local word = line:match('^[^|]+')
+      words[#words + 1] = word:gsub('%s+', '_')
+    end
+    Mythes.close()
+  end
+
+  -- calc the soundex codes
+  local map = {}
+  for _, word in ipairs(words) do
+    local code = soundex(word)
+    word = word:gsub('_', ' ')
+    if map[code] == nil then
+      map[code] = { word }
+    else
+      table.insert(map[code], word)
+    end
+  end
+
+  map['0000'] = nil -- delete the no-code available entry
+  local keys = vim.tbl_keys(map)
+  table.sort(keys)
+
+  for _, code in pairs(keys) do
+    vim.print(('%s %s'):format(code, table.concat(map[code], ', ')))
+  end
+
+  -- check for output file name
+  local filename = opts and opts.filename
+  local fh = filename and io.open(filename, 'w')
+  if fh then
+    for _, code in pairs(keys) do
+      fh:write(('%s %s\n'):format(code, table.concat(map[code], ', ')))
+    end
+    fh:close()
+  end
+end
+
+function M.wordnet(word)
+  local items, err = Wordnet.search(word)
+  if err then
+    vim.print(vim.inspect({ 'err', err, 'items', items }))
+  elseif #items > 0 then
+    -- for n, item in ipairs(items) do
+    --   -- vim.print(vim.inspect({ n, item }))
+    --   local words = {}
+    --   for _, pos in ipairs(Wordnet.pos) do
+    --     senses = item[pos].senses
+    --     if senses then
+    --       for _, sense in ipairs(senses) do
+    --         vim.print(vim.inspect({ 'sense', sense }))
+    --         for _, word in ipairs(sense.words) do
+    --           words[word[1]] = true
+    --         end
+    --       end
+    --     end
+    --   end
+    --   vim.print(vim.inspect({ 'item', vim.tbl_keys(words) }))
+    -- end
+  else
+    vim.print('nothing found')
+  end
+  vim.print(vim.inspect(items))
 end
 
 -- snacks/picker/config/source.lua -> M.xxx = snacks.picker.xxx.Config w/ finder,format,preview etc..
