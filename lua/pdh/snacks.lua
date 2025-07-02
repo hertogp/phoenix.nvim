@@ -398,11 +398,11 @@ function Wordnet.parse_dta(line, pos)
     })
   end
 
-  -- frame_cnt x [+ (skipped) frame_nr word_nr (hex)]
-  if pos == 'verb' then
-    ix = ix + ptrs_cnt * 4
+  -- [frame_cnt x [+ (skipped) frame_nr word_nr (hex)]] -- entire thing is optional!
+  ix = ix + ptrs_cnt * 4
+  if ix < #parts and pos == 'verb' then
     local frame_cnt = tonumber(parts[ix])
-    if frame_cnt > 0 then
+    if frame_cnt and frame_cnt > 0 then
       ix = ix + 1
       for i = ix, ix + 3 * (frame_cnt - 1), 3 do
         table.insert(rv.frames, {
