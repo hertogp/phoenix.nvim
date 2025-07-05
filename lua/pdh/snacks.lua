@@ -137,21 +137,19 @@ local function binsearch(file, word, linexpr)
   end
 
   while p0 <= p1 do
-    -- TODO: we only need pos = file:seek('set', math.floor((p0+p1)/2))
-    local pos = math.floor((p0 + p1) / 2)
-    local oldpos = file:seek('set', pos)
-
+    local pos = file:seek('set', math.floor((p0 + p1) / 2))
     _ = file:read('*l') -- discard (remainder) of current line
     line = file:read('*l') -- read next available line
 
-    --  p0..[discard\nline\n]..p1 --
+    -- p0...[discard\nline\n]...p1 --
+    ---------^= pos----------^= cur
 
-    local entry = line:match(linexpr) -- extract compare-word from line in file
+    local entry = line:match(linexpr)
     if entry == nil then
       return nil, file:seek('cur') - #line - 1, ('[error] expr %s, invalid input %q '):format(linexpr, line)
     elseif word < entry then
       -- term < line, move p1 to just before the start of discard
-      p1 = oldpos - 1 -- guarantees that p1 moves left
+      p1 = pos - 1 -- guarantees that p1 moves left
     elseif word > entry then
       --  term > line, move p0 to \n of last line read
       p0 = file:seek('cur') - 1
@@ -165,49 +163,81 @@ local function binsearch(file, word, linexpr)
   return nil, file:seek('cur') - #line - 1, nil
 end
 
---[[ THESAURUS ]]
+--[[ WORDNET thesaurus ]]
 
 --[[ wordnet
-word -> +-> index.pos1 -> word, (aka lemma, collocation (with '_'s)
-        |                 offsets, ~> other synsets containing `word` (synonym's)
-        |                 pointers ~> other synsets with a relation to `word`
-        +-> index.pos2 -> word,
-        |                 offsets,
-        |                 pointers
-        .. etc
+see: `:Open https://wordnet.princeton.edu/documentation/wndb5wn`
+
+word -+ index.adj  -- 1:m -- data.adj
+      + index.adv  -- 1:n -- index.adv
+      + index.verb -- 1:o -- index.verb
+      + ..            ..     ..
+
+\------------------- item ---------------/
+
+idx: lemma pos synset_cnt p_cnt [symbol..] sense_cnt tagsense_cnt [synset_offset..]
+     - is a unique line entry in index.<pos>, so 2nd field is actually redundant
+     - synset_cnt == sense_cnt (backw.comp.) == #offsets (always 1 or more)
+     - [symbols..] = all the diff kind of relationships with other synsets (see pointers in dta)
+     - [offsets..] = synset nrs related to lemma, located in data.<pos> (as in the 2nd field)
+     - idx file is index.<pos> -> search all of them
+     - binsearchable on `lemma` (aka word)
+
+dta: offset lexofnr ss_type w_cnt [word lexid..] p_cnt [ptr..] [frames..] | gloss
+     - offset, one of the entries in [offsets] mentioned in index.<pos>-line above
+     - lexofnr refers to dbfile/filename, mapped by Wordnet.lexofile[lexofnr]->fname
+     - ss_type (aka `pos`), is n=noun, v=verb, a=adjective, s=adj.satellite(?), r=adverb
+     - [word lexid] = words of `this synset`, lexid points to entries in lexofile
+       = `words` = {}, with each (marker) removed, and
+       = `lexoids` = {}, (<word><lexids> as used in lexo-file id'd by lexofnr
+     - [ptr..] = pointers to _other synsets_ denoting some relationship
+       = turned into a map and extra synset-words & its gloss are collected
+     - [frames] only for pos==verb and entirely optional, samples to create sentences w/r substitution
+     - gloss are example sentences for this synset (aka `words`-list)
+     - binsearchable on `of
+
+search yields item<pos, map> for given `word` found in:
+- index.* and its
+- data.*
 
 item = {
-  <pos> = {                 -- pos: adj, adv, nound, verb, (adj satellite ?)
-    word = "happy"          -- `word` searched
-    term = "happy",         -- `word` found (aka lemma)
-    offsets = { .. },       -- into data.<pos> for synsets containing this `word`
-    pointers = { symbols }, -- maybe {}, diff ptrs `lemma` has in all synsets containing it
-    pos = "adj",            -- same as <pos> (part-of-speech)
-    tagsense_cnt = 2,
-    senses = {              -- the different senses/synsets/meanings that `word` is in
-      {
-        frames = {},        -- only for verbs
-        gloss = { definition, examples },
-        lex_fnr = "00",    -- (dbfile/lexo-file)-id, see Wordnet.lexfile
-        pos = "adj",
-        words = {           -- [word lex-id], <word><lex-id> id's sense in lex_fnr
-          { "happy", "0" },    lex-id=hexdigit, "0" means not present in any lexo-file
-           ..
-        },
-        pointers = {         -- other synsets containing this `word`
-            {
-              offset = "00363547", -- offset to dst/target synset in data.<pos>
-              pos = "adj",         -- the <pos> for the above
-              symbol = "^"         -- type of relation between src/dst synsets or src/dst words
-              srcnr = 0,           -- word number in current/src synset
-              dstnr = 0,           -- word number in dst synset
-            }, .. more pointers
-        },
-      }, .. more senses
-    },
+  [<pos>] = {               -idx- pos: adj, adv, nound, verb, (adj satellite ?)
+    word = "happy"          -itm- `word` searched
+    term = "happy",         -idx- `word` (aka lemma) as found in index.<pos>
+    offsets = { .. },       -idx- into data.<pos> for synsets containing this `word`
+    pointers = { symbols }, -idx- maybe {}, diff ptrs `lemma` has in all synsets containing it
+    pos = "adj",            -idx- same as <pos> (part-of-speech)
+    tagsense_cnt = 2,       -idx-
+    senses = {              -dta-  list of maps, each map is a synset as per line in data.<pos>
+      ['offset'] = {
+          frames = {},        -- only for verbs
+          gloss = { definition, examples },
+          lexofnr = "00",    -- (dbfile/lexo-file)-id, see Wordnet.lexfile
+          pos = "adj",
+          words = {..},      -- the words in this synset given by term + pos
+          lexoids = {..},  { "happy", "0" },    lexoid=hexdigit, "0" means not present in any lexo-file
+             ..
+          },
+          pointers = {         -- other synsets containing this `word`
+              {
+                offset = "00363547", -- offset to dst/target synset in data.<pos>
+                pos = "adj",         -- the <pos> for the above
+                symbol = "^"         -- type of relation between src/dst synsets or src/dst words
+                srcnr = 0,           -- word number in current/src synset
+                dstnr = 0,           -- word number in dst synset
+              }, .. more pointers
+          },
+      }, /[offset]
+      .. more offsets entries as applicable
+  },/[<pos>] .. repeated for other types of pos's
+  words = { unique item[<pos>].words }
+} /item
 
-  }, ..
-}
+The above map would yield multiple picker list items:
+- lemma; pos; #senses
+- repeated for all other pos's where synsets for lemma were found
+
+After search finds the initial item as above, it adds the items for the other words in 1st item.words
 
 Notes:
 * each index.<pos> has 0 or 1 entry for a word
@@ -215,7 +245,7 @@ Notes:
 * offsets are to other synsets that have a(lso) a word listed in <pos>.words
 * <pos>-data entry:
   * pointers are defined in wninput(5WN)
-    - pos = adj, type of speach of target offset
+    - pos = adj, type of speech of target offset
     - offset in data.<pos> to a synset whose relation is indicated by symbol
     - symbol -> type of relation between words in synset1 and synset2
       + lexical ptrs: relation between word forms, for specific words in src -> dst synsets:
@@ -314,6 +344,34 @@ local Wordnet = {
     'verb.weather', --verbs of raining, snowing, thawing, thundering
     'adj.ppl', --participial adjectives
   },
+  actions = {
+    -- part of picker's options
+    -- snacks' keystroke handlers linked to by win={..}
+
+    alt_enter = function(picker, item)
+      -- initiate a new thesaurus search
+      local word = item and item.lemma or picker.matcher.pattern
+
+      picker.input:set('', word) -- reset input pattern, input prompt to word
+      picker.opts.search = word
+      picker:find({ refresh = true })
+    end,
+
+    enter = function()
+      vim.notify('enter was pressed')
+    end,
+  },
+
+  win = {
+    -- part of picker's options, snack's win config:
+    -- linking keystrokes to action handler functions by name
+    input = {
+      keys = {
+        ['<M-CR>'] = { 'alt_enter', mode = { 'n', 'i' } },
+        ['<CR>'] = { 'enter', mode = { 'n', 'i' } },
+      },
+    },
+  },
 }
 
 ---parse a line from index.<pos>; returns table or nil if not found
@@ -321,6 +379,9 @@ local Wordnet = {
 ---@return table|nil table with constituent parts of the index line, nil if not found
 ---@return string|nil error message if applicable, nil otherwise
 function Wordnet.parse_idx(line)
+  -- lemma pos synset_cnt p_cnt [symbol...] sense_cnt tagsense_cnt [synset_offset...]
+  -- - synset_cnt == sense_cnt (backw.comp.) == #offset (always 1 or more)
+  -- - [symbols..] = all the diff kind of relationships with other synsets (see dta pointers)
   local rv = {}
   local parts = vim.split(vim.trim(line), '%s+') -- about 15K idx lines have trailing spaces
 
@@ -350,37 +411,44 @@ end
 ---@return table|nil result table with parsed fields; nil on error
 ---@return string|nil error message if applicable, nil otherwise
 function Wordnet.parse_dta(line, pos)
-  -- offset lex_fnr ss_type w_cnt word lex_id [word lex_id ..] p_cnt [ptr...] [frames...] | gloss
+  -- offset lexofnr ss_type w_cnt word lexid [word lexid ..] p_cnt [ptr...] [frames...] | gloss
+  -- [frames] only for pos==verb and entirely optional
+  -- TODO: check line, pos are not nil or pos invalid
+  if line == nil then
+    return nil, '[error] input line is nil'
+  end
   local rv = {
-    words = {}, -- associated synset-words with specific type oj relation in pointers
-    pointers = {},
-    frames = {}, -- only filled when pos==verb
-    lexo_ids = {}, -- lexographer file's sense-id
+    words = {}, -- synset-words
+    pointers = {}, -- specific relations with words in other synsets
+    frames = {}, -- frame/word nrs to use in examples sentences (i.e. frames), if any
+    lexoids = {}, -- sense-ids used in lexographer file given by Wordnet.lexofile[rv.lexofnr]
   }
   local data = vim.split(line, '|')
   local parts = vim.split(data[1], '%s+', { trimempty = true })
   local gloss = vim.tbl_map(vim.trim, vim.split(data[2], ';%s*'))
   rv.gloss = gloss
 
-  -- rv.offset = parts[1] -- TODO: review if this is needed
-  rv.lexo_fnr = tonumber(parts[2]) + 1 -- 2-dig.nr, +1 added for lua's 1-based index in Wordnet.lexofile
+  -- skip offset = parts[1]
+  rv.lexofnr = tonumber(parts[2]) + 1 -- 2-dig.nr, +1 added for lua's 1-based index in Wordnet.lexofile
   rv.pos = Wordnet.mappos[parts[3]]
   local words_cnt = tonumber(parts[4], 16) -- 2-hexdigits, nr of words in this synset (1 or more)
 
   -- words_cnt x [word lexid]
   local ix = 5
   for i = ix, ix + 2 * (words_cnt - 1), 2 do
-    -- word(marker), case sensitive, lex_id 1 hexdigit where <lemma><lexid>
-    -- id's a sense in lexo-file, lex_id=0 means no sense_id in lexo-file
-    -- present
-    table.insert(rv.words, parts[i]) -- might still have a (marker) appended to word
-    local lex_id = parts[i + 1]
-    if lex_id ~= '0' then
-      table.insert(rv.lexo_ids, ('%s%s'):format(parts[i], parts[i + 1]))
+    -- word  = lemma(marker), case sensitive,
+    -- lexid = 1 hexdigit where <lemma><lexid>
+    -- <lemma><lexid> is a sense-id in lexo-file, lexid=0 means not present
+    local lemma = parts[i]:gsub('%b()', '')
+    local lexid = tonumber(parts[i + 1], 16)
+    table.insert(rv.words, lemma) -- or add word with marker?
+    if lexid > 0 then
+      table.insert(rv.lexoids, ('%s%s'):format(lemma, lexid))
     end
   end
 
   -- ptr_count x [{symbol, synset-offset, pos-char, src|tgt hex numbers}, ..]
+  -- nb: the combination of {pos, srcnr, dstnr, offset, symbol} is unique
   ix = 5 + 2 * words_cnt
   local ptrs_cnt = tonumber(parts[ix]) -- 3-digit nr, ptrs to other synsets
   ix = ix + 1
@@ -390,11 +458,11 @@ function Wordnet.parse_dta(line, pos)
     dstnr = tonumber(dstnr, 16)
     table.insert(rv.pointers, {
       symbol = parts[i],
+      relation = Wordnet.pointers[parts[i]] or 'unknown ptr symbol',
       offset = parts[i + 1],
       pos = Wordnet.mappos[parts[i + 2]] or parts[i + 2],
       srcnr = srcnr,
       dstnr = dstnr,
-      relation = Wordnet.pointers[parts[i]] or 'unknown ptr symbol',
     })
   end
 
@@ -416,7 +484,7 @@ function Wordnet.parse_dta(line, pos)
   return rv, nil
 end
 
----reads data entries for given `pos` and `offsets`
+---reads the entries in data.`pos` for given `offsets`
 ---@param pos string part of speech
 ---@param offsets string[] offsets into data.<pos>
 ---@return table|nil table T<offset, dta> as found in data.<pos> or nil for not found or error
@@ -428,16 +496,19 @@ function Wordnet.data(pos, offsets)
     if err then
       return nil, '[error getting data] ' .. err
     elseif line then
-      -- add gloss and words from synset pointed to by pointer's offset and pos
       local dta = Wordnet.parse_dta(line, pos)
       if dta then
+        -- add gloss and words from synsets pointed to by pointer's offsets and pos
         for _, ptr in ipairs(dta.pointers) do
           local ptr_line, _, err2 = binsearch(Wordnet.fh.data[ptr.pos], ptr.offset, '^%S+')
           if not err2 and ptr_line then
-            local ptr_dta = Wordnet.parse_dta(ptr_line, dta.pos)
-            if ptr_dta then
+            local ptr_dta, err_dta = Wordnet.parse_dta(ptr_line, dta.pos)
+            if not err_dta and ptr_dta then
               ptr.gloss = ptr_dta.gloss
               ptr.words = ptr_dta.words
+            else
+              ptr.gloss = {}
+              ptr.words = {}
             end
           end
         end
@@ -460,29 +531,39 @@ end
 ---@return string|nil error message or nil for no error
 function Wordnet.search(word)
   Wordnet:open()
-  local item = {}
+  local item = { pos = {} }
   local words = {}
 
   for _, pos in ipairs(Wordnet.pos) do
     -- search word in all index.<pos>-files
-    item[pos] = {}
-    local line, _, err = binsearch(Wordnet.fh.index[pos], word, '^%S+')
+    local line, offset, err = binsearch(Wordnet.fh.index[pos], word, '^%S+')
 
     if err then
-      return nil, '[error binsearch] ' .. err
+      vim.print(vim.inspect({ 'err', word, pos, offset, line }))
+      return nil, '[error binsearch] at ' .. vim.inspect(offset) .. ': ' .. err
     elseif line then
       local idx, err_idx = Wordnet.parse_idx(line)
       if err_idx then
         return nil, '[error parse_idx] ' .. err_idx
       elseif idx then
         idx.word = word
-        local senses = Wordnet.data(pos, idx.offsets) -- get dta sense entries
-        idx.senses = senses
-        item[pos] = idx
-        for _, sense in ipairs(idx.senses) do
-          for _, w in ipairs(sense.words) do
-            local new = w:gsub('%b()$', '') -- remove (marker) if any
+        local syns = Wordnet.data(pos, idx.offsets) -- get dta sense entries
+        idx.syns = syns or {} -- syns might be nil
+        item.pos[pos] = idx
+
+        -- build words, collect from senses and its pointers
+        -- remove any potential markers from words and lowercase them
+        -- TODO: idx.syns should always exist, right?  no `or {}` needed
+        for _, syn in pairs(idx.syns) do
+          for _, w in ipairs(syn.words) do
+            local new = w:gsub('%b()$', ''):lower()
             words[new] = true
+          end
+          for _, ptr in ipairs(syn.pointers) do
+            for _, w in ipairs(ptr.words or {}) do
+              local new = w:gsub('%b()$', ''):lower()
+              words[new] = true
+            end
           end
         end
       else
@@ -491,7 +572,11 @@ function Wordnet.search(word)
       end
     end
   end
+
+  item.lemma = word
+  item.text = word
   item.words = vim.tbl_keys(words)
+  table.sort(item.words)
 
   Wordnet:close()
   return item, nil
@@ -516,6 +601,77 @@ function Wordnet:close()
     end
   end
 end
+
+-- Snack funcs
+
+function Wordnet.format(item, _)
+  assert(item and item.text and item.pos, 'malformed item:' .. vim.inspect(item))
+  local count = 0
+  for _, pos in pairs(item.pos) do
+    count = count + #pos.offsets
+  end
+  return {
+    { ('%-25s | '):format(item.text), 'Special' },
+    { ('%s meanings'):format(count), 'Comment' },
+  }
+end
+
+function Wordnet.finder(opts, ctx)
+  local item, err = Wordnet.search(opts.search)
+  if err then
+    vim.notify('[error] ' .. err, vim.log.levels.ERROR)
+    return {}
+  elseif item == nil or item.text == nil then
+    vim.notify('[warn] nothing found for ' .. opts.search, vim.log.levels.INFO)
+    return {}
+  end
+
+  -- add additional related items
+  local items = { item }
+  for _, word in ipairs(item.words) do
+    if word ~= opts.search then
+      -- ignore errors, not found means nil means noop
+      items[#items + 1] = Wordnet.search(word)
+    end
+  end
+
+  return items
+end
+
+function Wordnet.preview(picker)
+  local item = picker.item
+
+  if item.lines == nil then
+    item.title = item.lemma
+    item.ft = 'markdown'
+    local lines = {}
+    local ix = 1
+    for pos, t in pairs(item.pos) do
+      for _, syn in pairs(t.syns) do
+        -- add synset words
+        lines[#lines + 1] = ('%d. [%s] %s'):format(ix, syn.pos, table.concat(syn.words, ', '))
+        lines[#lines + 1] = table.concat(syn.gloss, '; ')
+        lines[#lines + 1] = ''
+        ix = ix + 1
+
+        -- TODO: add pointer info in syn.pointers
+      end
+    end
+    item.lines = lines
+  end
+
+  -- update preview window
+  picker.preview:set_lines(item.lines)
+  picker.preview:set_title(item.title)
+  picker.preview:highlight({ ft = item.ft })
+end
+
+function Wordnet.confirm(args)
+  -- default action for <enter>, unless that's been overridden
+  vim.print(vim.inspect(args))
+end
+
+--[[ MYTHES thesaurus ]]
 
 local Mythes = {
   cfg = {
@@ -706,8 +862,9 @@ function Mythes._test()
   line = fh:read('*l') -- nr of entries
   local nidx = line
 
-  line = fh:read('*l')
   local nwords, nerrs, nfound = 0, 0, 0
+
+  line = fh:read('*l')
   while line do
     nwords = nwords + 1
     local word = line:match('^[^|]+')
@@ -720,6 +877,7 @@ function Mythes._test()
     end
     line = fh:read('*l')
   end
+
   stats = {
     nidx = nidx,
     nwords = nwords,
@@ -951,7 +1109,7 @@ function M.thesaurus(word, opts)
     -- TODO: move to a field in M
     default = Mythes,
     mythes = Mythes,
-    wordnet = nil, -- TODO: add wordnet thesaurus to the mix
+    wordnet = Wordnet,
     datamuse = nil, -- TODO: see `:Open https://www.datamuse.com/api/#md`
     dictionaryapi = nil, -- TODO: see `:Open https://dictionaryapi.dev/`
     -- example: `:Open https://api.dictionaryapi.dev/api/v2/entries/en/happy`
@@ -1047,31 +1205,12 @@ function M.soundex(words, opts)
 end
 
 function M.wordnet(word)
-  local item, err = Wordnet.search(word)
-  if err then
-    vim.print(vim.inspect({ 'err', err, 'item', item }))
-  end
-
-  local items = { item }
-  if item then
-    for _, w in ipairs(item.words) do
-      if w ~= word then
-        local itm, err2 = Wordnet.search(w)
-        if itm then
-          items[#items + 1] = itm
-        end
-      end
-    end
+  local items = Wordnet.finder({ search = 'happy' })
+  for _, item in ipairs(items) do
+    vim.print(vim.inspect(Wordnet.format(item)))
   end
 
   vim.print(vim.inspect(items))
 end
-
--- snacks/picker/config/source.lua -> M.xxx = snacks.picker.xxx.Config w/ finder,format,preview etc..
--- snacks/picker/core/finder.lua -> finder module w/ M.new() and other funcs to run as finder
--- snacks/picker/core/main.lua -> M.new(), class snacks.Picker w/ finder,format, etc.. fields
--- snacks/picker/init.lua -> M.pick(source?:string, opts?:snacks.picker.Config)
--- * when called w/out source or opts -> shows pickers
--- M.pick uses opts if no source was provided (no source, use opts)
 
 return M
