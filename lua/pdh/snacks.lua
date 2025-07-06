@@ -17,9 +17,8 @@ end, {})
       * `:lua require 'snacks.picker'.spelling()`
   see `:Open `
 
-  `:lua require'snacks.picker'.grep({cwd='/usr/share/mythes', exclude='th_en_US_v2.dat'})`
   `:lua require'snacks.picker'.grep({cwd='/usr/share/mythes', glob='th_en_US_v2.idx'})` (or *.idx)
-  `:lua require'snacks.picker'.grep({cwd='/home/pdh/Downloads/thesaurus/wordnet/dict', glob='index.*', search='succesful'})` (or *.idx)
+  `:lua require'snacks.picker'.grep({cwd='/home/pdh/Downloads/thesaurus/wordnet/dict', glob='index.*', search='succesful'})` (or *.idx) -- fails to spawn rg
 
   `:lua =vim.fn.spellsuggest('succesful', 15)`
 
@@ -131,6 +130,7 @@ end
 ---@return string|nil error message or nil for no error
 local function binsearch(file, word, linexpr)
   local line
+  -- TODO: `aaaa` ends up in the license text, which has spaces
   local p0, p1, err = 0, file:seek('end', 0)
   if err then
     return nil, 0, err
@@ -187,14 +187,15 @@ end
 --[[ WORDNET thesaurus ]]
 
 --[[ wordnet
+see: Princeton University "About WordNet." [WordNet](https://wordnet.princeton.edu/).
+     Princeton University. 2010.
+
 see: `:Open https://wordnet.princeton.edu/documentation/wndb5wn`
 
-word -+ index.adj  -- 1:m -- data.adj
-      + index.adv  -- 1:n -- index.adv
-      + index.verb -- 1:o -- index.verb
-      + ..            ..     ..
-
-\------------------- item ---------------/
+The databases consist of:
+- index.<pos>, an index per part-of-speech (verb, noun, .. etc)
+- data.<pos>, synset data, again per part-of-speech
+- db/<pos>.<topic>, lexographer files with additional information
 
 idx: lemma pos synset_cnt p_cnt [symbol..] sense_cnt tagsense_cnt [synset_offset..]
      - is a unique line entry in index.<pos>, so 2nd field is actually redundant
@@ -1238,7 +1239,7 @@ function M.soundex(words, opts)
 end
 
 function M.wordnet(word)
-  local items = Wordnet.finder({ search = 'happy' })
+  local items = Wordnet.finder({ search = word })
   for _, item in ipairs(items) do
     vim.print(vim.inspect(Wordnet.format(item)))
   end
