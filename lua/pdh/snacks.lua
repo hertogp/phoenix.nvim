@@ -374,34 +374,6 @@ local Wordnet = {
     'verb.weather', --verbs of raining, snowing, thawing, thundering
     'adj.ppl', --participial adjectives
   },
-  actions = {
-    -- part of picker's options
-    -- snacks' keystroke handlers linked to by win={..}
-
-    alt_enter = function(picker, item)
-      -- initiate a new thesaurus search
-      local word = item and item.lemma or picker.matcher.pattern
-
-      picker.input:set('', word) -- reset input pattern, input prompt to word
-      picker.opts.search = word
-      picker:find({ refresh = true })
-    end,
-
-    enter = function()
-      vim.notify('enter was pressed')
-    end,
-  },
-
-  win = {
-    -- part of picker's options, snack's win config:
-    -- linking keystrokes to action handler functions by name
-    input = {
-      keys = {
-        ['<M-CR>'] = { 'alt_enter', mode = { 'n', 'i' } },
-        ['<CR>'] = { 'enter', mode = { 'n', 'i' } },
-      },
-    },
-  },
 }
 
 ---parse a line from index.<pos>; returns table or nil if not found
@@ -415,7 +387,8 @@ function Wordnet.parse_idx(line)
   local rv = {}
   local parts = vim.split(vim.trim(line), '%s+') -- about 15K idx lines have trailing spaces
 
-  rv.lemma = parts[1] -- aka lemma
+  rv.word = parts[1] -- used by M.thesaurus & actions
+  -- rv.lemma = parts[1] -- aka lemma
   rv.term = parts[1]
   rv.pos = Wordnet.mappos[parts[2]]
 
@@ -566,7 +539,7 @@ end
 ---@return string|nil error message or nil for no error
 function Wordnet.search(word)
   Wordnet:open()
-  local item = { pos = {} }
+  local item = { word = word, pos = {} }
   local words = {}
 
   for _, pos in ipairs(Wordnet.pos) do
@@ -608,7 +581,7 @@ function Wordnet.search(word)
     end
   end
 
-  item.lemma = word
+  -- item.lemma = word
   item.text = word
   item.words = vim.tbl_keys(words)
   table.sort(item.words)
@@ -677,7 +650,7 @@ function Wordnet.preview(picker)
   local item = picker.item
 
   if item.lines == nil then
-    item.title = item.lemma
+    item.title = item.word
     item.ft = 'markdown'
     local lines = {}
     local ix = 1
@@ -728,35 +701,6 @@ local Mythes = {
   },
 
   fh = {}, -- placeholder for filehandle placeholders for idx & dat files
-
-  actions = {
-    -- part of picker's options
-    -- snacks' keystroke handlers linked to by win={..}
-
-    alt_enter = function(picker, item)
-      -- initiate a new thesaurus search
-      local word = item and item.word or picker.matcher.pattern
-
-      picker.input:set('', word) -- reset input pattern, input prompt to word
-      picker.opts.search = word
-      picker:find({ refresh = true })
-    end,
-
-    enter = function()
-      vim.notify('enter was pressed')
-    end,
-  },
-
-  win = {
-    -- part of picker's options, snack's win config:
-    -- linking keystrokes to action handler functions by name
-    input = {
-      keys = {
-        ['<M-CR>'] = { 'alt_enter', mode = { 'n', 'i' } },
-        ['<CR>'] = { 'enter', mode = { 'n', 'i' } },
-      },
-    },
-  },
 }
 
 ---read thesaurus data entry at given `offset`
@@ -1151,11 +1095,47 @@ function M.codespell(bufnr)
 end
 
 function M.thesaurus(word, opts)
+  if word == nil or type(word) == 'table' then
+    opts = word
+    word = vim.fn.expand('<cword>')
+  end
   opts = opts or {}
 
+  local actions = {
+    alt_enter = function(picker, item)
+      -- initiate a new thesaurus search
+      local w = item and item.word or picker.matcher.pattern
+
+      picker.input:set('', w) -- reset input pattern, input prompt to word
+      picker.opts.search = w
+      picker:find({ refresh = true })
+    end,
+
+    enter = function(picker, item)
+      -- replace <cword> with item picked
+      picker:close()
+      if item and item.word then
+        -- "_ puts inner word in blackhole register `:h quote_`
+        vim.cmd('normal! "_ciw' .. item.word)
+      else
+        vim.notify('no replacement selected')
+      end
+    end,
+  }
+
+  local win = {
+    -- part of picker's options, snack's win config:
+    -- linking keystrokes to action handler functions by name
+    input = {
+      keys = {
+        ['<M-CR>'] = { 'alt_enter', mode = { 'n', 'i' } },
+        ['<CR>'] = { 'enter', mode = { 'n', 'i' } },
+      },
+    },
+  }
+
   local providers = {
-    -- TODO: move to a field in M
-    default = Mythes,
+    default = Wordnet,
     mythes = Mythes,
     wordnet = Wordnet,
     datamuse = nil, -- TODO: see `:Open https://www.datamuse.com/api/#md`
@@ -1163,6 +1143,7 @@ function M.thesaurus(word, opts)
     -- example: `:Open https://api.dictionaryapi.dev/api/v2/entries/en/happy`
     webster = nil, -- TODO: see `:Open https://www.dictionaryapi.com/` .. maybe, requires registerd API key
   }
+
   local p = providers[(opts.source or 'default'):lower()]
   if p == nil then
     vim.notify('provider not found: ' .. opts.source)
@@ -1173,10 +1154,11 @@ function M.thesaurus(word, opts)
     search = word:lower(),
     preview = (p or {}).preview,
     format = (p or {}).format,
-    finder = (p or {}).finder,
+    -- finder = (p or {}).finder,
+    finder = p.finder,
     transform = (p or {}).transform,
-    win = (p or {}).win,
-    actions = (p or {}).actions,
+    win = win, -- (p or {}).win or win
+    actions = actions, -- (p or {}).actions or actions
     confirm = (p or {}).confirm,
     float = true,
   }
