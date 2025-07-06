@@ -24,6 +24,21 @@ date: today
 
 ## Markdown samples
 
+[square brackets]
+<less>(round)
+<less-more>
+<less more>
+<less_more>
+{curly}
+(braces)
+*bold*
+_italic_
+`backticks`
+'sdf'
+"sdf"
+/sfd/
+
+
 
 - [ ] clean up old plugins (incl docs)
 - [!] fix it so we can push repo again (git remote set-url origin git@github.com:hertogp/nvim.git)

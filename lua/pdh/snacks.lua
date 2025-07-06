@@ -163,6 +163,27 @@ local function binsearch(file, word, linexpr)
   return nil, file:seek('cur') - #line - 1, nil
 end
 
+---split a long `line` into lines based on nearest wspace following `cutoff`
+---@param line string
+---@param cutoff number
+---@return string[] lines
+local function wrap(line, cutoff)
+  cutoff = cutoff or 40
+  local lines = {}
+  while line and #line > cutoff do
+    local pos = line:find('%s', cutoff)
+    if pos then
+      lines[#lines + 1] = line:sub(1, pos)
+      line = line:sub(pos + 1, -1)
+    else
+      break
+    end
+  end
+  if #line > 0 then
+    lines[#lines + 1] = line
+  end
+  return lines
+end
 --[[ WORDNET thesaurus ]]
 
 --[[ wordnet
@@ -271,6 +292,7 @@ local Wordnet = {
     index = {},
     data = {},
   },
+
   pointers = {
     ['!'] = 'Antonym',
     ['#m'] = 'Member holonym',
@@ -292,9 +314,17 @@ local Wordnet = {
     ['@i'] = 'Instance Hypernym',
     ['~'] = 'Hyponym',
     ['~i'] = 'Instance Hyponym',
+    ['*'] = 'Entailment',
     ['^'] = 'Also see',
     ['<'] = 'Participle of verb',
     ['\\'] = 'Pertainym (pertains to noun)',
+  },
+
+  pointers_keep = {
+    ['!'] = 'antonym',
+    ['&'] = 'similar',
+    ['^'] = 'see-also',
+    -- ['+'] = 'related:', -- Derivationally related
   },
 
   lexofile = { -- index + 1
@@ -413,6 +443,7 @@ end
 function Wordnet.parse_dta(line, pos)
   -- offset lexofnr ss_type w_cnt word lexid [word lexid ..] p_cnt [ptr...] [frames...] | gloss
   -- [frames] only for pos==verb and entirely optional
+
   -- TODO: check line, pos are not nil or pos invalid
   if line == nil then
     return nil, '[error] input line is nil'
@@ -433,37 +464,39 @@ function Wordnet.parse_dta(line, pos)
   rv.pos = Wordnet.mappos[parts[3]]
   local words_cnt = tonumber(parts[4], 16) -- 2-hexdigits, nr of words in this synset (1 or more)
 
+  -- words
   -- words_cnt x [word lexid]
   local ix = 5
   for i = ix, ix + 2 * (words_cnt - 1), 2 do
-    -- word  = lemma(marker), case sensitive,
-    -- lexid = 1 hexdigit where <lemma><lexid>
-    -- <lemma><lexid> is a sense-id in lexo-file, lexid=0 means not present
-    local lemma = parts[i]:gsub('%b()', '')
+    local lemma = parts[i]:gsub('%b()', '') -- case-sensitive, strip the (marker)
     local lexid = tonumber(parts[i + 1], 16)
     table.insert(rv.words, lemma) -- or add word with marker?
     if lexid > 0 then
-      table.insert(rv.lexoids, ('%s%s'):format(lemma, lexid))
+      table.insert(rv.lexoids, ('%s%s'):format(lemma, lexid)) -- sense-id in lexo-file
     end
   end
 
+  -- pointers
   -- ptr_count x [{symbol, synset-offset, pos-char, src|tgt hex numbers}, ..]
   -- nb: the combination of {pos, srcnr, dstnr, offset, symbol} is unique
   ix = 5 + 2 * words_cnt
   local ptrs_cnt = tonumber(parts[ix]) -- 3-digit nr, ptrs to other synsets
   ix = ix + 1
   for i = ix, ix + (ptrs_cnt - 1) * 4, 4 do
-    local srcnr, dstnr = parts[i + 3]:match('^(%x%x)(%x%x)')
-    srcnr = tonumber(srcnr, 16)
-    dstnr = tonumber(dstnr, 16)
-    table.insert(rv.pointers, {
-      symbol = parts[i],
-      relation = Wordnet.pointers[parts[i]] or 'unknown ptr symbol',
-      offset = parts[i + 1],
-      pos = Wordnet.mappos[parts[i + 2]] or parts[i + 2],
-      srcnr = srcnr,
-      dstnr = dstnr,
-    })
+    local symbol = parts[i]
+    if Wordnet.pointers_keep[symbol] then
+      local srcnr, dstnr = parts[i + 3]:match('^(%x%x)(%x%x)')
+      srcnr = tonumber(srcnr, 16)
+      dstnr = tonumber(dstnr, 16)
+      table.insert(rv.pointers, {
+        symbol = symbol,
+        relation = Wordnet.pointers_keep[symbol] or 'unknown ptr symbol',
+        offset = parts[i + 1],
+        pos = Wordnet.mappos[parts[i + 2]] or parts[i + 2],
+        srcnr = srcnr,
+        dstnr = dstnr,
+      })
+    end
   end
 
   -- [frame_cnt x [+ (skipped) frame_nr word_nr (hex)]] -- entire thing is optional!
@@ -506,6 +539,8 @@ function Wordnet.data(pos, offsets)
             if not err_dta and ptr_dta then
               ptr.gloss = ptr_dta.gloss
               ptr.words = ptr_dta.words
+              ptr.dword = ptr.dstnr == 0 and table.concat(ptr.words, ', ') or ptr.words[ptr.dstnr]
+              ptr.sword = ptr.srcnr > 0 and dta.words[ptr.srcnr] or nil
             else
               ptr.gloss = {}
               ptr.words = {}
@@ -650,11 +685,23 @@ function Wordnet.preview(picker)
       for _, syn in pairs(t.syns) do
         -- add synset words
         lines[#lines + 1] = ('%d. [%s] %s'):format(ix, syn.pos, table.concat(syn.words, ', '))
-        lines[#lines + 1] = table.concat(syn.gloss, '; ')
+        for _, gloss in ipairs(syn.gloss) do
+          lines[#lines + 1] = '* ' .. gloss
+        end
         lines[#lines + 1] = ''
         ix = ix + 1
 
         -- TODO: add pointer info in syn.pointers
+        for _, ptr in ipairs(syn.pointers) do
+          local sword = ptr.sword and (' `%s` - '):format(ptr.sword) or ''
+          -- local gloss = ptr.gloss and ' - ' .. table.concat(ptr.gloss, '; ') or ''
+          local ptr_str = ('<%s>(%s) %s *%s*'):format(ptr.relation, ptr.pos, sword, ptr.dword)
+          lines[#lines + 1] = ptr_str
+          for _, gloss in ipairs(ptr.gloss) do
+            lines[#lines + 1] = '- ' .. gloss
+          end
+          lines[#lines + 1] = ''
+        end
       end
     end
     item.lines = lines
@@ -664,6 +711,7 @@ function Wordnet.preview(picker)
   picker.preview:set_lines(item.lines)
   picker.preview:set_title(item.title)
   picker.preview:highlight({ ft = item.ft })
+  vim.api.nvim_set_option_value('wrap', true, { win = picker.preview.win.win })
 end
 
 function Wordnet.confirm(args)
@@ -1136,21 +1184,24 @@ function M.thesaurus(word, opts)
   return require 'snacks'.picker(picker_opts)
 end
 
-function M.test(what, term)
-  if what == 'search' then
-    return Mythes.search(term)
-  elseif what == 'trace' then
-    return Mythes.trace(term)
-  elseif what == 'testall' then
-    local t0 = vim.fn.reltime()
-    local stats = Mythes._test()
-    local tdelta = vim.fn.reltimestr(vim.fn.reltime(t0))
-    vim.print(vim.inspect({ tdelta, stats }))
-  elseif what == 'Mythes' then
-    vim.print(vim.inspect(what))
-  else
-    return 'unknown ' .. what
+function M.test(line, cutoff)
+  cutoff = cutoff or 40
+  local oldline = line
+  local lines = {}
+  while line and #line > cutoff do
+    local pos = line:find('%s', cutoff)
+    if pos then
+      lines[#lines + 1] = line:sub(1, pos)
+      line = line:sub(pos + 1, -1)
+    else
+      break
+    end
   end
+  if #line > 0 then
+    lines[#lines + 1] = line
+  end
+  lines[#lines + 1] = oldline
+  vim.print(vim.inspect(lines))
 end
 
 function M.soundex(words, opts)
