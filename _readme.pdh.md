@@ -40,6 +40,7 @@ _italic_
 
 
 
+
 - [ ] clean up old plugins (incl docs)
 - [!] fix it so we can push repo again (git remote set-url origin git@github.com:hertogp/nvim.git)
 - [!] important

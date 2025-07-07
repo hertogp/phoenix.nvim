@@ -281,11 +281,21 @@ Notes:
 local Wordnet = {
   pos = { 'adj', 'adv', 'noun', 'verb' }, -- {index, data}.<pos> file extensions
   mappos = {
+    -- value must be the <pos> in {index, data}.<pos>
     a = 'adj',
-    s = 'adj-s', -- adjective satellite (?)
+    s = 'adj', -- adj-satellite .. to be found in *.adj presumably
     v = 'verb',
     n = 'noun',
     r = 'adv',
+  },
+
+  strpos = {
+    -- value must be the <pos> in {index, data}.<pos>
+    a = 'adjective',
+    s = 'adj-satellite', -- adj-satellite .. to be found in *.adj presumably
+    v = 'verb',
+    n = 'noun',
+    r = 'adverb',
   },
   fmt = vim.fs.dirname(vim.fn.stdpath('data')) .. '/wordnet/%s.%s',
   fh = {
@@ -325,10 +335,12 @@ local Wordnet = {
     ['!'] = 'antonym',
     ['&'] = 'similar',
     ['^'] = 'see-also',
-    -- ['+'] = 'related:', -- Derivationally related
+    ['+'] = 'related', -- Derivationally related
+    ['*'] = 'entailment',
+    ['\\'] = 'pertains-to',
   },
 
-  lexofile = { -- index + 1
+  lexofile = {
     'adj.all', -- all adjective clusters
     'adj.pert', -- relational adjectives (pertainyms)
     'adv.all', -- all adverbs
@@ -389,9 +401,8 @@ function Wordnet.parse_idx(line)
   local parts = vim.split(vim.trim(line), '%s+') -- about 15K idx lines have trailing spaces
 
   rv.word = parts[1] -- used by M.thesaurus & actions
-  -- rv.lemma = parts[1] -- aka lemma
   rv.term = parts[1]
-  rv.pos = Wordnet.mappos[parts[2]]
+  rv.pos = Wordnet.mappos[parts[2]] -- redundant, is same as pos of the containing index.<pos>
 
   local ptr_cnt = tonumber(parts[4]) -- same as #pointers, may be 0
   rv.pointers = {} -- kind of pointers that lemma/term has in all the synsets it is in
@@ -435,6 +446,7 @@ function Wordnet.parse_dta(line, pos)
 
   -- skip offset = parts[1]
   rv.lexofnr = tonumber(parts[2]) + 1 -- 2-dig.nr, +1 added for lua's 1-based index in Wordnet.lexofile
+  rv.cpos = parts[3]
   rv.pos = Wordnet.mappos[parts[3]]
   local words_cnt = tonumber(parts[4], 16) -- 2-hexdigits, nr of words in this synset (1 or more)
 
@@ -466,7 +478,8 @@ function Wordnet.parse_dta(line, pos)
         symbol = symbol,
         relation = Wordnet.pointers_keep[symbol] or 'unknown ptr symbol',
         offset = parts[i + 1],
-        pos = Wordnet.mappos[parts[i + 2]] or parts[i + 2],
+        cpos = parts[i + 2], -- used by preview to map cpos via strpos (preserves adj-satellite)
+        pos = Wordnet.mappos[parts[i + 2]] or parts[i + 2], -- maps s to adj, not adj-satellite
         srcnr = srcnr,
         dstnr = dstnr,
       })
@@ -494,7 +507,7 @@ end
 ---reads the entries in data.`pos` for given `offsets`
 ---@param pos string part of speech
 ---@param offsets string[] offsets into data.<pos>
----@return table|nil table T<offset, dta> as found in data.<pos> or nil for not found or error
+---@return table|nil synsets T<offset, dta> as found in data.<pos> or nil for not found or error
 ---@return string|nil error message in case of an error, nil otherwise
 function Wordnet.data(pos, offsets)
   local senses = {}
@@ -544,17 +557,14 @@ function Wordnet.search(word)
   local words = {}
 
   for _, pos in ipairs(Wordnet.pos) do
-    -- search word in all index.<pos>-files
-    local line, offset, err = binsearch(Wordnet.fh.index[pos], word, '^%S+')
+    -- search word in all index.<pos>-files, ignore abort's if binsearch lands on
+    -- license text at the start of the <pos>-file.
+    local line, _, _ = binsearch(Wordnet.fh.index[pos], word, '^%S+')
 
-    if err then
-      vim.print(vim.inspect({ 'err', word, pos, offset, line }))
-      return nil, '[error binsearch] at ' .. vim.inspect(offset) .. ': ' .. err
-    elseif line then
+    if line then
+      -- found an entry in one of the index.<pos> files
       local idx, err_idx = Wordnet.parse_idx(line)
-      if err_idx then
-        return nil, '[error parse_idx] ' .. err_idx
-      elseif idx then
+      if idx then
         idx.word = word
         local syns = Wordnet.data(pos, idx.offsets) -- get dta sense entries
         idx.syns = syns or {} -- syns might be nil
@@ -575,17 +585,22 @@ function Wordnet.search(word)
             end
           end
         end
-      else
-        -- nothing found
-        return nil, nil
+      elseif err_idx then
+        vim.notify('[error] parsing index line: ' .. err_idx, vim.log.levels.ERROR)
       end
     end
   end
 
-  -- item.lemma = word
-  item.text = word
-  item.words = vim.tbl_keys(words)
-  table.sort(item.words)
+  -- collection of words found in synsets
+  words = vim.tbl_keys(words)
+
+  if #words > 0 then
+    item.text = word -- used by snack matcher
+    table.sort(words) -- sorts in-place
+    item.words = words
+  else
+    item = nil
+  end
 
   Wordnet:close()
   return item, nil
@@ -655,10 +670,11 @@ function Wordnet.preview(picker)
     item.ft = 'markdown'
     local lines = {}
     local ix = 1
-    for pos, t in pairs(item.pos) do
+    for _, t in pairs(item.pos) do
       for _, syn in pairs(t.syns) do
         -- add synset words
-        lines[#lines + 1] = ('%d. [%s] %s'):format(ix, syn.pos, table.concat(syn.words, ', '))
+        local synpos = Wordnet.strpos[syn.cpos] or syn.pos
+        lines[#lines + 1] = ('%d. [%s] %s'):format(ix, synpos, table.concat(syn.words, ', '))
         for _, gloss in ipairs(syn.gloss) do
           lines[#lines + 1] = '* ' .. gloss
         end
@@ -669,13 +685,15 @@ function Wordnet.preview(picker)
         for _, ptr in ipairs(syn.pointers) do
           local sword = ptr.sword and (' `%s` - '):format(ptr.sword) or ''
           -- local gloss = ptr.gloss and ' - ' .. table.concat(ptr.gloss, '; ') or ''
-          local ptr_str = ('<%s>(%s) %s *%s*'):format(ptr.relation, ptr.pos, sword, ptr.dword)
+          local pos = Wordnet.strpos[ptr.cpos]
+          local ptr_str = ('<%s>(%s) %s *%s*'):format(ptr.relation, pos, sword, ptr.dword)
           lines[#lines + 1] = ptr_str
           for _, gloss in ipairs(ptr.gloss) do
             lines[#lines + 1] = '- ' .. gloss
           end
           lines[#lines + 1] = ''
         end
+        lines[#lines + 1] = ''
       end
     end
     item.lines = lines
