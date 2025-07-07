@@ -280,8 +280,9 @@ Notes:
 
 local Wordnet = {
   pos = { 'adj', 'adv', 'noun', 'verb' }, -- {index, data}.<pos> file extensions
+
   mappos = {
-    -- value must be the <pos> in {index, data}.<pos>
+    -- maps synset type to file <pos> suffix for {index, data}.<pos>
     a = 'adj',
     s = 'adj', -- adj-satellite .. to be found in *.adj presumably
     v = 'verb',
@@ -290,9 +291,9 @@ local Wordnet = {
   },
 
   strpos = {
-    -- value must be the <pos> in {index, data}.<pos>
+    -- maps synset type to full name used in snacks' preview
     a = 'adjective',
-    s = 'adj-satellite', -- adj-satellite .. to be found in *.adj presumably
+    s = 'adj-satellite',
     v = 'verb',
     n = 'noun',
     r = 'adverb',
@@ -640,8 +641,10 @@ function Wordnet.format(item, _)
   }
 end
 
-function Wordnet.finder(opts, ctx)
+function Wordnet.finder(opts, _)
+  -- ctx is ignored
   local item, err = Wordnet.search(opts.search)
+
   if err then
     vim.notify('[error] ' .. err, vim.log.levels.ERROR)
     return {}
@@ -1031,20 +1034,16 @@ function Mythes.format(item, _)
   }
 end
 
-function Mythes.finder(opts, ctx)
-  -- part of picker's options
-  -- callback to find items, matcher will select from this list
-  -- MUST return a (possibly empty) list
+function Mythes.finder(opts, _)
+  -- ctx is ignored
   local item, err = Mythes.search(opts.search)
 
   if err then
     vim.notify('error! ' .. err)
     return {}
-  end
-
-  if item == nil or item.term == nil then
+  elseif item == nil or item.term == nil then
     vim.notify('nothing found for ' .. opts.search, vim.log.levels.ERROR)
-    return {} -- clears the entire list
+    return {}
   end
 
   -- add the words of item as items as well
@@ -1122,7 +1121,7 @@ function M.thesaurus(word, opts)
 
   local actions = {
     alt_enter = function(picker, item)
-      -- initiate a new thesaurus search
+      -- do new thesaurus search using current item or search input text
       local w = item and item.word or picker.matcher.pattern
 
       picker.input:set('', w) -- reset input pattern, input prompt to word
@@ -1174,7 +1173,7 @@ function M.thesaurus(word, opts)
     preview = (p or {}).preview,
     format = (p or {}).format,
     -- finder = (p or {}).finder,
-    finder = p.finder,
+    finder = (p or {}).finder,
     transform = (p or {}).transform,
     win = win, -- (p or {}).win or win
     actions = actions, -- (p or {}).actions or actions
