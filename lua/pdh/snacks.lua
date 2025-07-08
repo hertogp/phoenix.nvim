@@ -281,6 +281,8 @@ Notes:
 local Wordnet = {
   pos = { 'adj', 'adv', 'noun', 'verb' }, -- {index, data}.<pos> file extensions
 
+  name = 'Wordnet',
+
   mappos = {
     -- maps synset type to file <pos> suffix for {index, data}.<pos>
     a = 'adj',
@@ -722,6 +724,8 @@ local Mythes = {
     dta = '/usr/share/mythes/th_en_US_v2.dat',
   },
 
+  name = 'Mythes',
+
   fh = {}, -- placeholder for filehandle placeholders for idx & dat files
 }
 
@@ -752,7 +756,6 @@ function Mythes.dta_read(offset)
   if term and nlines then
     for _ = 1, nlines do
       line, err = file:read('*l') -- (pos)|syn1|syn2..
-      -- REVIEW: maybe check line starts with '(' of the (pos) ?
       if err then
         return {}, err
       end
@@ -769,65 +772,65 @@ function Mythes.dta_read(offset)
   return { term = term, syns = syns }, nil
 end
 
----@param line string current line in the index to evaluate
----@param word string word to search for in the index
----@return -1|0|1|nil result -1 go left, 0 found, 1 go right, nil is illegal `line`
-function Mythes.match_exactp(line, word)
-  local entry = line:match('^[^|]+') -- <entry>|<offset in dta file>
-
-  if entry == nil then
-    return nil
-  elseif entry == word then
-    return 0
-  elseif entry > word then
-    return -1
-  else
-    return 1
-  end
-end
-
----binary search for word in an ordered (thesaurus) index
----@param word string to search for in the index file
----@param matchp fun(line:string, term:string):-1|0|1|nil
----@return string|nil entry found in the index for given `word`, nil for not found
----@return number offset to last line read
----@return string|nil error message or nil for no error
-function Mythes.idx_search(word, matchp)
-  local file = Mythes.fh.idx
-  local line
-  local p0, p1, err = 0, file:seek('end', 0)
-  if err then
-    return nil, 0, err
-  end
-
-  while p0 <= p1 do
-    local pos = math.floor((p0 + p1) / 2)
-    local oldpos = file:seek('set', pos)
-
-    _ = file:read('*l') -- discard (remainder) of current line
-    line = file:read('*l') -- read next available line
-
-    --  p0..[discard\nline\n]..p1 --
-
-    local m = matchp(line, word)
-    if m == 1 then
-      --  term > line, move p0 to \n of last line read
-      p0 = file:seek('cur') - 1
-    elseif m == -1 then
-      -- term < line, move p1 to just before the start of discard
-      p1 = oldpos - 1 -- guarantees that p1 moves left
-    elseif m == 0 then
-      -- found it, return line, offset and no err msg
-      return line, file:seek('cur') - #line - 1, nil
-    else
-      -- wtf?
-      return line, file:seek('cur') - #line - 1, '[warn] aborted by matchp'
-    end
-  end
-
-  -- nothing found, so return nil, last offset and no err msg
-  return nil, file:seek('cur') - #line - 1, nil
-end
+-- ---@param line string current line in the index to evaluate
+-- ---@param word string word to search for in the index
+-- ---@return -1|0|1|nil result -1 go left, 0 found, 1 go right, nil is illegal `line`
+-- function Mythes.match_exactp(line, word)
+--   local entry = line:match('^[^|]+') -- <entry>|<offset in dta file>
+--
+--   if entry == nil then
+--     return nil
+--   elseif entry == word then
+--     return 0
+--   elseif entry > word then
+--     return -1
+--   else
+--     return 1
+--   end
+-- end
+--
+-- ---binary search for word in an ordered (thesaurus) index
+-- ---@param word string to search for in the index file
+-- ---@param matchp fun(line:string, term:string):-1|0|1|nil
+-- ---@return string|nil entry found in the index for given `word`, nil for not found
+-- ---@return number offset to last line read
+-- ---@return string|nil error message or nil for no error
+-- function Mythes.idx_search(word, matchp)
+--   local file = Mythes.fh.idx
+--   local line
+--   local p0, p1, err = 0, file:seek('end', 0)
+--   if err then
+--     return nil, 0, err
+--   end
+--
+--   while p0 <= p1 do
+--     local pos = math.floor((p0 + p1) / 2)
+--     local oldpos = file:seek('set', pos)
+--
+--     _ = file:read('*l') -- discard (remainder) of current line
+--     line = file:read('*l') -- read next available line
+--
+--     --  p0..[discard\nline\n]..p1 --
+--
+--     local m = matchp(line, word)
+--     if m == 1 then
+--       --  term > line, move p0 to \n of last line read
+--       p0 = file:seek('cur') - 1
+--     elseif m == -1 then
+--       -- term < line, move p1 to just before the start of discard
+--       p1 = oldpos - 1 -- guarantees that p1 moves left
+--     elseif m == 0 then
+--       -- found it, return line, offset and no err msg
+--       return line, file:seek('cur') - #line - 1, nil
+--     else
+--       -- wtf?
+--       return line, file:seek('cur') - #line - 1, '[warn] aborted by matchp'
+--     end
+--   end
+--
+--   -- nothing found, so return nil, last offset and no err msg
+--   return nil, file:seek('cur') - #line - 1, nil
+-- end
 
 --- opens Mythes.fh.{idx, dat} file handles, returns true for success, false for failure
 function Mythes:open()
@@ -866,42 +869,6 @@ function Mythes.close()
   return true
 end
 
-function Mythes._test()
-  -- test we can find all words in the index
-  assert(Mythes:open())
-  local fh = Mythes.fh.idx
-  local stats = {}
-  local line
-  _ = fh:read('*l') -- skip encoding
-  line = fh:read('*l') -- nr of entries
-  local nidx = line
-
-  local nwords, nerrs, nfound = 0, 0, 0
-
-  line = fh:read('*l')
-  while line do
-    nwords = nwords + 1
-    local word = line:match('^[^|]+')
-    local entry, _, err = Mythes.idx_search(word, Mythes.match_exactp)
-    if err then
-      nerrs = nerrs + 1
-    end
-    if entry then
-      nfound = nfound + 1
-    end
-    line = fh:read('*l')
-  end
-
-  stats = {
-    nidx = nidx,
-    nwords = nwords,
-    nfound = nfound,
-    notfound = nwords - nfound,
-    nerrs = nerrs,
-  }
-  assert(Mythes.close())
-  return stats
-end
 --- searches Mythes thesaurus `word`, returns an item with 5 fields: term, syns, text, word, words
 --- if table.term is nil, nothing was found. if err is also nil, nothing went wrong
 ---@param word string word for searching the thesaurus
@@ -913,7 +880,7 @@ function Mythes.search(word)
   local line, item, err
 
   -- search idx for `word` to get offset to entry line in dat-file
-  line, _, err = Mythes.idx_search(word, Mythes.match_exactp) -- ignores offset into idx
+  line, _, err = binsearch(Mythes.fh.idx, word, '^[^|]+')
   if line == nil or err then
     return nil, err
   end
@@ -948,31 +915,6 @@ function Mythes.search(word)
   -- item now has: term, word, words & syns field
 
   return item, err
-end
-
----prints words seen while search for `word`
----@param word string word to lookup in index file
-function Mythes.trace(word)
-  assert(Mythes:open())
-
-  local seen = {}
-  local nr = 0
-
-  -- closure, updates seen & nr and then uses original match predicate
-  local function trace(line, sword)
-    local saw, offset = line:match('^([^|]+)|(%d+)')
-    local fuz = vim.fn.matchfuzzypos({ saw }, sword)
-    nr = nr + 1
-    seen[saw] = { nr, tonumber(offset), fuz and fuz[3] or 0, soundex(saw) }
-    print(vim.inspect('saw ' .. saw))
-    return Mythes.match_exactp(line, sword)
-  end
-
-  local line, offset = Mythes.idx_search(word, trace)
-
-  print(vim.inspect({ word, line, offset, seen }))
-
-  Mythes.close()
 end
 
 ---augment picker.item with additional fields for previewing
@@ -1121,10 +1063,10 @@ function M.thesaurus(word, opts)
 
   local actions = {
     alt_enter = function(picker, item)
-      -- do new thesaurus search using current item or search input text
+      -- (new) thesaurus search using current item or search input text
       local w = item and item.word or picker.matcher.pattern
 
-      picker.input:set('', w) -- reset input pattern, input prompt to word
+      picker.input:set('', w) -- input search '', input prompt to word>
       picker.opts.search = w
       picker:find({ refresh = true })
     end,
@@ -1164,20 +1106,20 @@ function M.thesaurus(word, opts)
 
   local p = providers[(opts.source or 'default'):lower()]
   if p == nil then
-    vim.notify('provider not found: ' .. opts.source)
+    vim.notify('No such thesaurus: ' .. opts.sources)
+    return
   end
 
   local picker_opts = {
-    title = 'Search Thesaurus',
+    title = 'Search ' .. p.name,
     search = word:lower(),
-    preview = (p or {}).preview,
-    format = (p or {}).format,
-    -- finder = (p or {}).finder,
-    finder = (p or {}).finder,
-    transform = (p or {}).transform,
-    win = win, -- (p or {}).win or win
-    actions = actions, -- (p or {}).actions or actions
-    confirm = (p or {}).confirm,
+    preview = p.preview,
+    format = p.format,
+    finder = p.finder,
+    transform = p.transform,
+    win = win,
+    actions = actions,
+    confirm = p.confirm,
     float = true,
   }
   -- 'snacks.picker'.pick(opts) is what is called by picker()
