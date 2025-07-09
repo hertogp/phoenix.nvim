@@ -184,6 +184,28 @@ local function wrap(line, cutoff)
   end
   return lines
 end
+
+-- TODO: add this when doing extmarks for Mythes as well
+-- ---adds `text` fragments to last line `lines` and records their (ext) `mark` in `marks`
+-- ---@param lines string[] list of `lines`, last line is being added to
+-- ---@param text string `text` to be added to the last line in `lines`
+-- ---@param mark string name of a highlight group
+-- ---@param marks table list of {row, col, endcol, mark} tuples marking added text
+-- local function extmarked(lines, text, mark, marks)
+--   -- add marked text to last line in lines
+--   if #lines == 0 then
+--     lines[1] = ''
+--   end
+--   local last = #lines
+--
+--   if mark and #text > 0 and type(marks) == 'table' then
+--     local col = #lines[last]
+--     local len = #text
+--     marks[#marks + 1] = { last - 1, col, col + len, mark }
+--   end
+--   lines[last] = lines[last] .. text
+-- end
+
 --[[ WORDNET thesaurus ]]
 
 --[[ wordnet
@@ -278,12 +300,25 @@ Notes:
 
 --]]
 
+local ns_thesaurus = vim.api.nvim_create_namespace('ns_thesaurus')
+local th_hl = {
+  text = 'Special',
+  word = 'Special',
+  nr = 'Number',
+  pos = 'Comment',
+  relation = 'String',
+  trivial = 'Comment',
+  ptr_word = 'Keyword',
+}
+
 local Wordnet = {
   pos = { 'adj', 'adv', 'noun', 'verb' }, -- {index, data}.<pos> file extensions
 
   name = 'Wordnet',
 
-  mappos = {
+  -- cpos_to_ext
+  -- cpos_to_str
+  cpos_to_ext = {
     -- maps synset type to file <pos> suffix for {index, data}.<pos>
     a = 'adj',
     s = 'adj', -- adj-satellite .. to be found in *.adj presumably
@@ -292,7 +327,7 @@ local Wordnet = {
     r = 'adv',
   },
 
-  strpos = {
+  cpos_to_str = {
     -- maps synset type to full name used in snacks' preview
     a = 'adjective',
     s = 'adj-satellite',
@@ -405,7 +440,7 @@ function Wordnet.parse_idx(line)
 
   rv.word = parts[1] -- used by M.thesaurus & actions
   rv.term = parts[1]
-  rv.pos = Wordnet.mappos[parts[2]] -- redundant, is same as pos of the containing index.<pos>
+  rv.pos = Wordnet.cpos_to_ext[parts[2]] -- redundant, is same as pos of the containing index.<pos>
 
   local ptr_cnt = tonumber(parts[4]) -- same as #pointers, may be 0
   rv.pointers = {} -- kind of pointers that lemma/term has in all the synsets it is in
@@ -450,7 +485,7 @@ function Wordnet.parse_dta(line, pos)
   -- skip offset = parts[1]
   rv.lexofnr = tonumber(parts[2]) + 1 -- 2-dig.nr, +1 added for lua's 1-based index in Wordnet.lexofile
   rv.cpos = parts[3]
-  rv.pos = Wordnet.mappos[parts[3]]
+  rv.pos = Wordnet.cpos_to_ext[parts[3]]
   local words_cnt = tonumber(parts[4], 16) -- 2-hexdigits, nr of words in this synset (1 or more)
 
   -- words
@@ -479,10 +514,10 @@ function Wordnet.parse_dta(line, pos)
       dstnr = tonumber(dstnr, 16)
       table.insert(rv.pointers, {
         symbol = symbol,
-        relation = Wordnet.pointers_keep[symbol] or 'unknown ptr symbol',
+        relation = Wordnet.pointers_keep[symbol] or ('unknown ' .. symbol),
         offset = parts[i + 1],
-        cpos = parts[i + 2], -- used by preview to map cpos via strpos (preserves adj-satellite)
-        pos = Wordnet.mappos[parts[i + 2]] or parts[i + 2], -- maps s to adj, not adj-satellite
+        cpos = parts[i + 2], -- used by preview to map cpos via cpos_to_str (preserves adj-satellite)
+        pos = Wordnet.cpos_to_ext[parts[i + 2]] or parts[i + 2], -- maps s to adj, not adj-satellite
         srcnr = srcnr,
         dstnr = dstnr,
       })
@@ -638,8 +673,8 @@ function Wordnet.format(item, _)
     count = count + #pos.offsets
   end
   return {
-    { ('%-25s | '):format(item.text), 'Special' },
-    { ('%s meanings'):format(count), 'Comment' },
+    { ('%-25s | '):format(item.text):gsub('_', ' '), th_hl.text },
+    { ('%s meanings'):format(count), th_hl.trivial },
   }
 end
 
@@ -669,32 +704,62 @@ end
 
 function Wordnet.preview(picker)
   local item = picker.item
+  local m = function(lines, text, mark)
+    -- add marked text to last line in lines
+    if #lines == 0 then
+      lines[1] = ''
+    end
+    local last = #lines
+
+    if mark and #text > 0 then
+      local col = #lines[last]
+      local len = #text
+      item.marks[#item.marks + 1] = { last - 1, col, col + len, mark }
+    end
+    lines[last] = lines[last] .. text
+  end
 
   if item.lines == nil then
-    item.title = item.word
+    item.marks = {}
+    item.title = item.word:gsub('_', ' ') -- in case word is a collocation
     item.ft = 'markdown'
     local lines = {}
     local ix = 1
     for _, t in pairs(item.pos) do
       for _, syn in pairs(t.syns) do
         -- add synset words
-        local synpos = Wordnet.strpos[syn.cpos] or syn.pos
-        lines[#lines + 1] = ('%d. [%s] %s'):format(ix, synpos, table.concat(syn.words, ', '))
+        local pos = Wordnet.cpos_to_str[syn.cpos] or syn.pos
+        m(lines, ('%d. '):format(ix), th_hl.nr)
+        m(lines, ('%s: '):format(pos), th_hl.pos)
+        m(lines, ('%s'):format(table.concat(syn.words, ', ')):gsub('_', ' '), th_hl.word)
+
         for _, gloss in ipairs(syn.gloss) do
-          lines[#lines + 1] = '* ' .. gloss
+          lines[#lines + 1] = '- ' .. gloss
         end
         lines[#lines + 1] = ''
         ix = ix + 1
 
-        -- TODO: add pointer info in syn.pointers
         for _, ptr in ipairs(syn.pointers) do
-          local sword = ptr.sword and (' `%s` - '):format(ptr.sword) or ''
+          local sword = (ptr.sword and ('%s'):format(ptr.sword) or ''):gsub('_', ' ')
           -- local gloss = ptr.gloss and ' - ' .. table.concat(ptr.gloss, '; ') or ''
-          local pos = Wordnet.strpos[ptr.cpos]
-          local ptr_str = ('<%s>(%s) %s *%s*'):format(ptr.relation, pos, sword, ptr.dword)
-          lines[#lines + 1] = ptr_str
+          local ppos = Wordnet.cpos_to_str[ptr.cpos]
+          -- local ptr_str = ('<%s>(%s) %s *%s*'):format(ptr.relation, pos, sword, ptr.dword)
+          -- lines[#lines + 1] = ptr_str
+          lines[#lines + 1] = ''
+          m(lines, ptr.relation, th_hl.relation)
+          m(lines, ', ')
+          m(lines, ppos .. ':', th_hl.pos)
+          m(lines, ' ')
+          m(lines, sword, th_hl.word)
+          if #sword > 0 then
+            m(lines, ' - ')
+          else
+            m(lines, ' ')
+          end
+          m(lines, (ptr.dword):gsub('_', ' '), th_hl.ptr_word)
+
           for _, gloss in ipairs(ptr.gloss) do
-            lines[#lines + 1] = '- ' .. gloss
+            lines[#lines + 1] = '+ ' .. gloss
           end
           lines[#lines + 1] = ''
         end
@@ -709,6 +774,24 @@ function Wordnet.preview(picker)
   picker.preview:set_title(item.title)
   picker.preview:highlight({ ft = item.ft })
   vim.api.nvim_set_option_value('wrap', true, { win = picker.preview.win.win })
+
+  -- DELME: highlight test
+  -- `:Open https://github.com/folke/snacks.nvim/blob/bc0630e43be5699bb94dadc302c0d21615421d93/lua/snacks/picker/core/list.lua#L462`
+  -- local ns_id = 1
+  -- local extid =
+  --   vim.api.nvim_buf_set_extmark(picker.preview.win.buf, ns_id, 1, 2, { end_col = 10, hl_group = 'Comment' })
+  -- vim.print(vim.inspect({ 'extid', extid }))
+  local ns_id = 1
+  vim.api.nvim_buf_clear_namespace(picker.preview.win.buf, ns_id, 0, -1)
+  for _, mark in ipairs(item.marks) do
+    vim.api.nvim_buf_set_extmark(
+      picker.preview.win.buf,
+      ns_id,
+      mark[1],
+      mark[2],
+      { end_col = mark[3], hl_group = mark[4] }
+    )
+  end
 end
 
 function Wordnet.confirm(args)
@@ -733,8 +816,10 @@ local Mythes = {
 ---@param offset number offset to data entry
 ---@return table entry data entry found (if any) {term=term, syns={ {(pos), syn1, ..}, ..} }
 ---@return string|nil err message in case of errors, nil otherwise
-function Mythes.dta_read(offset)
-  -- term|num_lines, followed by num_lines * '(pos)|syn1|syn2..'-lines
+function Mythes.data(offset)
+  -- dat-format:
+  -- term|num_lines
+  -- * followed by num_lines * '(pos)|syn1|syn2..'-lines
   assert(Mythes:open())
   local file = Mythes.fh.dta
   local line, err
@@ -762,8 +847,7 @@ function Mythes.dta_read(offset)
 
       local synset = vim.split(line, '|', { plain = true, trimempty = true })
       synset = vim.tbl_map(vim.trim, synset)
-      -- add synset {(pos), syn1, syn2,..} to the synonyms list
-      syns[#syns + 1] = synset
+      syns[#syns + 1] = synset -- adds {(pos), syn1, syn2,..} to syns-list
     end
   else
     return {}, '[error] unexpected line at offset: ' .. line
@@ -772,65 +856,54 @@ function Mythes.dta_read(offset)
   return { term = term, syns = syns }, nil
 end
 
--- ---@param line string current line in the index to evaluate
--- ---@param word string word to search for in the index
--- ---@return -1|0|1|nil result -1 go left, 0 found, 1 go right, nil is illegal `line`
--- function Mythes.match_exactp(line, word)
---   local entry = line:match('^[^|]+') -- <entry>|<offset in dta file>
---
---   if entry == nil then
---     return nil
---   elseif entry == word then
---     return 0
---   elseif entry > word then
---     return -1
---   else
---     return 1
---   end
--- end
---
--- ---binary search for word in an ordered (thesaurus) index
--- ---@param word string to search for in the index file
--- ---@param matchp fun(line:string, term:string):-1|0|1|nil
--- ---@return string|nil entry found in the index for given `word`, nil for not found
--- ---@return number offset to last line read
--- ---@return string|nil error message or nil for no error
--- function Mythes.idx_search(word, matchp)
---   local file = Mythes.fh.idx
---   local line
---   local p0, p1, err = 0, file:seek('end', 0)
---   if err then
---     return nil, 0, err
---   end
---
---   while p0 <= p1 do
---     local pos = math.floor((p0 + p1) / 2)
---     local oldpos = file:seek('set', pos)
---
---     _ = file:read('*l') -- discard (remainder) of current line
---     line = file:read('*l') -- read next available line
---
---     --  p0..[discard\nline\n]..p1 --
---
---     local m = matchp(line, word)
---     if m == 1 then
---       --  term > line, move p0 to \n of last line read
---       p0 = file:seek('cur') - 1
---     elseif m == -1 then
---       -- term < line, move p1 to just before the start of discard
---       p1 = oldpos - 1 -- guarantees that p1 moves left
---     elseif m == 0 then
---       -- found it, return line, offset and no err msg
---       return line, file:seek('cur') - #line - 1, nil
---     else
---       -- wtf?
---       return line, file:seek('cur') - #line - 1, '[warn] aborted by matchp'
---     end
---   end
---
---   -- nothing found, so return nil, last offset and no err msg
---   return nil, file:seek('cur') - #line - 1, nil
--- end
+--- searches Mythes thesaurus `word`, returns an item with 5 fields: term, syns, text, word, words
+--- if table.term is nil, nothing was found. if err is also nil, nothing went wrong
+---@param word string word for searching the thesaurus
+---@return table|nil item { term = word_found, syns = { {(pos), syn1, syn2,..}, ..} } or nil if not found
+---@return string|nil error message or nil
+function Mythes.search(word)
+  assert(Mythes:open())
+
+  local line, item, err
+
+  -- search idx for `word` to get offset to entry line in dat-file
+  line, _, err = binsearch(Mythes.fh.idx, word, '^[^|]+')
+  if line == nil or err then
+    return nil, err
+  end
+
+  -- pickup offset into dat file
+  -- idx-line is <word>|<offset>
+  local offset = tonumber(line:match('|(%d+)$'))
+  if offset == nil then
+    return nil, '[error] dta offset not found on idx line'
+  end
+
+  -- read entry in dat file
+  item, err = Mythes.data(offset) -- item has term, syns fields
+  assert(Mythes.close())
+
+  -- collect words from syns without any (annotations)
+  word = word:lower()
+  local words = { [word] = true }
+  for _, synset in ipairs(item.syns) do
+    for _, synonym in ipairs(synset) do
+      words[synonym:gsub('%s*%b()%s*', ''):lower()] = true
+    end
+  end
+  words[''] = nil -- (pos) in synset ends up as key '', so remove here
+  words = vim.tbl_keys(words)
+  table.sort(words) -- sorts in-place
+
+  -- add text, word and words fields
+  item.text = word -- mandatory for snacks: used by the matcher when filtering the list of items
+  item.word = word -- the original word searched for (term is what was found)
+  item.words = words -- all (unique) synonyms as plain words in a sorted list
+
+  -- item now has: term, word, words & syns field
+
+  return item, err
+end
 
 --- opens Mythes.fh.{idx, dat} file handles, returns true for success, false for failure
 function Mythes:open()
@@ -869,53 +942,7 @@ function Mythes.close()
   return true
 end
 
---- searches Mythes thesaurus `word`, returns an item with 5 fields: term, syns, text, word, words
---- if table.term is nil, nothing was found. if err is also nil, nothing went wrong
----@param word string word for searching the thesaurus
----@return table|nil item { term = word_found, syns = { {(pos), syn1, syn2,..}, ..} } or nil if not found
----@return string|nil error message or nil
-function Mythes.search(word)
-  assert(Mythes:open())
-
-  local line, item, err
-
-  -- search idx for `word` to get offset to entry line in dat-file
-  line, _, err = binsearch(Mythes.fh.idx, word, '^[^|]+')
-  if line == nil or err then
-    return nil, err
-  end
-
-  -- pickup offset into dat file
-  local offset = tonumber(line:match('|(%d+)$'))
-  if offset == nil then
-    return nil, '[error] dta offset not found on idx line'
-  end
-
-  -- read entry in dat file
-  item, err = Mythes.dta_read(offset) -- item has term, syns fields
-  assert(Mythes.close())
-
-  -- collect words from syns without any (annotations)
-  word = word:lower()
-  local words = { [word] = true }
-  for _, synset in ipairs(item.syns) do
-    for _, synonym in ipairs(synset) do
-      words[synonym:gsub('%s*%b()%s*', ''):lower()] = true
-    end
-  end
-  words[''] = nil -- (pos) in synset ends up as key '', so remove here
-  words = vim.tbl_keys(words)
-  table.sort(words) -- sorts in-place
-
-  -- add text, word and words fields
-  item.text = word -- mandatory for snacks: used by the matcher when filtering the list of items
-  item.word = word -- the original word searched for (term is what was found)
-  item.words = words -- all (unique) synonyms as plain words in a sorted list
-
-  -- item now has: term, word, words & syns field
-
-  return item, err
-end
+-- snacks callbacks below
 
 ---augment picker.item with additional fields for previewing
 function Mythes.preview(picker)
@@ -1064,7 +1091,7 @@ function M.thesaurus(word, opts)
   local actions = {
     alt_enter = function(picker, item)
       -- (new) thesaurus search using current item or search input text
-      local w = item and item.word or picker.matcher.pattern
+      local w = (item and item.word or picker.matcher.pattern):gsub(' ', '_')
 
       picker.input:set('', w) -- input search '', input prompt to word>
       picker.opts.search = w
@@ -1075,8 +1102,8 @@ function M.thesaurus(word, opts)
       -- replace <cword> with item picked
       picker:close()
       if item and item.word then
-        -- "_ puts inner word in blackhole register `:h quote_`
-        vim.cmd('normal! "_ciw' .. item.word)
+        -- ("_) puts inner word in blackhole register `:h quote_`
+        vim.cmd('normal! "_ciw<esc>' .. item.word:gsub('_', ' '))
       else
         vim.notify('no replacement selected')
       end
@@ -1111,7 +1138,7 @@ function M.thesaurus(word, opts)
   end
 
   local picker_opts = {
-    title = 'Search ' .. p.name,
+    title = 'thesaurus ' .. p.name,
     search = word:lower(),
     preview = p.preview,
     format = p.format,
