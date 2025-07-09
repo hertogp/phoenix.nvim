@@ -306,7 +306,7 @@ local th_hl = {
   word = 'Special',
   nr = 'Number',
   pos = 'Comment',
-  relation = 'String',
+  relation = 'Constant',
   trivial = 'Comment',
   ptr_word = 'Keyword',
 }
@@ -750,11 +750,9 @@ function Wordnet.preview(picker)
           m(lines, ', ')
           m(lines, ppos .. ':', th_hl.pos)
           m(lines, ' ')
-          m(lines, sword, th_hl.word)
           if #sword > 0 then
+            m(lines, sword, th_hl.word)
             m(lines, ' - ')
-          else
-            m(lines, ' ')
           end
           m(lines, (ptr.dword):gsub('_', ' '), th_hl.ptr_word)
 
@@ -775,18 +773,12 @@ function Wordnet.preview(picker)
   picker.preview:highlight({ ft = item.ft })
   vim.api.nvim_set_option_value('wrap', true, { win = picker.preview.win.win })
 
-  -- DELME: highlight test
-  -- `:Open https://github.com/folke/snacks.nvim/blob/bc0630e43be5699bb94dadc302c0d21615421d93/lua/snacks/picker/core/list.lua#L462`
-  -- local ns_id = 1
-  -- local extid =
-  --   vim.api.nvim_buf_set_extmark(picker.preview.win.buf, ns_id, 1, 2, { end_col = 10, hl_group = 'Comment' })
-  -- vim.print(vim.inspect({ 'extid', extid }))
-  local ns_id = 1
-  vim.api.nvim_buf_clear_namespace(picker.preview.win.buf, ns_id, 0, -1)
+  -- apply extmarks to preview buffer
+  vim.api.nvim_buf_clear_namespace(picker.preview.win.buf, ns_thesaurus, 0, -1)
   for _, mark in ipairs(item.marks) do
     vim.api.nvim_buf_set_extmark(
       picker.preview.win.buf,
-      ns_id,
+      ns_thesaurus,
       mark[1],
       mark[2],
       { end_col = mark[3], hl_group = mark[4] }
