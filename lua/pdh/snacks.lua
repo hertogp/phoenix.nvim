@@ -774,15 +774,11 @@ function Wordnet.preview(picker)
   vim.api.nvim_set_option_value('wrap', true, { win = picker.preview.win.win })
 
   -- apply extmarks to preview buffer
-  vim.api.nvim_buf_clear_namespace(picker.preview.win.buf, ns_thesaurus, 0, -1)
+  local buf = picker.preview.win.buf
+  vim.api.nvim_buf_clear_namespace(buf, ns_thesaurus, 0, -1)
   for _, mark in ipairs(item.marks) do
-    vim.api.nvim_buf_set_extmark(
-      picker.preview.win.buf,
-      ns_thesaurus,
-      mark[1],
-      mark[2],
-      { end_col = mark[3], hl_group = mark[4] }
-    )
+    local row, col, end_col, hl_group = unpack(mark)
+    vim.api.nvim_buf_set_extmark(buf, ns_thesaurus, row, col, { end_col = end_col, hl_group = hl_group })
   end
 end
 
@@ -1141,7 +1137,6 @@ function M.thesaurus(word, opts)
     confirm = p.confirm,
     float = true,
   }
-  -- 'snacks.picker'.pick(opts) is what is called by picker()
   return require 'snacks'.picker(picker_opts)
 end
 
