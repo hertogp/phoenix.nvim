@@ -8,7 +8,7 @@ return {
 
   'MeanderingProgrammer/render-markdown.nvim',
 
-  enabled = true,
+  enabled = false,
 
   dependencies = {
     'nvim-treesitter/nvim-treesitter',

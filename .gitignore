@@ -13,9 +13,9 @@ repos.old/
 cache_nvim
 state_nvim.vim
 
-
 # - misc excludes
 *.org
+_readme.*
 
 # byte compiled
 

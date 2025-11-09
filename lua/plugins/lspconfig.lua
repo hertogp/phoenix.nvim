@@ -141,9 +141,11 @@ return {
           --
           -- This may be unwanted, since they displace some of your code
           if client and client_supports_method(client, vim.lsp.protocol.Methods.textDocument_inlayHint, event.buf) then
-            map('<leader>th', function()
-              vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf })
-            end, '[T]oggle Inlay [H]ints')
+            map(
+              '<leader>th',
+              function() vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf }) end,
+              '[T]oggle Inlay [H]ints'
+            )
           end
         end,
       })
@@ -233,10 +235,10 @@ return {
         --
 
         lua_ls = {
-          -- https://github.com/LuaLS/lua-language-server
-          -- https://luals.github.io/wiki/
+          -- `:Open https://github.com/LuaLS/lua-language-server`
+          -- `:Open https://luals.github.io/wiki/`
 
-          -- cmd = { ... },
+          cmd = { 'stylua' },
           -- filetypes = { ... },
           -- capabilities = {},
           settings = {
@@ -247,7 +249,7 @@ return {
               -- You can toggle below to ignore Lua_LS's noisy `missing-fields` warnings
               diagnostics = {
                 disable = { 'missing-fields' },
-                globals = { 'vim', 'use', 'Snacks' },
+                globals = { 'vim', 'use', 'Snacks', 'pandoc' },
               },
               format = {
                 enable = true,

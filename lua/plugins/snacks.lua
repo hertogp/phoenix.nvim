@@ -41,9 +41,7 @@ return {
     -- Top Pickers & Explorer
     {
       '<space>,',
-      function()
-        Snacks.picker.smart()
-      end,
+      function() Snacks.picker.smart() end,
       desc = 'Smart Find Files',
     },
     {
@@ -55,9 +53,7 @@ return {
           current = false, -- easier to goto alternate buffer
           last_used = true,
           prompt = ' > ',
-          on_show = function()
-            vim.cmd.stopinsert()
-          end,
+          on_show = function() vim.cmd.stopinsert() end,
           win = {
             list = {
               keys = {
@@ -81,34 +77,26 @@ return {
     },
     {
       '<space>D',
-      function()
-        Snacks.picker.diagnostics_buffer()
-      end,
+      function() Snacks.picker.diagnostics_buffer() end,
       desc = 'Diagnostics',
     },
     {
       '<space>N',
       function()
         Snacks.picker.notifications({
-          on_show = function()
-            vim.cmd.stopinsert()
-          end,
+          on_show = function() vim.cmd.stopinsert() end,
         })
       end,
       desc = 'Notifications',
     },
     {
       '<space>f',
-      function()
-        Snacks.picker.files({ hidden = true })
-      end,
+      function() Snacks.picker.files({ hidden = true }) end,
       desc = 'Find Files',
     },
     {
       '<space>F',
-      function()
-        Snacks.picker.files({ cwd = vim.fn.expand('%:p:h') })
-      end,
+      function() Snacks.picker.files({ cwd = vim.fn.expand('%:p:h') }) end,
       desc = 'Find Bufdir',
     },
     {
@@ -118,9 +106,9 @@ return {
           -- search for 'cWORD under cursor (' means literal match for cWORD)
           pattern = "'" .. (vim.fn.expand('<cWORD>'):match('[%w_%.:]+') or ''),
           prompt = ' > ',
-          on_show = function()
-            vim.cmd.stopinsert()
-          end,
+          -- on_show = function()
+          --   vim.cmd.stopinsert() -- goto normal mode <-- cancelled
+          -- end,
           layout = {
             relative = 'editor',
           },
@@ -130,9 +118,7 @@ return {
     },
     {
       '<space>L',
-      function()
-        Snacks.picker.lines()
-      end,
+      function() Snacks.picker.lines() end,
       desc = 'Buffer Lines',
     },
     {
@@ -140,21 +126,15 @@ return {
       function()
         Snacks.picker.grep({
           prompt = ' > ',
-          on_show = function()
-            vim.cmd.stopinsert()
-          end,
-          search = function(_)
-            return vim.fn.expand('<cWORD>'):match('[%w_%.:]+') or ''
-          end,
+          on_show = function() vim.cmd.stopinsert() end,
+          search = function(_) return vim.fn.expand('<cWORD>'):match('[%w_%.:]+') or '' end,
         })
       end,
       desc = 'Grep',
     },
     {
       '<space>G',
-      function()
-        Snacks.picker.grep()
-      end,
+      function() Snacks.picker.grep() end,
       desc = 'Grep',
     },
     {
@@ -162,18 +142,14 @@ return {
       function()
         Snacks.picker.notifications({
           prompt = ' > ',
-          on_show = function()
-            vim.cmd.stopinsert()
-          end,
+          on_show = function() vim.cmd.stopinsert() end,
         })
       end,
       desc = 'Notification History',
     },
     {
       '<space>e',
-      function()
-        Snacks.explorer()
-      end,
+      function() Snacks.explorer() end,
       desc = 'File Explorer',
     },
     {
@@ -209,39 +185,29 @@ return {
     },
     {
       '<space>k',
-      function()
-        Snacks.picker.keymaps()
-      end,
+      function() Snacks.picker.keymaps() end,
       desc = 'Find keymap',
     },
     {
       '<space>m',
-      function()
-        Snacks.picker.man()
-      end,
+      function() Snacks.picker.man() end,
       desc = 'Find Manpages',
     },
 
     -- pdh/outline.lua
     {
       '<space>o',
-      function()
-        require 'pdh.outline'.toggle()
-      end,
+      function() require 'pdh.outline'.toggle() end,
       desc = 'Toggle Outline of file',
     },
     {
       '<space><space>',
-      function()
-        Snacks.picker.resume()
-      end,
+      function() Snacks.picker.resume() end,
       desc = '[r]esume last search',
     },
     {
       '<space>w',
-      function()
-        Snacks.picker.grep_word()
-      end,
+      function() Snacks.picker.grep_word() end,
       desc = 'Grep word',
     },
 
@@ -250,80 +216,60 @@ return {
     -- stdpath config
     {
       '<leader>fc',
-      function()
-        Snacks.picker.files({ cwd = vim.fn.stdpath('config') })
-      end,
+      function() Snacks.picker.files({ cwd = vim.fn.stdpath('config') }) end,
       desc = 'Find Config',
     },
     {
       '<leader>gc',
-      function()
-        Snacks.picker.grep({ cwd = vim.fn.stdpath('config') })
-      end,
+      function() Snacks.picker.grep({ cwd = vim.fn.stdpath('config') }) end,
       desc = 'Grep Config',
     },
 
     -- stdpath data
     {
       '<leader>fd',
-      function()
-        Snacks.picker.files({ cwd = vim.fn.stdpath('data') })
-      end,
+      function() Snacks.picker.files({ cwd = vim.fn.stdpath('data') }) end,
       desc = 'Find Data',
     },
     {
       '<leader>gd',
-      function()
-        Snacks.picker.grep({ cwd = vim.fn.stdpath('data') })
-      end,
+      function() Snacks.picker.grep({ cwd = vim.fn.stdpath('data') }) end,
       desc = 'Grep Data',
     },
 
     -- qf & winloc
     {
       '<leader>q',
-      function()
-        Snacks.picker.qflist()
-      end,
+      function() Snacks.picker.qflist() end,
       desc = 'Quickfix list',
     },
     {
       '<leader>w',
-      function()
-        Snacks.picker.loclist()
-      end,
+      function() Snacks.picker.loclist() end,
       desc = 'Window loclist',
     },
 
     -- notes
     {
       '<leader>fn',
-      function()
-        Snacks.picker.files({ cwd = '~/notes/' })
-      end,
+      function() Snacks.picker.files({ cwd = '~/notes/' }) end,
       desc = 'Find Notes',
     },
     {
       '<leader>gn',
-      function()
-        Snacks.picker.grep({ cwd = '~/notes/' })
-      end,
+      function() Snacks.picker.grep({ cwd = '~/notes/' }) end,
       desc = 'Grep Notes',
     },
 
     -- project dir
     {
       '<leader>fp',
-      function()
-        Snacks.picker.files({ cwd = Project_root() })
-      end,
+      function() Snacks.picker.files({ cwd = Project_root() }) end,
       desc = 'Find Project',
     },
     {
       '<leader>gp',
-      function()
-        Snacks.picker.grep({ cwd = Project_root() })
-      end,
+      function() Snacks.picker.grep({ cwd = Project_root() }) end,
       desc = 'Grep Project',
     },
 
@@ -341,103 +287,77 @@ return {
     },
     {
       '<leader>gt',
-      function()
-        Snacks.picker.grep({ cwd = Project_root(), search = 'TODO|ToDo|FIXME|NOTES?|BUG|XXX|REVIEW' })
-      end,
+      function() Snacks.picker.grep({ cwd = Project_root(), search = 'TODO|ToDo|FIXME|NOTES?|BUG|XXX|REVIEW' }) end,
       desc = 'Find Project Todo-s',
     },
 
     -- git
     {
       '<leader>fg',
-      function()
-        Snacks.picker.git_files()
-      end,
+      function() Snacks.picker.git_files() end,
       desc = 'Find Git Files',
     },
 
     -- Misc
     {
       '<leader>c',
-      function()
-        Snacks.picker.commands()
-      end,
+      function() Snacks.picker.commands() end,
       desc = 'Find Command',
     },
 
     {
       '<leader>i',
-      function()
-        Snacks.picker.icons()
-      end,
+      function() Snacks.picker.icons() end,
       desc = 'Find Icon',
     },
 
     {
       '<leader>p',
-      function()
-        Snacks.picker.pickers()
-      end,
+      function() Snacks.picker.pickers() end,
       desc = 'Find Command',
     },
 
     {
       '<leader>H',
-      function()
-        Snacks.picker.highlights()
-      end,
+      function() Snacks.picker.highlights() end,
       desc = 'Find Command',
     },
 
     -- LSP
     {
       '<space>s',
-      function()
-        Snacks.picker.lsp_symbols()
-      end,
+      function() Snacks.picker.lsp_symbols() end,
       desc = 'LSP: Find symbol',
     },
     {
       '<space>S',
-      function()
-        Snacks.picker.lsp_workspace_symbols()
-      end,
+      function() Snacks.picker.lsp_workspace_symbols() end,
       desc = 'LSP: Find workspace symbol',
     },
     {
       'gd',
-      function()
-        Snacks.picker.lsp_definitions()
-      end,
+      function() Snacks.picker.lsp_definitions() end,
       desc = 'LSP: Goto Definition',
     },
     {
       'gD',
-      function()
-        Snacks.picker.lsp_declarations()
-      end,
+      function() Snacks.picker.lsp_declarations() end,
       desc = 'LSP: Goto Declaration',
     },
     {
       'gR',
-      function()
-        Snacks.picker.lsp_references()
-      end,
+      function() Snacks.picker.lsp_references() end,
       nowait = true,
       desc = 'LSP: References',
     },
     {
       'gi',
-      function()
-        Snacks.picker.lsp_implementations()
-      end,
+      function() Snacks.picker.lsp_implementations() end,
       desc = 'LSP: Goto Implementation',
     },
     {
       'gt',
-      function()
-        Snacks.picker.lsp_type_definitions()
-      end,
+      function() Snacks.picker.lsp_type_definitions() end,
       desc = 'LSP: Goto T[y]pe Definition',
     },
     -- {

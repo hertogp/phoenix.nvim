@@ -149,6 +149,7 @@ function Project_root(bufnr)
     '.mise.toml',
     '.notes',
     'stylua.toml',
+    '.stylua.toml',
     '.codespellrc',
     'Makefile',
     '.svn',
@@ -321,9 +322,7 @@ local function save_keep_pos()
   vim.cmd.update()
 
   for winid, view in pairs(views) do
-    vim.api.nvim_win_call(winid, function()
-      vim.fn.winrestview(view)
-    end)
+    vim.api.nvim_win_call(winid, function() vim.fn.winrestview(view) end)
   end
 end
 

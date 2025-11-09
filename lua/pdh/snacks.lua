@@ -2,6 +2,13 @@
 
 local M = {}
 
+local test = {
+  procent = vim.fn.expand('%:p:h>'),
+  script = vim.fn.expand('<script>'),
+  sfile = vim.fn.expand('<sfile>:t'),
+  debug = debug.getinfo(1, 'S'),
+}
+
 --[[ Autocommands ]]
 
 vim.api.nvim_create_user_command('Thesaurus', function()
@@ -600,7 +607,7 @@ function Wordnet.search(word)
     local line, _, _ = binsearch(Wordnet.fh.index[pos], word, '^%S+')
 
     if line then
-      -- found an entry in one of the index.<pos> files
+      -- found an entry in index.<pos> file
       local idx, err_idx = Wordnet.parse_idx(line)
       if idx then
         idx.word = word
@@ -1035,7 +1042,7 @@ function M.codespell(bufnr)
   -- notes:
   -- * `:Open https://github.com/codespell-project/codespell`
   -- * keymaps.lua sets <space>c/C to codespell current buffer file/directory
-  -- * testcase: successful ==> successful
+  -- * testcase: succesful ==> successful
   local target = vim.api.nvim_buf_get_name(bufnr or 0)
   target = bufnr and target or vim.fs.dirname(target) -- a file or a directory
 
@@ -1140,24 +1147,15 @@ function M.thesaurus(word, opts)
   return require 'snacks'.picker(picker_opts)
 end
 
-function M.test(line, cutoff)
-  cutoff = cutoff or 40
-  local oldline = line
-  local lines = {}
-  while line and #line > cutoff do
-    local pos = line:find('%s', cutoff)
-    if pos then
-      lines[#lines + 1] = line:sub(1, pos)
-      line = line:sub(pos + 1, -1)
-    else
-      break
-    end
-  end
-  if #line > 0 then
-    lines[#lines + 1] = line
-  end
-  lines[#lines + 1] = oldline
-  vim.print(vim.inspect(lines))
+function M.test()
+  vim.print(vim.inspect(test))
+  vim.print(vim.inspect(debug.getinfo(1, 'S')))
+  local scriptfile = debug.getinfo(1, 'S').source:sub(2, -1) -- skip the @
+  local root_dir = vim.fn.fnamemodify(scriptfile, ':p')
+  vim.print('root dir :p is ' .. root_dir)
+  vim.print('root dir :p:h is ' .. vim.fn.fnamemodify(root_dir, ':h'))
+  vim.print('root dir :p:h:h is ' .. vim.fn.fnamemodify(root_dir, ':h:h'))
+  vim.print('root dir :p:h:h:h is ' .. vim.fn.fnamemodify(root_dir, ':h:h:h'))
 end
 
 function M.soundex(words, opts)

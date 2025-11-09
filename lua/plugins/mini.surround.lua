@@ -10,5 +10,9 @@
 return {
   'echasnovski/mini.surround',
   version = false,
-  opts = {},
+  opts = {
+    custom_surroundings = {
+      ['*'] = { output = { left = '*', right = '*' } },
+    },
+  },
 }
