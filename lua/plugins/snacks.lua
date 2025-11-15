@@ -110,7 +110,10 @@ return {
           --   vim.cmd.stopinsert() -- goto normal mode <-- cancelled
           -- end,
           layout = {
-            relative = 'editor',
+            -- relative = 'editor',
+            -- fullscreen = true,
+            preset = 'ivy',
+            preview = 'sidebar',
           },
         })
       end,

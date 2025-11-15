@@ -49,6 +49,7 @@ nmap('<f5>', ':redraw!', 'redraw screen')
 nmap('<c-n>', '<cmd>nohl<cr>', 'clear search highlights')
 -- keep centered when jumping
 nmap('n', 'nzz', 'next match, centered')
+nmap('<m-n>', 'nzt', 'next match, top')
 nmap('N', 'Nzz', 'previous match, centered')
 nmap('*', '*zz', 'next match on WORD, centered')
 nmap('#', '#zz', 'previous match on cWORD, centered')
@@ -99,4 +100,4 @@ nmap('<leader>dl', "<Cmd>lua require'dap'.run_last()<CR>", 'debug, run last')
 
 --[[ development ]]
 
-nmap('<leader>rs', ":lua require('pdh.rfc').search({'rfc', 'std', 'bcp'})<cr>", "find ietf RFC/STD/BCP's")
+nmap('<leader>fr', ":lua require('pdh.rfc').search({'rfc', 'std', 'bcp'})<cr>", "find ietf RFC/STD/BCP's")
