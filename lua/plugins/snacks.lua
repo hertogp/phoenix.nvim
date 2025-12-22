@@ -48,11 +48,14 @@ return {
       '<space>b',
       function()
         Snacks.picker.buffers({
-          hidden = true,
-          nofile = false,
-          current = false, -- easier to goto alternate buffer
-          last_used = true,
-          prompt = ' > ',
+          finder = 'buffers',
+          format = 'buffer',
+          -- hidden = true, -- when enabled adds *tons* of buffers(??)
+          nofile = true,
+          current = true,
+          unloaded = true,
+          sort_lastused = true,
+          prompt = 'b> ',
           on_show = function() vim.cmd.stopinsert() end,
           win = {
             list = {

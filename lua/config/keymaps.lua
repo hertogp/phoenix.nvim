@@ -44,6 +44,7 @@ nmap('<space>t', ":lua require'pdh.snacks'.thesaurus()<cr>", 'check thesaurus fo
 nmap('<f5>', ':redraw!', 'redraw screen')
 
 --[[ CODING ]]
+nmap('<F2>', '<cmd>Show make<cr>', 'Show make')
 
 --[[ NAVIGATE ]]
 nmap('<c-n>', '<cmd>nohl<cr>', 'clear search highlights')

@@ -1,5 +1,6 @@
 -- File: ~/.config/nvim/lua/pdh/outline.lua
 -- Find outline for various filetypes
+  -- see also ~/.config/nvim/queries/*.scm
 
 --[[
 Behaviour
@@ -436,6 +437,7 @@ end
 --[[ MODULE ]]
 
 M.config = {
+  -- see also ~/.config/nvim/queries/*.scm
   outline = {
     -- outliner specs by filetype -> spec (these are parser specific)
     -- [ ] add parser AST, home grown ast filter to outline
@@ -462,7 +464,7 @@ M.config = {
       parser = 'scm',
       language = 'lua',
       query = 'otl', -- outline is already taken
-      depth = 1,
+      depth = 4,
     },
     elixir = {
       parser = 'scm',
